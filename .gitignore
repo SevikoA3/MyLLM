@@ -36,6 +36,7 @@ yarn-error.*
 
 # test output
 coverage/
+.tests-build/
 
 # typescript
 *.tsbuildinfo

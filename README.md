@@ -2,7 +2,7 @@
 
 Aplikasi Android chat client untuk custom OpenAI-compatible endpoint.
 
-Fase saat ini adalah Phase 1 (domain contracts dan fake endpoint) dari PLAN.md. Kontrak data minimum dan fake OpenAI-compatible server sudah ada; endpoint onboarding, database, dan chat UI belum.
+Fase saat ini adalah Phase 2 (endpoint onboarding dan secure credential) dari PLAN.md. Kontrak data, fake OpenAI-compatible server, form setup endpoint, penyimpanan credential di Keystore, dan model discovery sudah ada; model picker, database percakapan, dan chat UI belum.
 
 ## Perintah
 
@@ -15,17 +15,41 @@ Fase saat ini adalah Phase 1 (domain contracts dan fake endpoint) dari PLAN.md. 
 | `npm test` | Jest dalam watch mode |
 | `npm run test:ci` | Jest sekali jalan untuk CI |
 | `npm run test:server` | Contract test fake endpoint lewat `node --test` |
+| `npm run test:transport` | Contract test transport model discovery terhadap fake endpoint |
+| `npm run test:onboarding` | Smoke test alur connect dan discover terhadap fake endpoint |
 | `npm run doctor` | `npx expo-doctor` |
 
 ## Domain dan fake endpoint
 
 `src/domain/endpoint.ts` memuat `EndpointProfile`, normalisasi base URL, penggabungan path, dan pembuatan header auth. `src/domain/model-list.ts` memuat schema GET /models dan normalizer yang mengubah field hilang menjadi null atau unknown, bukan false atau nol. `src/domain/error.ts` memuat AppError terstruktur beserta redaksi secret.
 
-Ketentuan yang berlaku sejak fase ini:
-
-- Phase 1 hanya menerima HTTPS. HTTP lokal untuk pengembangan ditambahkan bersama transport chat, bukan dengan menurunkan validasi sekarang.
+- HTTPS selalu diterima. Cleartext HTTP hanya diterima untuk host loopback pada build development sehingga contract test dapat memakai fake endpoint lokal. Release menolak cleartext HTTP.
 - Nilai default `chatOutputCap` 8192 berasal dari dokumentasi Chat Completions AmanAI dan dipakai pada Phase 12.
 - `nativeContextManagement` bernilai unknown sampai endpoint benar-benar diuji, sehingga compaction lokal menjadi perilaku awal.
+
+## Onboarding endpoint
+
+Fresh install membuka `app/setup.tsx`, bukan chat kosong. Alurnya:
+
+1. Base URL dinormalisasi, lalu URL final GET /models ditampilkan sebagai preview sebelum request dikirim.
+2. Tombol `Connect & discover models` memanggil endpoint dengan timeout 15 detik dan `AbortController`.
+3. Credential hanya dikirim ke origin yang tertulis di profile, dan redirect tidak diikuti.
+4. Setelah endpoint mengembalikan model, API key ditulis ke Keystore lewat `expo-secure-store` dan profile tanpa secret ditulis ke `expo-sqlite/kv-store`.
+
+Secret hanya berada di Keystore. Profil endpoint, activeModelId, dan pesan error tidak pernah memuat API key. Kegagalan connect tidak menyisakan profile maupun credential, dan field API key dikosongkan setelah setiap percobaan submit.
+
+Pemilihan model aktif dan model picker dibangun pada Phase 3. Phase 2 menyimpan model pertama yang valid sebagai activeModelId.
+
+## Contract test Node
+
+Contract test transport dan onboarding menjalankan kode produksi hasil kompilasi TypeScript, bukan tiruan:
+
+```sh
+npm run test:transport
+npm run test:onboarding
+```
+
+`tools/build-tests.mjs` mengompilasi modul domain, transport, dan onboarding ke `.tests-build/` sebagai ESM, mengganti penanda `__DEV__`, lalu menambahkan ekstensi import agar dapat dimuat Node. Folder hasil kompilasi tidak di-commit. Native module SecureStore dan SQLite dimuat secara lazy supaya modul yang memakainya tetap dapat diuji di luar React Native.
 
 Fake endpoint dijalankan terpisah dari Jest karena server tidak membutuhkan environment React Native:
 

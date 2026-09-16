@@ -79,6 +79,12 @@ const SCENARIOS = {
   'models-invalid-json': () => raw(200, '{"object":"list","data":[', 'application/json'),
   'models-malformed': () => json(200, MALFORMED_MODELS),
   'models-slow': () => sleep(SLOW_MS).then(() => json(200, STANDARD_MODELS)),
+  // Redirect lintas origin dipakai untuk membuktikan credential tidak diikuti.
+  'models-redirect': () => ({
+    status: 302,
+    headers: { location: 'https://example.invalid/v1/models' },
+    body: '',
+  }),
   'responses-ok': () => json(200, nonStreamResponse('fake call 1')),
   'responses-401': () => json(401, { error: { message: 'Invalid API key', code: 'invalid_api_key' } }),
   'responses-402': () => json(402, { error: { message: 'Insufficient credits', code: 'insufficient_credits' } }),

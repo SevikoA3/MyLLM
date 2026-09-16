@@ -1,0 +1,53 @@
+import { createEndpointProfile } from '../../domain/endpoint';
+import { createEndpointStore, type KeyValueStore } from './endpoint-store';
+
+function fakeKeyValueStore(seed: Record<string, string> = {}) {
+  const items = new Map(Object.entries(seed));
+  const store: KeyValueStore = {
+    getItemAsync: async (key) => items.get(key) ?? null,
+    setItemAsync: async (key, value) => {
+      items.set(key, value);
+    },
+    removeItemAsync: async (key) => items.delete(key),
+  };
+  return { store, items };
+}
+
+const profile = createEndpointProfile({
+  id: 'ep_1',
+  name: 'AmanAI',
+  baseUrl: 'https://api.amanai.dev/v1',
+  credentialRef: 'cred_1',
+});
+
+describe('endpointStore', () => {
+  it('mengembalikan null saat belum ada endpoint', async () => {
+    const { store } = fakeKeyValueStore();
+    expect(await createEndpointStore(store).load()).toBeNull();
+  });
+
+  it('round trip profile tanpa menyimpan secret', async () => {
+    const { store, items } = fakeKeyValueStore();
+    const endpoints = createEndpointStore(store);
+    await endpoints.save(profile);
+    expect(await endpoints.load()).toEqual(profile);
+    expect(items.get('myllm.activeEndpoint')).not.toContain('sk-');
+  });
+
+  it('menolak JSON rusak dan JSON yang tidak lolos schema', async () => {
+    const broken = fakeKeyValueStore({ 'myllm.activeEndpoint': '{bukan json' });
+    expect(await createEndpointStore(broken.store).load()).toBeNull();
+
+    const wrongStatus = fakeKeyValueStore({ 'myllm.activeEndpoint': JSON.stringify({ id: 'ep_1' }) });
+    expect(await createEndpointStore(wrongStatus.store).load()).toBeNull();
+  });
+
+  it('menyimpan dan membaca activeModelId', async () => {
+    const { store } = fakeKeyValueStore();
+    const endpoints = createEndpointStore(store);
+    expect(await endpoints.loadActiveModelId()).toBeNull();
+    await endpoints.saveActiveModelId('amanai/medium');
+    expect(await endpoints.loadActiveModelId()).toBe('amanai/medium');
+  });
+});
+

@@ -42,6 +42,12 @@ describe('normalizeBaseUrl', () => {
   it('menolak skema selain HTTPS', () => {
     expect(() => normalizeBaseUrl('http://api.example.com/v1')).toThrow(/Skema http/);
     expect(() => normalizeBaseUrl('ftp://api.example.com')).toThrow(/Skema ftp/);
+    expect(() => normalizeBaseUrl('http://192.168.0.10:8080/v1')).toThrow(/Skema http/);
+  });
+
+  it('menerima HTTP hanya untuk loopback pada build development', () => {
+    expect(normalizeBaseUrl('http://127.0.0.1:4123/v1')).toBe('http://127.0.0.1:4123/v1');
+    expect(normalizeBaseUrl('http://localhost:4123/v1')).toBe('http://localhost:4123/v1');
   });
 
   it('menolak hostname kosong dan input kosong', () => {

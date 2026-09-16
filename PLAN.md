@@ -353,48 +353,57 @@ Gunakan npx expo install untuk package Expo dan npm development dependency untuk
 
 ### Steps
 
-- [ ] Buat CredentialStore kecil di atas expo-secure-store.
-- [ ] SecureStore hanya menyimpan API key dengan key berbasis credentialId.
-- [ ] Simpan EndpointProfile tanpa secret di expo-sqlite/kv-store.
-- [ ] Jangan menyimpan API key di React state lebih lama dari flow submit.
-- [ ] Buat app/index.tsx yang memeriksa apakah active endpoint valid.
-- [ ] Redirect ke setup jika belum ada endpoint.
-- [ ] Buat setup screen dengan endpoint name, base URL, API key, auth mode, dan advanced models path.
-- [ ] Protocol pada fase ini hanya Responses. Label sebagai MVP support, jangan tampilkan Auto sebelum Phase 12.
-- [ ] Tampilkan preview URL GET /models.
-- [ ] Implementasikan Connect & discover dengan timeout 15 detik dan AbortController.
-- [ ] Kirim credential hanya ke origin endpoint yang dimasukkan.
-- [ ] Gunakan redirect manual untuk request yang membawa credential. Jika expo/fetch pada device target tidak dapat menahan redirect sebelum credential diteruskan, perlakukan redirect sebagai transport gap yang harus diselesaikan sebelum release.
-- [ ] Normalisasi response model ke memory.
+- [x] Buat CredentialStore kecil di atas expo-secure-store.
+- [x] SecureStore hanya menyimpan API key dengan key berbasis credentialId.
+- [x] Simpan EndpointProfile tanpa secret di expo-sqlite/kv-store.
+- [x] Jangan menyimpan API key di React state lebih lama dari flow submit.
+- [x] Buat app/index.tsx yang memeriksa apakah active endpoint valid.
+- [x] Redirect ke setup jika belum ada endpoint.
+- [x] Buat setup screen dengan endpoint name, base URL, API key, auth mode, dan advanced models path.
+- [x] Protocol pada fase ini hanya Responses. Label sebagai MVP support, jangan tampilkan Auto sebelum Phase 12.
+- [x] Tampilkan preview URL GET /models.
+- [x] Implementasikan Connect & discover dengan timeout 15 detik dan AbortController.
+- [x] Kirim credential hanya ke origin endpoint yang dimasukkan.
+- [x] Gunakan redirect manual untuk request yang membawa credential. Jika expo/fetch pada device target tidak dapat menahan redirect sebelum credential diteruskan, perlakukan redirect sebagai transport gap yang harus diselesaikan sebelum release.
+- [x] Normalisasi response model ke memory.
 - [ ] Minta pengguna memilih satu model sebelum membuka app shell.
-- [ ] Simpan activeModelId bersama profile non-secret.
-- [ ] Simpan profile dan credential secara konsisten. Jika penyimpanan profile gagal, hapus credential yang baru dibuat.
-- [ ] Jika connection test gagal, pertahankan input non-secret dan jangan membuat profile duplikat.
-- [ ] API key field kembali kosong setelah save atau failure.
-- [ ] Buat Change API key flow yang tidak pernah menampilkan key lama.
-- [ ] Redact Authorization, x-api-key, bearer, dan pola key dari AppError.
+- [x] Simpan activeModelId bersama profile non-secret.
+- [x] Simpan profile dan credential secara konsisten. Jika penyimpanan profile gagal, hapus credential yang baru dibuat.
+- [x] Jika connection test gagal, pertahankan input non-secret dan jangan membuat profile duplikat.
+- [x] API key field kembali kosong setelah save atau failure.
+- [x] Buat Change API key flow yang tidak pernah menampilkan key lama.
+- [x] Redact Authorization, x-api-key, bearer, dan pola key dari AppError.
 
 ### Error UX
 
-- [ ] 401/403 menunjukkan credential bermasalah.
-- [ ] 404 menunjukkan final models URL dan saran memeriksa /v1.
-- [ ] TLS error tidak menawarkan trust-all.
-- [ ] Empty list tidak membuat model palsu.
-- [ ] Invalid JSON menunjukkan schema incompatibility.
-- [ ] Timeout dapat dicoba ulang.
+- [x] 401/403 menunjukkan credential bermasalah.
+- [x] 404 menunjukkan final models URL dan saran memeriksa /v1.
+- [x] TLS error tidak menawarkan trust-all.
+- [x] Empty list tidak membuat model palsu.
+- [x] Invalid JSON menunjukkan schema incompatibility.
+- [x] Timeout dapat dicoba ulang.
 
 ### Verification
 
-- [ ] Fresh install tidak menghubungi AmanAI atau provider lain.
-- [ ] Fake endpoint Bearer berhasil.
-- [ ] Fake endpoint x-api-key berhasil.
+- [x] Fresh install tidak menghubungi AmanAI atau provider lain.
+- [x] Fake endpoint Bearer berhasil.
+- [x] Fake endpoint x-api-key berhasil.
 - [ ] AmanAI GET /models berhasil melalui manual smoke test dengan key lokal.
-- [ ] API key tidak ditemukan dengan pencarian pada app-private JSON, SQLite settings, logs, atau diagnostic output.
+- [x] API key tidak ditemukan dengan pencarian pada app-private JSON, SQLite settings, logs, atau diagnostic output.
 - [ ] Relaunch membuka model selection atau chat shell tanpa meminta key ulang.
 
 ### Exit gate
 
 Pengguna dapat memasukkan arbitrary HTTPS endpoint, menyimpan key secara aman, dan melihat model yang dikembalikan endpoint.
+
+Catatan exit gate: tiga item belum tercentang karena memerlukan device atau key nyata, bukan karena kodenya belum ada.
+
+### Deviations
+
+1. Model picker belum dibangun pada fase ini. Menampilkan daftar model adalah scope Phase 3, sedangkan Phase 2 menyimpan activeModelId sebagai model pertama yang valid. Checklist "minta pengguna memilih satu model" dan verifikasi relaunch tetap terbuka sampai Phase 3 selesai.
+2. Aturan scheme diperlonggar dari Phase 1. HTTPS selalu diterima, sedangkan cleartext HTTP hanya untuk host loopback pada build development. Ini dibutuhkan agar contract test menjalankan transport yang sama terhadap fake endpoint lokal. Release tetap menolak cleartext HTTP.
+3. Verifikasi API key dijalankan sebagai pemeriksaan otomatis pada contract test dan unit test, belum sebagai pencarian pada data device karena build belum pernah dijalankan di device.
+4. Verifikasi relaunch memerlukan device. Yang sudah diuji: percobaan connect memakai ulang credential tersimpan dan tidak pernah membaca key ke form.
 
 ### Do not build yet
 

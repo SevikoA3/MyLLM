@@ -51,7 +51,9 @@
     "test": "jest --watchAll",
     "test:ci": "jest --ci",
     "doctor": "npx expo-doctor",
-    "test:server": "node --test tools/fake-server.test.mjs"
+    "test:server": "node --test tools/fake-server.test.mjs",
+    "test:transport": "node tools/build-tests.mjs && node --test tools/transport.test.mjs",
+    "test:onboarding": "node tools/build-tests.mjs && node --test tools/onboarding.test.mjs"
   },
   "jest": {
     "preset": "jest-expo",

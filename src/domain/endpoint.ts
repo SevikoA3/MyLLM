@@ -134,7 +134,7 @@ function parseAbsoluteUrl(input: string): URL {
   if (url.hostname.length === 0) {
     throw new Error('Base URL harus memuat hostname.');
   }
-  if (!isSecureProtocol(url.protocol)) {
+  if (!isSecureProtocol(url)) {
     throw new Error(
       `Skema ${url.protocol.replace(':', '')} belum didukung. Phase 1 hanya menerima HTTPS. Pengembangan lewat HTTP lokal ditambahkan pada fase transport.`,
     );
@@ -142,6 +142,21 @@ function parseAbsoluteUrl(input: string): URL {
   return url;
 }
 
-function isSecureProtocol(protocol: string): boolean {
-  return protocol === 'https:';
+/**
+ * Cleartext HTTP hanya diterima untuk host loopback pada build development, jadi
+ * kontrak endpoint dapat diuji dengan server lokal tanpa membuka HTTP pada release.
+ */
+function isSecureProtocol(url: URL): boolean {
+  if (url.protocol === 'https:') {
+    return true;
+  }
+  return url.protocol === 'http:' && isDevelopment() && isLoopback(url.hostname);
+}
+
+function isDevelopment(): boolean {
+  return typeof __DEV__ === 'boolean' && __DEV__;
+}
+
+function isLoopback(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
