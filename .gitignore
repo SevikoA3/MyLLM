@@ -44,3 +44,10 @@ coverage/
 # generated native folders
 /ios
 /android
+
+# runtime data aplikasi (bukan source)
+/data/
+
+# catatan kerja pribadi
+AGENTS.md
+docs/

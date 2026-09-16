@@ -16,6 +16,8 @@ import {
   type KeyValueStore,
 } from '../../services/persistence/endpoint-store';
 import { discoverModels } from '../../services/transport/models';
+import { seedCatalogCache } from '../../services/persistence/catalog-seed';
+import { fileCatalogStorage, readBundledDefaults } from '../../services/persistence/catalog-files';
 
 export type SetupInput = {
   name: string;
@@ -34,6 +36,7 @@ export type OnboardDeps = {
   secureStore?: SecureStoreLike;
   keyValueStore?: KeyValueStore;
   discover?: typeof discoverModels;
+  seedCatalog?: typeof seedCatalogCache;
 };
 
 export function newCredentialId(): string {
@@ -79,6 +82,7 @@ export async function connectAndDiscover(
   const credentials = createCredentialStore(deps.secureStore);
   const endpoints = createEndpointStore(deps.keyValueStore);
   const discover = deps.discover ?? discoverModels;
+  const seedCatalog = deps.seedCatalog ?? seedCatalogCache;
 
   // Endpoint tersimpan tetap memakai credentialId-nya supaya tidak ada record yatim
   // di Keystore ketika pengguna hanya memperbaiki URL.
@@ -124,6 +128,14 @@ export async function connectAndDiscover(
     return discovered;
   }
 
+  // Snapshot ditulis sebelum profile aktif supaya picker tidak pernah menunjuk
+  // katalog yang belum ada. Kegagalannya tidak menggagalkan onboarding.
+  // Kegagalan tulis cache tidak menggagalkan onboarding; katalog bisa di-refresh nanti.
+  await seedCatalog(profile, discovered.models, {
+    storage: fileCatalogStorage,
+    readDefaults: readBundledDefaults,
+  });
+
   // Secret ditulis lebih dulu supaya profile tidak pernah menunjuk credential yang belum ada.
   await credentials.save(credentialId ?? '', apiKey);
   try {
@@ -150,4 +162,3 @@ export async function connectAndDiscover(
 export async function loadCredentialFor(profile: EndpointProfile): Promise<string | null> {
   return profile.credentialRef === null ? null : credentialStore.read(profile.credentialRef);
 }
-

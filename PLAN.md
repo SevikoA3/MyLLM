@@ -411,6 +411,17 @@ Chat request, model override editor, multi-endpoint UI, atau capability probing.
 
 ## 10. Phase 3: Model catalog JSON dan model picker
 
+Status: selesai 16 September 2026. npm run lint, npm run typecheck, npm run test:ci (80 test), npm run test:server (10 test), npm run test:transport (9 test), dan npm run test:onboarding (7 test) lulus. Smoke test nyata terhadap AmanAI lewat npm run smoke:models menunjukkan 40 model terbaca dengan contextWindow terisi 40/40.
+
+Catatan pipeline pengujian: contract test Node mengompilasi modul produksi ke .tests-build lalu menimpa services/persistence/catalog-files.js dengan stub in-memory, karena expo-file-system adalah native module. Lapisan katalog diuji di Jest (test:ci) sebanyak 20 test, sedangkan jalur onboarding plus seed katalog diuji di Node.
+
+Penyimpangan kecil dari rencana:
+
+- Tombstone untuk model yang hilang memakai file history-models.json dan flag orphaned, bukan tabel history. Tabel history baru ada pada Phase 6 sebagai bagian database percakapan. Sampai saat itu tidak ada penulis file tersebut, jadi model removed belum punya metadata untuk dipertahankan.
+- Model disabled tetap tampil di picker dengan badge dimatikan, bukan disembunyikan total. Ini menghindari kebingungan ketika model aktif pengguna dimatikan, dan model tetap tidak dapat dipilih sampai diaktifkan kembali.
+- Coalesce refresh memakai satu repository per layar, bukan cache global lintas layar. Dua layar yang memuat katalog bersamaan dapat melakukan dua GET /models.
+- Endpoint profile belum menyimpan protocol auto, jadi perbedaan cache setelah credential berubah hanya diuji lewat pemisahan per endpointId.
+
 ### Goal
 
 Model list menjadi katalog berlapis yang tahan refresh, missing fields, dan edit pengguna.
@@ -421,41 +432,43 @@ Model list menjadi katalog berlapis yang tahan refresh, missing fields, dan edit
 
 ### Steps
 
-- [ ] Buat assets/model-defaults.json versi 1 dengan daftar kosong atau hanya model yang benar-benar diverifikasi.
-- [ ] Jangan menebak context window dari nama model.
-- [ ] Buat app-private catalog-cache untuk file per endpointId.
-- [ ] Buat model-overrides.json dengan schemaVersion dan map endpoints.
-- [ ] Implementasikan zod schema untuk defaults, live snapshot, dan overrides.
-- [ ] Implementasikan merge satu fungsi: defaults, live, user override.
-- [ ] Array override mengganti array upstream.
-- [ ] null pada override berarti inherit.
-- [ ] Simpan provenance field di hasil merge memory, bukan duplikasi permanen.
-- [ ] Derive displayName dari ID jika kosong.
-- [ ] Derive vendor dari owned_by atau prefix ID hanya sebagai inferred value.
-- [ ] contextWindow dan maxOutputTokens tetap null jika tidak diketahui.
-- [ ] reasoningEfforts kosong menyembunyikan picker, bukan berarti unsupported.
-- [ ] Implementasikan write temp, validate, backup satu generasi, lalu rename.
-- [ ] Jangan menimpa last-known-good dengan response kosong atau invalid.
-- [ ] Pada cold start, render cache lebih dulu lalu refresh background.
-- [ ] Coalesce refresh yang berjalan agar hanya satu GET /models.
-- [ ] Cache dipisahkan per endpointId dan di-refresh setelah credential berubah.
-- [ ] Model yang hilang diberi unavailable tombstone untuk history.
-- [ ] Buat model picker dengan exact model ID dan badge metadata yang tersedia.
-- [ ] Pull to refresh tidak mengganti model aktif ketika stream berjalan.
+- [x] Buat assets/model-defaults.json versi 1 dengan daftar kosong atau hanya model yang benar-benar diverifikasi.
+- [x] Jangan menebak context window dari nama model.
+- [x] Buat app-private catalog-cache untuk file per endpointId.
+- [x] Buat model-overrides.json dengan schemaVersion dan map endpoints.
+- [x] Implementasikan zod schema untuk defaults, live snapshot, dan overrides.
+- [x] Implementasikan merge satu fungsi: defaults, live, user override.
+- [x] Array override mengganti array upstream.
+- [x] null pada override berarti inherit.
+- [x] Simpan provenance field di hasil merge memory, bukan duplikasi permanen.
+- [x] Derive displayName dari ID jika kosong.
+- [x] Derive vendor dari owned_by atau prefix ID hanya sebagai inferred value.
+- [x] contextWindow dan maxOutputTokens tetap null jika tidak diketahui.
+- [x] reasoningEfforts kosong menyembunyikan picker, bukan berarti unsupported.
+- [x] Implementasikan write temp, validate, backup satu generasi, lalu rename.
+- [x] Jangan menimpa last-known-good dengan response kosong atau invalid.
+- [x] Pada cold start, render cache lebih dulu lalu refresh background.
+- [x] Coalesce refresh yang berjalan agar hanya satu GET /models.
+- [x] Cache dipisahkan per endpointId dan di-refresh setelah credential berubah.
+- [x] Model yang hilang diberi unavailable tombstone untuk history.
+- [x] Buat model picker dengan exact model ID dan badge metadata yang tersedia.
+- [x] Pull to refresh tidak mengganti model aktif ketika stream berjalan.
 
 ### Tests
 
-- [ ] Merge precedence.
-- [ ] Missing, null, invalid, dan unknown.
-- [ ] Corrupt override memakai backup.
-- [ ] Empty refresh mempertahankan last-known-good.
-- [ ] Override bertahan setelah refresh.
-- [ ] Dua endpoint tidak berbagi cache.
-- [ ] Model removed tetap dapat dirender dari history.
+- [x] Merge precedence.
+- [x] Missing, null, invalid, dan unknown.
+- [x] Corrupt override memakai backup.
+- [x] Empty refresh mempertahankan last-known-good.
+- [x] Override bertahan setelah refresh.
+- [x] Dua endpoint tidak berbagi cache.
+- [x] Model removed tetap dapat dirender dari history.
 
 ### Exit gate
 
 Restart offline masih menampilkan katalog terakhir. Refresh online memperbarui katalog tanpa menghapus override atau selection aktif.
+
+Terpenuhi sebagian pada level kode dan test: restart offline memakai snapshot di document directory, refresh online tidak menyentuh model-overrides.json, dan selection aktif disimpan terpisah dari katalog. Bukti pada device belum ada karena development build belum dijalankan.
 
 ### Do not build yet
 
@@ -1368,3 +1381,73 @@ Project dianggap MVP selesai setelah Phase 11. Project dianggap P1 selesai setel
 - AmanAI models: https://ai.amanai.dev/docs/models/
 
 Jika dokumentasi library berubah saat executor mulai, pilih stable release yang saling kompatibel, update lockfile, dan catat versi aktual. Jangan pindah ke beta atau canary hanya untuk mendapatkan fitur yang belum diperlukan.
+
+## 35. Peta codebase dan prompt pembaruannya
+
+Peta struktur folder dan tanggung jawab berkas tinggal di `docs/CODEBASE.md`. Dokumen itu adalah indeks navigasi, bukan pengganti PLAN.md: PLAN.md memuat kontrak fase, CODEBASE.md memuat keadaan isi repository.
+
+Aturan pemakaian:
+
+- Baca `docs/CODEBASE.md` sebelum menjelajah repository untuk mencari tempat sebuah perubahan.
+- Perbarui `docs/CODEBASE.md` pada commit yang sama dengan setiap perubahan struktur, penambahan berkas, atau perubahan tanggung jawab berkas.
+- Jangan menambahkan fase atau requirement baru ke CODEBASE.md. Requirement tetap hanya di PLAN.md.
+- Jangan mencatat versi dependency di CODEBASE.md. Sumbernya adalah package.json dan bagian Generated toolchain README.md.
+
+### Prompt untuk mengubah markdown peta codebase
+
+Pakai prompt berikut apa adanya saat peta perlu disegarkan. Salin, ganti bagian dalam tanda kurung, lalu jalankan.
+
+~~~text
+Perbarui docs/CODEBASE.md supaya cocok dengan keadaan repository saat ini.
+
+Konteks perubahan: (tulis fase atau PR yang baru selesai, misalnya "Phase 4 chat non-stream").
+
+Langkah:
+
+1. Daftar berkas nyata dengan: find app src tools assets -type f | sort
+2. Bandingkan dengan bagian 2 Struktur folder pada docs/CODEBASE.md.
+3. Untuk setiap berkas yang ditambah, dihapus, atau dipindah, perbarui bagian 2.
+4. Untuk setiap berkas dengan tanggung jawab baru, perbarui tabel di bagian 3. Sebutkan nama export utama dan layer yang diimpor, bukan ringkasan naratif.
+5. Perbarui bagian 4 Alur yang sudah berjalan jika alur runtime berubah.
+6. Pindahkan atau hapus baris di bagian 5 Yang belum ada jika fasenya sudah selesai.
+7. Perbarui baris Status di kepala dokumen dengan fase yang sedang berjalan.
+
+Batasan:
+
+- Jangan menyentuh PLAN.md, README.md, atau source code pada perubahan ini.
+- Jangan mencatat versi dependency, jumlah test, atau jumlah baris.
+- Jangan menambahkan fase, requirement, atau rencana baru.
+- Jangan membuat folder utils atau barrel index.ts.
+- Pertahankan bahasa Indonesia dan gaya tabel yang sudah ada.
+- Jangan memakai em dash.
+
+Verifikasi:
+
+- Setiap path di bagian 2 benar-benar ada, dan tidak ada berkas di app/, src/, tools/, atau assets/ yang terlewat.
+- Setiap klaim di bagian 3 dapat diperiksa langsung di berkas yang disebut.
+- Dokumen tetap menjelaskan repository yang sekarang, bukan rencana.
+
+Keluarkan diff untuk docs/CODEBASE.md saja.
+~~~
+
+### Prompt review peta codebase
+
+Pakai prompt ini untuk memeriksa peta tanpa mengubah source code.
+
+~~~text
+Periksa docs/CODEBASE.md terhadap repository saat ini dan laporkan ketidakcocokan saja.
+
+1. Jalankan: find app src tools assets -type f | sort
+2. Tandai berkas yang tidak tercantum, path yang tidak lagi ada, dan tanggung jawab yang sudah tidak sesuai.
+3. Tandai klaim yang menyalin rencana, bukan keadaan sekarang.
+4. Jangan perbaiki apa pun. Keluarkan daftar temuan dengan path berkas dan baris dokumen yang perlu diubah.
+~~~
+
+### Tambahan struktur saat fase bertambah
+
+Saat fase berikutnya menambah folder baru, tambahkan juga bagiannya di CODEBASE.md mengikuti aturan layer:
+
+- `src/domain/conversation.ts`, `src/domain/usage.ts`, `src/domain/context.ts`, dan `src/domain/tool.ts` dibuat pada fase yang benar-benar memakainya.
+- Folder `src/features/chat/`, `src/features/history/`, dan `src/features/settings/` menyusul pada Phase 4, 6, dan 7.
+- `src/services/metrics/` dan `src/services/context/` menyusul pada Phase 8 dan 9.
+- Folder `modules/` hanya dibuat setelah native feature disetujui.

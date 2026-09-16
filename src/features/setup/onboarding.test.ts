@@ -73,6 +73,8 @@ describe('profileFromInput', () => {
 });
 
 describe('connectAndDiscover', () => {
+  const seedCatalog = async () => ({ ok: true as const });
+
   it('menyimpan credential dan profile saat discovery berhasil', async () => {
     const secure = fakeSecureStore();
     const kv = fakeKeyValueStore();
@@ -80,6 +82,7 @@ describe('connectAndDiscover', () => {
       secureStore: secure.store,
       keyValueStore: kv.store,
       discover: async () => ({ ok: true, models: [model] }),
+      seedCatalog,
     });
 
     expect(result.ok).toBe(true);
@@ -109,6 +112,7 @@ describe('connectAndDiscover', () => {
           safeDetails: {},
         }),
       }),
+      seedCatalog,
     });
 
     expect(result.ok).toBe(false);
@@ -125,7 +129,7 @@ describe('connectAndDiscover', () => {
       baseUrl: 'https://api.amanai.dev/v1',
       credentialRef: 'cred_lama',
     });
-    await connectAndDiscover(input(), existing, { secureStore: secure.store });
+    await connectAndDiscover(input(), existing, { secureStore: secure.store, seedCatalog });
 
     let seenKey = '';
     const kv = fakeKeyValueStore();
@@ -136,6 +140,7 @@ describe('connectAndDiscover', () => {
         seenKey = apiKey;
         return { ok: true, models: [model] };
       },
+      seedCatalog,
     });
 
     expect(result.ok).toBe(true);
@@ -153,6 +158,7 @@ describe('connectAndDiscover', () => {
       secureStore: secure.store,
       keyValueStore: fakeKeyValueStore(true).store,
       discover: async () => ({ ok: true, models: [model] }),
+      seedCatalog,
     });
 
     expect(result.ok).toBe(false);
@@ -174,6 +180,7 @@ describe('connectAndDiscover', () => {
         called = true;
         return { ok: true, models: [model] };
       },
+      seedCatalog,
     });
 
     expect(called).toBe(false);

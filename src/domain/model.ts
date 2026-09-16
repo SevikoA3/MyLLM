@@ -1,6 +1,9 @@
+import * as z from 'zod';
+
 export type CapabilityState = 'supported' | 'unsupported' | 'unknown';
 
-export type InputModality = 'text' | 'image' | 'file' | 'video';
+export const InputModalitySchema = z.enum(['text', 'image', 'file', 'video']);
+export type InputModality = z.infer<typeof InputModalitySchema>;
 
 export type ModelCapabilities = {
   streaming: CapabilityState;

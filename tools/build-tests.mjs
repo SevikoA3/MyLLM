@@ -6,7 +6,31 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, unlinkSync, w
 
 const OUT = '.tests-build';
 // Modul yang dipakai contract test Node: transport discovery dan orkestrasi onboarding.
-const ENTRIES = ['src/services/transport/models.ts', 'src/features/setup/onboarding.ts'];
+const ENTRIES = [
+  'src/services/transport/models.ts',
+  'src/features/setup/onboarding.ts',
+  // Fixture model memakai normalizer produksi supaya test tidak menyalin mapping field.
+  'src/domain/model-list.ts',
+  // Seed katalog dipakai jalur onboarding, jadi ikut dikompilasi.
+  'src/services/persistence/catalog-seed.ts',
+];
+
+// expo-file-system adalah native module. Contract test Node menimpa modul hasil
+// kompilasi dengan stub supaya orkestrasi onboarding tetap dapat diuji.
+const STUBS = {
+  'services/persistence/catalog-files.js': [
+    'export const fileCatalogStorage = {',
+    '  readText: async () => null,',
+    '  writeText: async () => {},',
+    '  copy: async () => {},',
+    '  exists: async () => false,',
+    '};',
+    'export async function readBundledDefaults() {',
+    '  return { schemaVersion: 1, models: [] };',
+    '}',
+  ].join('\n'),
+};
+
 // Modul domain memakai penanda __DEV__ milik React Native.
 const GLOBALS = '.tests-build/globals.d.ts';
 
@@ -58,6 +82,9 @@ for (const file of walk(OUT).filter((path) => path.endsWith('.js'))) {
 }
 
 writeFileSync(join(OUT, 'package.json'), JSON.stringify({ type: 'module' }, null, 2));
+for (const [relative, content] of Object.entries(STUBS)) {
+  writeFileSync(join(OUT, relative), content);
+}
 unlinkSync(GLOBALS);
 if (!existsSync(join(OUT, 'services', 'transport', 'models.js'))) {
   throw new Error('kompilasi transport gagal');

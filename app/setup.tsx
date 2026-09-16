@@ -8,6 +8,8 @@ import { describe, type ErrorCopy } from '../src/features/setup/error-copy';
 import { connectAndDiscover, suggestName, type SetupInput } from '../src/features/setup/onboarding';
 import { useActiveEndpoint } from '../src/features/setup/use-active-endpoint';
 import { modelsUrl } from '../src/services/transport/models';
+import { seedCatalogCache } from '../src/services/persistence/catalog-seed';
+import { fileCatalogStorage, readBundledDefaults } from '../src/services/persistence/catalog-files';
 
 const inputClass =
   'rounded-lg border border-neutral-300 bg-white px-3 py-2 text-base text-black dark:border-neutral-700 dark:bg-neutral-900 dark:text-white';
@@ -56,6 +58,10 @@ export default function SetupScreen() {
   const canConnect =
     !busy && baseUrl.length > 0 && urlError === null && (apiKey.length > 0 || canReuseKey);
 
+  // Setelah connect, pengguna memilih model lewat layar picker, bukan lewat
+  // routing diam-diam ke tab utama.
+  const seeded = useRef(false);
+
   async function onConnect() {
     setFailure(null);
     setBusy(true);
@@ -67,7 +73,16 @@ export default function SetupScreen() {
       authMode,
       modelListPath,
     };
-    const result = await connectAndDiscover(input, profile);
+    const result = await connectAndDiscover(input, profile, {
+      seedCatalog: async (nextProfile, models) => {
+        const result = await seedCatalogCache(nextProfile, models, {
+          storage: fileCatalogStorage,
+          readDefaults: readBundledDefaults,
+        });
+        seeded.current = result.ok;
+        return result;
+      },
+    });
     if (!mounted.current) {
       return;
     }
@@ -78,7 +93,7 @@ export default function SetupScreen() {
       setFailure(describe(result.error, previewUrl ?? baseUrl));
       return;
     }
-    router.replace('/(tabs)');
+    router.replace(seeded.current ? '/models' : '/(tabs)');
   }
 
   if (status === 'loading') {

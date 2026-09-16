@@ -1,0 +1,186 @@
+import {
+  pricingFromRaw,
+  type CatalogModelFields,
+  type HistoryModelEntry,
+  type ModelOverride,
+  type Pricing,
+} from './catalog';
+import { UNKNOWN_CAPABILITIES, type ModelCapabilities, type ModelRecord } from './model';
+
+export const CATALOG_SOURCES = ['bundled', 'live', 'user-override', 'history'] as const;
+export type CatalogSource = (typeof CATALOG_SOURCES)[number];
+
+export type ProvenanceMap = Record<string, { value: string | number | null; source: CatalogSource }>;
+
+export type MergedModel = ModelRecord & {
+  pricing: Pricing | null;
+  provenance: ProvenanceMap;
+  /** false hanya jika pengguna mematikan model ini; model orphan tetap true. */
+  enabled: boolean;
+  /** true jika model tidak ada di defaults dan tidak ada di snapshot live. */
+  orphaned: boolean;
+};
+
+export type MergeInput = {
+  defaults: CatalogModelFields[];
+  live: CatalogModelFields[];
+  overrides: Record<string, ModelOverride>;
+  history?: HistoryModelEntry[];
+};
+
+/**
+ * Precedence: bundled default, lalu snapshot live, lalu override pengguna.
+ * Override yang hanya berisi null tidak menimpa apa pun; null menghapus override.
+ */
+export function mergeCatalog(input: MergeInput): MergedModel[] {
+  const layers = new Map<string, Record<string, unknown>>();
+  const inherited = new Map<string, Record<string, unknown>>();
+  const bundled = new Set<string>();
+  const live = new Set<string>();
+  const provenance: Record<string, ProvenanceMap> = {};
+  collect(layers, inherited, input.defaults, 'bundled', bundled, provenance);
+  collect(layers, inherited, input.live, 'live', live, provenance);
+
+  // Override diterapkan setelah kedua lapis lain supaya field null benar-benar
+  // kembali inherit dan field array mengganti array upstream.
+  for (const [id, override] of Object.entries(input.overrides)) {
+    const fields = { ...layers.get(id) };
+    const map = provenance[id] ?? (provenance[id] = {});
+    for (const [key, value] of Object.entries(override)) {
+      if (key === 'id' || key === 'disabledAt' || value === undefined) {
+        continue;
+      }
+      if (value === null) {
+        // null berarti kembali inherit, bukan menetapkan nilai kosong.
+        const inheritedValue = inherited.get(id)?.[key];
+        if (inheritedValue === undefined) {
+          delete fields[key];
+          delete map[key];
+        } else {
+          fields[key] = inheritedValue;
+          map[key] = { value: scalar(inheritedValue), source: 'live' };
+        }
+        continue;
+      }
+      fields[key] = value;
+      map[key] = { value: scalar(value), source: 'user-override' };
+    }
+    if (Object.keys(fields).length > 0) {
+      layers.set(id, fields);
+    } else {
+      layers.delete(id);
+    }
+  }
+
+  const history = new Map((input.history ?? []).map((entry) => [entry.id, entry]));
+  for (const entry of history.values()) {
+    if (!layers.has(entry.id)) {
+      layers.set(entry.id, { displayName: entry.displayName });
+    }
+    provenance[entry.id] = {
+      displayName: { value: entry.displayName, source: 'history' },
+      ...provenance[entry.id],
+    };
+  }
+
+  return [...layers.entries()].map(([id, fields]) =>
+    toRecord(
+      id,
+      fields,
+      provenance[id] ?? {},
+      !bundled.has(id) && !live.has(id),
+      input.overrides[id],
+    ),
+  );
+}
+
+function collect(
+  layers: Map<string, Record<string, unknown>>,
+  inherited: Map<string, Record<string, unknown>>,
+  models: CatalogModelFields[],
+  provenanceSource: CatalogSource,
+  contains: Set<string>,
+  provenance: Record<string, ProvenanceMap>,
+): void {
+  for (const model of models) {
+    const current = layers.get(model.id) ?? {};
+    const inherit = inherited.get(model.id) ?? {};
+    const map = provenance[model.id] ?? (provenance[model.id] = {});
+    for (const [key, value] of Object.entries(model)) {
+      if (key === 'id' || value === undefined || value === null) {
+        continue;
+      }
+      current[key] = value;
+      inherit[key] = value;
+      map[key] = { value: scalar(value), source: provenanceSource };
+    }
+    layers.set(model.id, current);
+    inherited.set(model.id, inherit);
+    contains.add(model.id);
+  }
+}
+
+function toRecord(
+  id: string,
+  fields: Record<string, unknown>,
+  provenance: ProvenanceMap,
+  orphaned: boolean,
+  override: ModelOverride | undefined,
+): MergedModel {
+  const raw = isRecord(fields.raw) ? fields.raw : {};
+  const ownedBy = typeof fields.ownedBy === 'string' ? fields.ownedBy : null;
+  const capabilities = { ...UNKNOWN_CAPABILITIES };
+  for (const key of Object.keys(UNKNOWN_CAPABILITIES) as (keyof ModelCapabilities)[]) {
+    const state = fields.capabilities;
+    if (isRecord(state) && typeof state[key] === 'string') {
+      capabilities[key] = state[key] as CapabilityStateValue;
+    }
+    if (provenance[`capabilities.${key}`] === undefined && override?.capabilities?.[key]) {
+      provenance[`capabilities.${key}`] = { value: capabilities[key], source: 'user-override' };
+    }
+  }
+
+  const record: MergedModel = {
+    id,
+    displayName: typeof fields.displayName === 'string' ? fields.displayName : id,
+    vendor: typeof fields.vendor === 'string' ? fields.vendor : inferVendor(id, ownedBy),
+    ownedBy,
+    description: typeof fields.description === 'string' ? fields.description : null,
+    contextWindow: typeof fields.contextWindow === 'number' ? fields.contextWindow : null,
+    maxOutputTokens: typeof fields.maxOutputTokens === 'number' ? fields.maxOutputTokens : null,
+    reasoningEfforts: Array.isArray(fields.reasoningEfforts)
+      ? fields.reasoningEfforts.filter((entry): entry is string => typeof entry === 'string')
+      : [],
+    inputModalities: Array.isArray(fields.inputModalities)
+      ? (fields.inputModalities as ModelRecord['inputModalities'])
+      : [],
+    capabilities,
+    raw,
+    pricing: pricingFromRaw(raw),
+    provenance,
+    enabled: override?.disabledAt == null,
+    orphaned,
+  };
+  return record;
+}
+
+type CapabilityStateValue = ModelCapabilities[keyof ModelCapabilities];
+
+function inferVendor(id: string, ownedBy: string | null): string | null {
+  const separator = id.indexOf('/');
+  if (separator > 0) {
+    return id.slice(0, separator);
+  }
+  return ownedBy;
+}
+
+function scalar(value: unknown): string | number | null {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

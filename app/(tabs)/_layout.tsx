@@ -4,6 +4,7 @@ export default function TabLayout() {
   return (
     <Tabs screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ title: 'MyLLM' }} />
+      <Tabs.Screen name="models" options={{ title: 'Model' }} />
     </Tabs>
   );
 }
