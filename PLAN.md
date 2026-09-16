@@ -1,0 +1,1352 @@
+# Implementation Plan Aplikasi Chat LLM Android
+
+Status: rencana eksekusi bertahap dari repository kosong sampai aplikasi Android siap dipakai.
+
+Tanggal: 16 September 2026.
+
+Dokumen sumber: RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md.
+
+Mode perencanaan: Ponytail ultra. Setiap fase harus menghasilkan kemampuan yang dapat dijalankan, diuji, dan didemonstrasikan. Jangan membuat abstraksi untuk fitur fase berikutnya sebelum abstraksi itu benar-benar memiliki lebih dari satu implementasi.
+
+## 1. Tujuan akhir
+
+Membangun aplikasi Android berbasis React Native yang:
+
+- meminta custom OpenAI-compatible endpoint dan API key saat first launch;
+- menemukan model melalui GET /models;
+- memakai AmanAI sebagai reference profile dan smoke-test endpoint, bukan dependency wajib;
+- mendukung Responses API, streaming, reasoning, metadata model, history, context meter, auto-compact, dan statistik;
+- menambahkan Chat Completions, tools, web search, attachment, background generation, dan multi-endpoint secara bertahap;
+- tidak menjalankan arbitrary command di dalam proses aplikasi;
+- baru menambahkan Termux atau remote sandbox setelah MVP stabil dan threat model disetujui.
+
+## 2. Kontrak untuk executor
+
+Executor wajib mengikuti aturan ini:
+
+1. Kerjakan fase secara berurutan.
+2. Jangan mulai fase berikutnya sebelum exit gate fase aktif lulus.
+3. Jalankan lint, typecheck, dan test yang relevan sebelum menandai langkah selesai.
+4. Pertahankan aplikasi dalam keadaan dapat dibuild setelah setiap fase.
+5. Tambahkan dependency hanya pada fase yang pertama kali memerlukannya.
+6. Gunakan API native atau package yang sudah dipilih sebelum menulis abstraction sendiri.
+7. Jangan menambahkan Redux, Zustand, ORM, Axios, EventSource package, dependency injection container, UI framework, monorepo, atau plugin framework tanpa bukti kebutuhan.
+8. Jangan membuat interface dengan satu implementasi hanya untuk kemungkinan masa depan. Refactor menjadi interface saat implementasi kedua benar-benar ditambahkan.
+9. Jangan menyimpan API key, prompt, response, atau tool output di log.
+10. Jangan mengubah model ID yang diberikan endpoint.
+11. Jangan menganggap field yang hilang bernilai false atau nol. Gunakan unknown atau null.
+12. Jangan melakukan silent truncation, silent protocol fallback, atau silent security downgrade.
+13. Jangan melakukan request billable untuk capability probing.
+14. Jika keputusan produk yang dibutuhkan belum tersedia, gunakan default yang tercantum di dokumen ini.
+15. Jika sebuah gate gagal, perbaiki fase aktif. Jangan menutupinya dengan implementasi fase berikutnya.
+
+Setiap fase sebaiknya menjadi satu commit atau serangkaian commit kecil yang hanya berisi scope fase tersebut. Update checklist PLAN.md setelah verifikasi, bukan sebelum verifikasi.
+
+## 3. Keputusan awal dan default
+
+Gunakan default berikut sampai pemilik proyek memutuskan lain:
+
+| Area | Keputusan awal |
+|---|---|
+| Platform | Android |
+| App name sementara | MyLLM |
+| Application ID | Harus dipilih sekali pada Phase 0 sebelum build publik |
+| Framework | Expo stable dengan React Native yang dipasangkan oleh Expo |
+| Architecture | React Native New Architecture dan Hermes |
+| Language | TypeScript strict |
+| Minimum Android | API 26 |
+| Endpoint awal | Diisi pengguna, tidak ada provider default |
+| Reference endpoint | AmanAI |
+| Active endpoint | Satu pada MVP |
+| Protocol MVP | Responses API |
+| Chat Completions | Ditambahkan setelah MVP core stabil |
+| Content MVP | Text only |
+| State remote | previous_response_id jika berhasil |
+| Local history | Selalu authoritative untuk UI |
+| Database encryption | Tidak memakai SQLCipher pada MVP |
+| Background generation | Foreground-only pada MVP |
+| Auto-compact | Aktif, trigger 80%, target 55%, hard stop 95% |
+| Command execution | Disabled |
+| Distribution awal | Development build dan internal APK |
+| Cleartext HTTP | Ditolak pada release |
+
+Keputusan yang harus diminta sebelum relevan:
+
+- Application ID final sebelum build yang akan didistribusikan.
+- Provider web search sebelum Phase 14.
+- Batas file dan format attachment sebelum Phase 15.
+- Apakah background generation wajib sebelum Phase 16.
+- Apakah Termux, remote sandbox, atau keduanya benar-benar dibutuhkan sebelum Phase 18.
+
+## 4. Tech stack
+
+### 4.1 Stack inti
+
+| Kebutuhan | Pilihan | Alasan |
+|---|---|---|
+| Framework | Expo stable, React Native, React | Jalur setup Android paling pendek dan tetap dapat menambahkan native module |
+| Routing | Expo Router | Sudah tersedia pada template default dan menghindari konfigurasi navigator manual |
+| Language | TypeScript strict | Domain API, event stream, dan JSON perlu tipe yang eksplisit |
+| JS engine | Hermes | Default React Native modern |
+| RN architecture | New Architecture | Default React Native modern dan jalur native module masa depan |
+| Styling | React Native StyleSheet dan design tokens lokal | Tidak membutuhkan UI framework |
+| Networking | expo/fetch, AbortController, ReadableStream, TextDecoder | Mendukung streaming response pada Android tanpa native module khusus |
+| Endpoint/model settings | expo-sqlite/kv-store | Sudah ikut dependency database, tidak perlu AsyncStorage |
+| Conversation database | expo-sqlite direct SQL | Transaksi, pagination, WAL, dan migration tanpa ORM |
+| Credentials | expo-secure-store | Android memakai encrypted storage yang dilindungi Keystore |
+| Model JSON files | expo-file-system | App-private files, import, export, temp file, dan rename |
+| Runtime validation | zod | Memvalidasi response endpoint dan editable JSON pada trust boundary |
+| Markdown | react-native-markdown-display, ditambahkan saat history UI | Menunda dependency sampai jawaban nyata perlu dirender |
+| Testing | jest-expo | Preset resmi untuk Expo |
+| Component testing | @testing-library/react-native, ditambahkan saat screen pertama stabil | Tidak dibutuhkan untuk pure domain logic |
+| Contract server | Node.js built-in http module | Tidak perlu MSW atau server framework |
+| E2E | Maestro, ditambahkan menjelang MVP release | Flow Android utama dapat diuji tanpa menulis native test harness |
+| Package manager | npm dengan package-lock.json | Default, sederhana, satu aplikasi |
+
+### 4.2 Toolchain policy
+
+- Gunakan create-expo-app stable, bukan beta atau canary.
+- Biarkan Expo memilih versi React Native, React, Gradle, compileSdk, dan targetSdk yang kompatibel.
+- Gunakan npx expo install untuk package Expo agar versinya cocok dengan SDK.
+- Gunakan Node LTS yang memenuhi minimum Expo SDK terpilih. Catat versi di .nvmrc.
+- Gunakan JDK 17 kecuali template Expo stable secara eksplisit mengharuskan versi lain.
+- Simpan package-lock.json.
+- Jalankan npx expo-doctor setelah perubahan native dependency.
+- Jangan melakukan upgrade Expo SDK di tengah fase fitur. Upgrade menjadi fase maintenance terpisah.
+
+### 4.3 Dependency yang sengaja tidak dipakai
+
+- Tidak memakai Axios. expo/fetch sudah cukup.
+- Tidak memakai EventSource. Request chat memakai POST, custom headers, body JSON, dan streaming reader.
+- Tidak memakai Redux atau Zustand. SQLite adalah source of truth, sedangkan state screen cukup dengan React hooks.
+- Tidak memakai Drizzle, Prisma, atau Knex. SQL schema kecil dan direct SQL lebih mudah diaudit.
+- Tidak memakai NativeWind atau component kit. Gunakan StyleSheet dan komponen kecil.
+- Tidak memakai tokenizer package pada MVP. Gunakan provider usage dan estimasi konservatif berlabel estimated.
+- Tidak memakai Sentry pada MVP. Gunakan diagnostic export ter-redact terlebih dahulu.
+- Tidak memakai SQLCipher sampai ada keputusan bahwa transcript wajib terenkripsi at rest.
+- Tidak menulis Kotlin HTTP module sebelum expo/fetch gagal pada contract test Android.
+
+### 4.4 Native code policy
+
+MVP diusahakan tanpa native module buatan sendiri. Native code baru boleh dibuat ketika:
+
+1. expo/fetch gagal menjaga streaming atau cancellation pada device target;
+2. foreground service dibutuhkan;
+3. Termux bridge disetujui;
+4. fitur platform tidak tersedia dari package Expo resmi.
+
+Jika native code dibutuhkan, gunakan local Expo Module dengan Kotlin dan config plugin. Jangan menyebarkan edit manual ke banyak file generated Android.
+
+## 5. Struktur repository target
+
+Jangan membuat seluruh struktur pada Phase 0. Buat folder ketika fase pertama kali membutuhkannya.
+
+~~~text
+app/
+  _layout.tsx
+  index.tsx
+  setup.tsx
+  chat/
+    [conversationId].tsx
+  history.tsx
+  settings/
+    index.tsx
+    endpoint.tsx
+    models.tsx
+src/
+  domain/
+    endpoint.ts
+    model.ts
+    conversation.ts
+    usage.ts
+    context.ts
+    tool.ts
+  features/
+    setup/
+    chat/
+    history/
+    models/
+    settings/
+    tools/
+  services/
+    credentials/
+    catalog/
+    transport/
+    persistence/
+    metrics/
+    context/
+  ui/
+    tokens.ts
+    components/
+assets/
+  model-defaults.json
+tools/
+  fake-oai-server.mjs
+modules/
+  created only when a native feature is approved
+~~~
+
+Aturan struktur:
+
+- Route hanya menggabungkan screen dan dependency.
+- Domain berisi tipe dan pure logic.
+- Service berisi I/O.
+- Feature berisi UI dan orchestration spesifik screen.
+- Hindari barrel index.ts.
+- Hindari folder utils umum. Letakkan helper dekat domain yang memakainya.
+
+## 6. Urutan fase
+
+~~~mermaid
+flowchart LR
+  P0[0 Bootstrap] --> P1[1 Domain and fixtures]
+  P1 --> P2[2 Endpoint onboarding]
+  P2 --> P3[3 Model catalog]
+  P3 --> P4[4 Non-stream chat]
+  P4 --> P5[5 Streaming]
+  P5 --> P6[6 Persistence]
+  P6 --> P7[7 Model controls]
+  P7 --> P8[8 Metrics]
+  P8 --> P9[9 Context meter]
+  P9 --> P10[10 Auto-compact]
+  P10 --> P11[11 MVP hardening]
+  P11 --> P12[12 Chat fallback]
+  P12 --> P13[13 Tool loop]
+  P13 --> P14[14 Web tools]
+  P14 --> P15[15 Attachments]
+  P15 --> P16[16 Background]
+  P16 --> P17[17 P1 completion]
+  P17 --> P18[18 Sandbox gate]
+  P18 --> P19[19 Termux]
+  P18 --> P20[20 Remote sandbox]
+  P19 --> P21[21 Workspace and MCP]
+  P20 --> P21
+  P21 --> P22[22 Advanced features]
+~~~
+
+## 7. Phase 0: Bootstrap dan toolchain
+
+### Goal
+
+Aplikasi template dapat dibuild dan dijalankan pada emulator atau device Android dengan quality scripts dasar.
+
+### Steps
+
+- [ ] Tentukan applicationId final atau placeholder internal yang belum pernah dipublikasikan.
+- [ ] Pertahankan PLAN.md dan RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md di root.
+- [ ] Scaffold create-expo-app stable dengan TypeScript dan Expo Router.
+- [ ] Jika create-expo-app menolak root yang tidak kosong, scaffold di temporary directory lalu pindahkan file aplikasi tanpa memindahkan .git atau menimpa Markdown.
+- [ ] Gunakan npm dan commit package-lock.json.
+- [ ] Hapus route demo, contoh asset, dan komponen tutorial yang tidak dipakai.
+- [ ] Pertahankan hanya route index dengan teks MyLLM sementara.
+- [ ] Aktifkan TypeScript strict. Jangan menambah path alias karena memerlukan konfigurasi bundler tambahan.
+- [ ] Buat .nvmrc berdasarkan Node LTS yang kompatibel dengan Expo stable terpilih.
+- [ ] Tambahkan scripts: start, android, lint, typecheck, test, test:ci, doctor.
+- [ ] Install jest-expo dan buat satu smoke test pure minimal.
+- [ ] Buat development build Android dan jalankan dengan npx expo run:android.
+- [ ] Tambahkan expo-dev-client jika development build membutuhkannya.
+- [ ] Install expo-build-properties hanya jika diperlukan untuk menetapkan minSdk 26 pada app config.
+- [ ] Set minSdk 26 melalui konfigurasi Expo yang didukung.
+- [ ] Pastikan New Architecture dan Hermes aktif.
+- [ ] Tambahkan .env.example tanpa secret. Jangan membuat variabel EXPO_PUBLIC_API_KEY.
+- [ ] Pastikan .gitignore mencakup .env lokal, build output, Expo state, temporary exports, dan runtime data.
+- [ ] Catat versi Node, npm, Expo SDK, React Native, JDK, compileSdk, dan targetSdk pada bagian Generated toolchain di README singkat.
+
+### Files expected
+
+~~~text
+app/_layout.tsx
+app/index.tsx
+package.json
+package-lock.json
+tsconfig.json
+app.json or app.config.ts
+.nvmrc
+.env.example
+~~~
+
+### Verification
+
+- [ ] npm run lint lulus.
+- [ ] npm run typecheck lulus.
+- [ ] npm run test:ci lulus.
+- [ ] npx expo-doctor lulus tanpa dependency mismatch.
+- [ ] Development build terbuka pada Android.
+- [ ] Cold start tidak melakukan network request.
+
+### Exit gate
+
+Screenshot atau screen recording menunjukkan app shell berjalan pada Android. Semua quality commands lulus dari clean install.
+
+### Do not build yet
+
+Endpoint form, database schema, chat UI, model types lengkap, native HTTP module, CI release, dan design system besar.
+
+## 8. Phase 1: Domain contracts dan fake endpoint
+
+### Goal
+
+Membentuk kontrak data minimum dan fake OpenAI-compatible server sebelum menyentuh API berbayar.
+
+### Dependencies added
+
+- zod
+
+### Steps
+
+- [ ] Tambahkan src/domain/endpoint.ts dengan EndpointProfile, AuthMode, ProtocolMode, dan endpoint ID.
+- [ ] Tambahkan src/domain/model.ts dengan normalized model record dan CapabilityState: supported, unsupported, unknown.
+- [ ] Tambahkan AppError terstruktur dengan category, message, httpStatus, providerCode, requestId, retryable, dan safeDetails.
+- [ ] Implementasikan normalizeBaseUrl sebagai pure function.
+- [ ] Implementasikan joinEndpointPath sebagai pure function. Jangan memakai string concatenation bebas.
+- [ ] Implementasikan buildAuthHeaders untuk Bearer dan x-api-key.
+- [ ] Tolak URL non-absolute, embedded credentials, scheme selain HTTPS pada mode release, dan hostname kosong.
+- [ ] Tambahkan zod untuk schema response GET /models standar.
+- [ ] Izinkan extension field tetap dibaca oleh normalizer tanpa menjadikannya wajib.
+- [ ] Buat tools/fake-oai-server.mjs memakai node:http.
+- [ ] Fake server awal menyediakan GET /v1/models dan POST /v1/responses non-stream.
+- [ ] Tambahkan scenario melalui path atau request header untuk 401, 403, 404, empty list, invalid JSON, slow response, dan basic success.
+- [ ] Simpan fixture standard models dan AmanAI-style enriched models.
+- [ ] Jangan menambahkan Express, MSW, atau Docker.
+
+### Tests
+
+- [ ] Base URL dengan dan tanpa trailing slash.
+- [ ] Base URL yang sudah memiliki /v1.
+- [ ] Endpoint path tidak menghasilkan /v1/v1.
+- [ ] Embedded username/password ditolak.
+- [ ] Header auth benar dan tidak muncul di diagnostic.
+- [ ] Standard model list diterima.
+- [ ] Missing model ID ditolak per record.
+- [ ] Unknown extension tidak membuat parser gagal.
+
+### Exit gate
+
+Pure tests lulus dan fake endpoint dapat mengembalikan model list serta satu non-stream response dengan curl.
+
+### Do not build yet
+
+Generic transport interface, streaming parser, persistence, retry engine, atau provider plugin.
+
+## 9. Phase 2: Endpoint onboarding dan secure credential
+
+### Goal
+
+Fresh install meminta endpoint dan API key, lalu menemukan model tanpa menyimpan secret di storage biasa.
+
+### Dependencies added
+
+- expo-secure-store
+- expo-sqlite
+- @testing-library/react-native
+
+Gunakan npx expo install untuk package Expo dan npm development dependency untuk testing library.
+
+### Steps
+
+- [ ] Buat CredentialStore kecil di atas expo-secure-store.
+- [ ] SecureStore hanya menyimpan API key dengan key berbasis credentialId.
+- [ ] Simpan EndpointProfile tanpa secret di expo-sqlite/kv-store.
+- [ ] Jangan menyimpan API key di React state lebih lama dari flow submit.
+- [ ] Buat app/index.tsx yang memeriksa apakah active endpoint valid.
+- [ ] Redirect ke setup jika belum ada endpoint.
+- [ ] Buat setup screen dengan endpoint name, base URL, API key, auth mode, dan advanced models path.
+- [ ] Protocol pada fase ini hanya Responses. Label sebagai MVP support, jangan tampilkan Auto sebelum Phase 12.
+- [ ] Tampilkan preview URL GET /models.
+- [ ] Implementasikan Connect & discover dengan timeout 15 detik dan AbortController.
+- [ ] Kirim credential hanya ke origin endpoint yang dimasukkan.
+- [ ] Gunakan redirect manual untuk request yang membawa credential. Jika expo/fetch pada device target tidak dapat menahan redirect sebelum credential diteruskan, perlakukan redirect sebagai transport gap yang harus diselesaikan sebelum release.
+- [ ] Normalisasi response model ke memory.
+- [ ] Minta pengguna memilih satu model sebelum membuka app shell.
+- [ ] Simpan activeModelId bersama profile non-secret.
+- [ ] Simpan profile dan credential secara konsisten. Jika penyimpanan profile gagal, hapus credential yang baru dibuat.
+- [ ] Jika connection test gagal, pertahankan input non-secret dan jangan membuat profile duplikat.
+- [ ] API key field kembali kosong setelah save atau failure.
+- [ ] Buat Change API key flow yang tidak pernah menampilkan key lama.
+- [ ] Redact Authorization, x-api-key, bearer, dan pola key dari AppError.
+
+### Error UX
+
+- [ ] 401/403 menunjukkan credential bermasalah.
+- [ ] 404 menunjukkan final models URL dan saran memeriksa /v1.
+- [ ] TLS error tidak menawarkan trust-all.
+- [ ] Empty list tidak membuat model palsu.
+- [ ] Invalid JSON menunjukkan schema incompatibility.
+- [ ] Timeout dapat dicoba ulang.
+
+### Verification
+
+- [ ] Fresh install tidak menghubungi AmanAI atau provider lain.
+- [ ] Fake endpoint Bearer berhasil.
+- [ ] Fake endpoint x-api-key berhasil.
+- [ ] AmanAI GET /models berhasil melalui manual smoke test dengan key lokal.
+- [ ] API key tidak ditemukan dengan pencarian pada app-private JSON, SQLite settings, logs, atau diagnostic output.
+- [ ] Relaunch membuka model selection atau chat shell tanpa meminta key ulang.
+
+### Exit gate
+
+Pengguna dapat memasukkan arbitrary HTTPS endpoint, menyimpan key secara aman, dan melihat model yang dikembalikan endpoint.
+
+### Do not build yet
+
+Chat request, model override editor, multi-endpoint UI, atau capability probing.
+
+## 10. Phase 3: Model catalog JSON dan model picker
+
+### Goal
+
+Model list menjadi katalog berlapis yang tahan refresh, missing fields, dan edit pengguna.
+
+### Dependencies added
+
+- expo-file-system
+
+### Steps
+
+- [ ] Buat assets/model-defaults.json versi 1 dengan daftar kosong atau hanya model yang benar-benar diverifikasi.
+- [ ] Jangan menebak context window dari nama model.
+- [ ] Buat app-private catalog-cache untuk file per endpointId.
+- [ ] Buat model-overrides.json dengan schemaVersion dan map endpoints.
+- [ ] Implementasikan zod schema untuk defaults, live snapshot, dan overrides.
+- [ ] Implementasikan merge satu fungsi: defaults, live, user override.
+- [ ] Array override mengganti array upstream.
+- [ ] null pada override berarti inherit.
+- [ ] Simpan provenance field di hasil merge memory, bukan duplikasi permanen.
+- [ ] Derive displayName dari ID jika kosong.
+- [ ] Derive vendor dari owned_by atau prefix ID hanya sebagai inferred value.
+- [ ] contextWindow dan maxOutputTokens tetap null jika tidak diketahui.
+- [ ] reasoningEfforts kosong menyembunyikan picker, bukan berarti unsupported.
+- [ ] Implementasikan write temp, validate, backup satu generasi, lalu rename.
+- [ ] Jangan menimpa last-known-good dengan response kosong atau invalid.
+- [ ] Pada cold start, render cache lebih dulu lalu refresh background.
+- [ ] Coalesce refresh yang berjalan agar hanya satu GET /models.
+- [ ] Cache dipisahkan per endpointId dan di-refresh setelah credential berubah.
+- [ ] Model yang hilang diberi unavailable tombstone untuk history.
+- [ ] Buat model picker dengan exact model ID dan badge metadata yang tersedia.
+- [ ] Pull to refresh tidak mengganti model aktif ketika stream berjalan.
+
+### Tests
+
+- [ ] Merge precedence.
+- [ ] Missing, null, invalid, dan unknown.
+- [ ] Corrupt override memakai backup.
+- [ ] Empty refresh mempertahankan last-known-good.
+- [ ] Override bertahan setelah refresh.
+- [ ] Dua endpoint tidak berbagi cache.
+- [ ] Model removed tetap dapat dirender dari history.
+
+### Exit gate
+
+Restart offline masih menampilkan katalog terakhir. Refresh online memperbarui katalog tanpa menghapus override atau selection aktif.
+
+### Do not build yet
+
+Raw JSON editor, import/export, pricing dashboard, atau generic schema migration framework.
+
+## 11. Phase 4: Vertical slice chat non-stream
+
+### Goal
+
+Membuktikan satu alur lengkap dari prompt sampai jawaban memakai Responses API sebelum mengerjakan streaming.
+
+### Steps
+
+- [ ] Tambahkan tipe minimum Response request dan response item yang benar-benar dipakai.
+- [ ] Buat satu ResponsesClient konkret, belum perlu Transport interface.
+- [ ] Build URL dari EndpointProfile.
+- [ ] Ambil key dari CredentialStore tepat sebelum request.
+- [ ] Kirim model exact, input user, stream false, dan max_output_tokens kecil.
+- [ ] Jangan kirim reasoning jika model hanya memiliki auto atau metadata unknown.
+- [ ] Parse output items tanpa berasumsi output[0] selalu text message.
+- [ ] Extract output text dan optional reasoning summary.
+- [ ] Simpan previous_response_id di state conversation memory.
+- [ ] Buat chat screen sederhana dengan FlatList, composer, Send, loading, dan error card.
+- [ ] User message langsung terlihat setelah Send.
+- [ ] Disable duplicate Send selama request aktif.
+- [ ] Retry hanya membuat ulang request jika request sebelumnya gagal tanpa output.
+- [ ] Gunakan plain Text untuk response. Markdown belum diperlukan.
+- [ ] Buat New chat yang membersihkan state memory.
+
+### Tests
+
+- [ ] Request body minimal.
+- [ ] Text response.
+- [ ] Multiple output items.
+- [ ] Response tanpa text.
+- [ ] Structured provider error.
+- [ ] 401, 402, 403, 429, dan 5xx mapping.
+
+### Exit gate
+
+Satu percakapan dua turn berhasil terhadap fake endpoint dan AmanAI tanpa streaming.
+
+### Do not build yet
+
+SQLite history, markdown, tools, auto title request, atau protocol fallback.
+
+## 12. Phase 5: Responses streaming dan cancellation
+
+### Goal
+
+Jawaban muncul incremental, dapat dihentikan, dan event parser tahan fragmentasi jaringan.
+
+### Steps
+
+- [ ] Ubah request menjadi stream true.
+- [ ] Gunakan expo/fetch response.body.getReader.
+- [ ] Implementasikan incremental UTF-8 decode dengan TextDecoder stream mode.
+- [ ] Buat SSE parser pure TypeScript untuk LF, CRLF, comments, multiline data, event field, dan DONE.
+- [ ] Parser menerima chunk Uint8Array dan mengeluarkan complete SSE frames.
+- [ ] Buat internal event minimum: request.started, response.created, reasoning.delta, text.delta, tool_call events, usage.updated, response.completed, response.failed, request.cancelled.
+- [ ] Unknown event dicatat sebagai safe diagnostic dan diabaikan.
+- [ ] Fragmented tool argument disimpan tetapi belum dieksekusi.
+- [ ] Batch UI delta sekitar 50 ms.
+- [ ] Catat requestStart, firstEvent, firstVisibleToken, dan completed dengan performance.now.
+- [ ] Stop memanggil AbortController.abort.
+- [ ] Partial output tetap tampil setelah stop atau disconnect.
+- [ ] Retry otomatis hanya sebelum event model pertama.
+- [ ] Setelah event pertama, error menjadi partial response, bukan auto-retry.
+- [ ] Pastikan hanya satu active request per conversation.
+
+### Native transport decision gate
+
+Jalankan contract test pada sekurangnya satu emulator dan satu device fisik:
+
+- chunk sampai incremental, bukan seluruh body di akhir;
+- AbortController menutup request cepat;
+- response headers dan status tersedia;
+- timestamp antar chunk cukup untuk TPS;
+- app tidak crash pada stream panjang.
+
+Jika semua lulus, jangan membuat Kotlin module. Jika salah satu gagal secara konsisten, tulis ADR singkat berisi bukti lalu buat StreamHttpModule paling kecil yang hanya menutup gap tersebut.
+
+### Tests
+
+- [ ] Chunk membelah UTF-8 multibyte.
+- [ ] Chunk membelah JSON.
+- [ ] Heartbeat.
+- [ ] Unknown event.
+- [ ] Abrupt EOF.
+- [ ] Error body non-SSE.
+- [ ] Cancel sebelum first token.
+- [ ] Cancel setelah partial text.
+- [ ] Usage hanya muncul pada event akhir.
+
+### Exit gate
+
+Streaming, stop, partial state, dan error dapat didemonstrasikan pada Android. Native module tidak ada kecuali gate membuktikannya perlu.
+
+## 13. Phase 6: SQLite conversation, history, dan recovery
+
+### Goal
+
+Conversation bertahan setelah process death dan dapat dikelola tanpa menyimpan seluruh transcript di global state.
+
+### Steps
+
+- [ ] Buat migration version 1 dengan tables conversations, turns, items, usage, timing.
+- [ ] Aktifkan PRAGMA journal_mode=WAL dan PRAGMA foreign_keys=ON.
+- [ ] Gunakan prepared parameters untuk semua user/provider content.
+- [ ] Gunakan withExclusiveTransactionAsync untuk write batch yang harus atomic.
+- [ ] Jangan menambahkan ORM.
+- [ ] Buat repository methods yang dipakai screen saat ini saja.
+- [ ] Persist user turn sebelum network request.
+- [ ] Persist assistant placeholder dengan status sending.
+- [ ] Flush streaming text ke database per UI batch, bukan per token.
+- [ ] Persist response ID, model ID, endpoint ID, reasoning setting, dan output ceiling per turn.
+- [ ] Pada app start, ubah status sending atau streaming lama menjadi interrupted.
+- [ ] Buat history screen dengan pagination.
+- [ ] Buat New chat, rename, delete dengan confirmation, dan retry last turn.
+- [ ] Auto title memakai potongan prompt pertama. Jangan membuat request LLM tambahan.
+- [ ] Tambahkan react-native-markdown-display untuk completed response.
+- [ ] Render streaming text sederhana jika markdown reparse menyebabkan jank.
+- [ ] Gunakan FlatList, bukan list library baru.
+- [ ] Simpan draft composer per conversation di kv-store jika kehilangan draft terbukti mengganggu.
+
+### Tests
+
+- [ ] Migration dari database kosong.
+- [ ] Foreign key dan cascade delete.
+- [ ] Partial stream tersimpan.
+- [ ] Process restart menandai interrupted.
+- [ ] Delete membersihkan turns, items, usage, dan timing.
+- [ ] Pagination stabil dengan sort updatedAt dan ID.
+
+### Exit gate
+
+Kill app di tengah stream, buka kembali, dan pastikan partial response serta status interrupted muncul. History tidak hilang.
+
+### Do not build yet
+
+Branching conversation, full-text search, SQLCipher, cloud sync, atau semantic memory.
+
+## 14. Phase 7: Model controls dan editable JSON
+
+### Goal
+
+Pengguna dapat mengontrol reasoning, output limit, dan metadata model tanpa refresh menimpa edit.
+
+### Dependencies added
+
+- expo-document-picker untuk import
+- expo-sharing untuk export melalui Android share sheet atau Save to Files target
+
+### Steps
+
+- [ ] Buat model detail screen yang menampilkan value dan provenance.
+- [ ] Reasoning picker hanya muncul jika reasoningEfforts memiliki pilihan bermakna.
+- [ ] Pertahankan urutan reasoning effort dari provider.
+- [ ] Auto berarti omit field kecuali endpoint override menyatakan literal auto.
+- [ ] Hitung effectiveMaxOutput dari model limit dan protocol cap.
+- [ ] Output limit UI memiliki Auto dan angka explicit yang tervalidasi.
+- [ ] Request assembler memakai model config snapshot pada awal request.
+- [ ] Buat override form untuk displayName, enabled, contextWindow, maxOutputTokens, reasoningEfforts, modalities, dan capability tri-state.
+- [ ] Buat Add custom model dengan exact ID.
+- [ ] Buat Reset field dan Reset model.
+- [ ] Buat raw JSON editor memakai multiline TextInput. Jangan menambahkan code editor package.
+- [ ] Parse dan validate di memory sebelum save.
+- [ ] Tampilkan validation path dan message.
+- [ ] Tampilkan preview perubahan model yang terkena.
+- [ ] Backup override sebelum replace.
+- [ ] Import hanya menerima schemaVersion yang didukung.
+- [ ] Export tidak membawa credential.
+- [ ] Future schemaVersion ditolak dengan pesan upgrade app.
+- [ ] Jangan membangun migration registry sebelum schema version 2 benar-benar ada.
+
+### Tests
+
+- [ ] Invalid number, negative token, duplicate model ID, dan invalid effort.
+- [ ] null kembali inherit.
+- [ ] Array mengganti upstream.
+- [ ] Save atomic.
+- [ ] Import corrupt tidak merusak file aktif.
+- [ ] Export tidak mengandung key.
+
+### Exit gate
+
+Pengguna dapat memperbaiki context window model unknown, restart app, refresh katalog, dan override tetap berlaku.
+
+## 15. Phase 8: Usage normalization dan metrics footer
+
+### Goal
+
+Menampilkan TTFT, TPS, token, dan cache hit tanpa angka palsu.
+
+### Steps
+
+- [ ] Tambahkan normalized Usage type dengan nullable buckets dan quality.
+- [ ] Parse Responses input_tokens, cached_tokens, cache_write_tokens, output_tokens, dan reasoning_tokens.
+- [ ] Kenali provider extension yang sudah ada di fixture.
+- [ ] Pastikan cached token subset tidak ditambahkan dua kali ke aggregate input.
+- [ ] Hitung TTFT dari request dispatch ke first model event.
+- [ ] Catat first visible token terpisah.
+- [ ] Hitung decode duration dari first output token ke completed.
+- [ ] Hitung TPS dari provider-reported output tokens.
+- [ ] Jangan memakai estimated output token untuk final exact TPS.
+- [ ] Hitung cache hit hanya jika denominator dapat dipertanggungjawabkan.
+- [ ] Jika cache field tidak ada, tampilkan unavailable, bukan 0%.
+- [ ] Persist usage dan timing per turn.
+- [ ] Tambahkan compact stats footer.
+- [ ] Tap footer membuka detail per-turn dan session cumulative.
+- [ ] Label exact, estimated, provider-reported, atau unavailable.
+- [ ] Jangan menambahkan pricing atau cost pada fase ini.
+
+### Tests
+
+- [ ] Exact TPS formula.
+- [ ] Zero-duration guard.
+- [ ] Missing first token.
+- [ ] Cached subset.
+- [ ] Cache read/write/uncached buckets.
+- [ ] Missing usage.
+- [ ] Reasoning token subset.
+
+### Exit gate
+
+Fixture metrics cocok dengan hasil manual dan tidak ada cache 0% palsu.
+
+## 16. Phase 9: Context meter
+
+### Goal
+
+Pengguna melihat berapa context budget yang dipakai dan berapa yang tersisa sebelum send.
+
+### Steps
+
+- [ ] Tambahkan ContextBudget input dan result sebagai pure domain types.
+- [ ] Effective input hanya menghitung payload yang benar-benar akan dikirim.
+- [ ] Jangan memakai cumulative session usage sebagai occupancy.
+- [ ] Provider usage terakhir menjadi calibration hint, bukan otomatis occupancy request berikutnya.
+- [ ] Untuk preflight estimate, hitung UTF-8 bytes dari serialized text dan gunakan pembagi konservatif awal 3.
+- [ ] Tambahkan overhead kecil per message/item yang dapat disetel melalui constant code.
+- [ ] Label hasil estimated.
+- [ ] Jika endpoint menyediakan input token count endpoint yang kompatibel, tambahkan nanti melalui capability, bukan probing billable.
+- [ ] requestedOutputReserve memakai explicit output limit atau appAutoOutputBudget 4096.
+- [ ] Clamp reserve ke effectiveMaxOutput jika diketahui.
+- [ ] Safety margin: min 8192 dan max 1024 atau 2% context.
+- [ ] Hitung prospective used, remaining tokens, used percent, dan remaining percent.
+- [ ] Jika contextWindow unknown, jangan tampilkan persentase.
+- [ ] Tambahkan context pill dengan used, left, token remaining, reserve, margin, dan quality.
+- [ ] Gunakan warna sebagai tambahan, bukan satu-satunya indikator.
+- [ ] Update estimate saat draft berubah dengan debounce.
+
+### Tests
+
+- [ ] Known context.
+- [ ] Unknown context.
+- [ ] Explicit output limit.
+- [ ] Unknown max output.
+- [ ] Clamp 0 sampai 100.
+- [ ] Multi-byte text.
+- [ ] Safety margin pada context kecil dan besar.
+
+### Exit gate
+
+Context pill berubah sebelum send, detail rumus dapat diperiksa, dan model unknown tidak menampilkan persentase buatan.
+
+## 17. Phase 10: Local auto-compact
+
+### Goal
+
+Long conversation dapat berlanjut tanpa menghapus transcript asli atau melakukan silent truncation.
+
+### Steps
+
+- [ ] Tambahkan compactions table melalui migration version 2.
+- [ ] Tambahkan contextPolicy ke normalized model config.
+- [ ] Default trigger 80, target 55, hard stop 95, minimum recent turns 4.
+- [ ] Validate target < trigger < hard stop.
+- [ ] Preflight compaction berjalan sebelum main request ketika prospective use mencapai trigger.
+- [ ] Jangan compact saat stream aktif atau tool transaction belum lengkap.
+- [ ] Pilih prefix berdasarkan complete turn boundary.
+- [ ] Pertahankan instructions, recent turns, pinned facts, attachment references aktif, dan complete tool pairs.
+- [ ] Buat compaction prompt versioned yang meminta structured JSON summary.
+- [ ] Validate summary dengan zod.
+- [ ] Summary fields: user goals, constraints, decisions, facts, artifacts, completed actions, tool results, open questions, next steps, dan untrusted content notes.
+- [ ] Simpan source turn range, model, prompt version, usage, before/after estimate, status, dan summary.
+- [ ] Original turns tidak diubah atau dihapus.
+- [ ] Effective context builder memakai summary sebagai user/data context, bukan system instruction.
+- [ ] Setelah local compaction, gunakan stateless replay untuk effective context baru.
+- [ ] Hitung ulang occupancy dan compact chunk berikutnya jika masih di atas target.
+- [ ] Satu conversation hanya memiliki satu compaction job aktif.
+- [ ] Retry compaction paling banyak sekali jika belum ada output.
+- [ ] Di hard stop, block unsafe send dan tampilkan Compact now, Start new chat, atau Reduce output reserve.
+- [ ] Tambahkan separator compaction ringan di transcript.
+- [ ] Tambahkan manual Compact now dan Auto-compact toggle per conversation.
+- [ ] Catat usage compaction terpisah dari chat usage.
+
+### Security rules
+
+- [ ] External web/tool text tetap ditandai untrusted di summary.
+- [ ] Summary tidak boleh menaikkan privilege instruksi.
+- [ ] Native /responses/compact belum dipakai.
+- [ ] Tidak ada emergency sliding-window truncation pada MVP.
+
+### Tests
+
+- [ ] Trigger dan hysteresis.
+- [ ] Tool call/result tidak terpisah.
+- [ ] Summary invalid.
+- [ ] Summary masih terlalu besar.
+- [ ] Interrupted compaction tidak menjadi active.
+- [ ] Transcript asli tetap lengkap.
+- [ ] Hard stop tidak mengirim main request.
+
+### Exit gate
+
+Fixture long conversation otomatis compact, occupancy turun ke target, transcript tetap utuh, dan request berikutnya berhasil.
+
+## 18. Phase 11: MVP hardening dan internal release
+
+### Goal
+
+Menutup MVP yang aman, accessible, dapat diuji ulang, dan dapat dipasang sebagai APK internal.
+
+### UX steps
+
+- [ ] Terapkan design tokens kecil untuk color, spacing, radius, typography, dan dark mode.
+- [ ] Gunakan core components. Jangan membuat design system package.
+- [ ] Touch target minimum 48 dp.
+- [ ] Tambahkan accessibilityLabel dan accessibilityHint pada composer, model picker, stop, retry, stats, dan context.
+- [ ] Uji font scale besar.
+- [ ] Pastikan keyboard tidak menutupi composer.
+- [ ] Pastikan long markdown tidak membuat composer lag.
+- [ ] Link eksternal meminta confirmation atau membuka browser sistem.
+- [ ] Error card menampilkan endpoint name, model, protocol, status, provider code, request ID, dan safe next action.
+
+### Security steps
+
+- [ ] Release build menolak cleartext HTTP.
+- [ ] Tidak ada trust-all certificate path.
+- [ ] Redirect POST dinonaktifkan atau divalidasi.
+- [ ] Secret redaction dites.
+- [ ] Android backup mengecualikan credential dan sensitive cache.
+- [ ] Chat backup default off.
+- [ ] Debug body logging default off.
+- [ ] Clear all data menghapus SQLite, model cache, overrides, exported temp files, dan SecureStore records.
+- [ ] Diagnostic export tidak membawa content atau credential secara default.
+
+### Reliability steps
+
+- [ ] Implementasikan retry maksimum 2 hanya untuk pre-output network error dan 429/502/503.
+- [ ] Hormati Retry-After.
+- [ ] Model refresh concurrent di-coalesce.
+- [ ] Set error body cap 256 KB.
+- [ ] Set local diagnostic ring 2 MB.
+- [ ] Uji offline start, network switch, rotation, low memory restart, dan process kill.
+
+### Automated checks
+
+- [ ] Tambahkan Maestro only now.
+- [ ] E2E: first-run setup, model discover, send stream, stop, restart recovery, override, context meter.
+- [ ] Tambahkan CI untuk npm ci, lint, typecheck, test:ci, expo-doctor, dan Android debug build.
+- [ ] Jangan menambahkan snapshot tests besar.
+- [ ] Build internal APK/AAB dari clean checkout.
+
+### MVP release gate
+
+Semua kondisi berikut wajib:
+
+- [ ] FR-001 sampai FR-015 lulus.
+- [ ] Fake endpoint test suite lulus.
+- [ ] AmanAI models, non-stream, dan stream smoke test lulus.
+- [ ] API key tidak muncul di files, logs, database, backup, atau exported config.
+- [ ] Cold start offline berfungsi.
+- [ ] Stop dan process recovery berfungsi.
+- [ ] Metrics dan context tidak menampilkan angka palsu.
+- [ ] Auto-compact tidak menghapus transcript.
+- [ ] Signed internal build dapat dipasang pada device Android target.
+
+MVP selesai di sini. Jangan memulai P1 untuk menutupi defect MVP.
+
+## 19. Phase 12: Chat Completions adapter dan protocol auto
+
+### Goal
+
+Mendukung endpoint OpenAI-compatible yang tidak memiliki Responses API.
+
+### Steps
+
+- [ ] Baru sekarang extract transport contract karena implementasi kedua benar-benar ada.
+- [ ] Contract menerima canonical request dan menghasilkan internal events yang sama.
+- [ ] Refactor ResponsesClient menjadi ResponsesTransport tanpa mengubah behavior.
+- [ ] Implementasikan ChatCompletionsTransport.
+- [ ] Map instructions ke system message.
+- [ ] Map user/assistant history ke messages.
+- [ ] Map max output ke field endpoint profile.
+- [ ] Kirim reasoning_effort hanya jika profile menyatakan support.
+- [ ] Parse data chunks dan DONE.
+- [ ] Parse tool_calls delta tetapi belum mengubah policy tool.
+- [ ] Normalisasi prompt/completion usage.
+- [ ] Aktifkan protocol option Responses, Chat Completions, dan Auto.
+- [ ] Auto mencoba Responses pada first chat request.
+- [ ] Fallback hanya pada 404, 405, atau 501 sebelum output.
+- [ ] Jangan fallback pada 400, auth, billing, rate limit, atau setelah partial output.
+- [ ] Cache protocol yang berhasil per endpoint, dengan Reset compatibility action.
+- [ ] Jangan melakukan probe billable saat setup.
+
+### Tests
+
+- [ ] Kedua adapter menghasilkan internal event sequence ekuivalen.
+- [ ] Auto fallback only allowed statuses.
+- [ ] No duplicate request after partial output.
+- [ ] Endpoint-specific max token field.
+- [ ] Chat cached token variants.
+
+### Exit gate
+
+Fake endpoint Responses-only, Chat-only, dan dual-protocol semuanya berhasil dengan protocol behavior yang dapat didiagnosis.
+
+## 20. Phase 13: Function tool loop
+
+### Goal
+
+Model dapat memanggil function tool dengan approval dan bounded loop.
+
+### Steps
+
+- [ ] Baru sekarang tambahkan ToolDefinition, ToolCall, ToolResult, ToolPolicy, ToolRegistry, dan AgentLoop.
+- [ ] Registry hanya berisi tool yang benar-benar diimplementasikan.
+- [ ] Validasi tool name dan JSON arguments.
+- [ ] Unknown tool menghasilkan structured error result, bukan crash.
+- [ ] Risk levels: read-only, write, dangerous.
+- [ ] Approval: never, ask, always.
+- [ ] Default deny untuk tool unknown.
+- [ ] Write dan dangerous selalu ask.
+- [ ] Approval screen menampilkan tool, arguments, target, dan side effect.
+- [ ] Approval berlaku satu call.
+- [ ] Batasi 8 tool rounds dan 3 parallel read-only calls.
+- [ ] Tambahkan timeout, cancellation, output byte cap, dan total wall-clock cap.
+- [ ] Dedupe call ID agar resume tidak mengulang side effect.
+- [ ] Persist tool call, approval, result, dan status.
+- [ ] Tambahkan satu deterministic read-only demo tool untuk test, misalnya get_current_time dengan timezone input.
+- [ ] Kirim tool result kembali ke transport sampai final answer.
+- [ ] Jangan menyediakan shell tool.
+
+### Tests
+
+- [ ] Fragmented arguments.
+- [ ] Invalid JSON.
+- [ ] Unknown tool.
+- [ ] Approval reject.
+- [ ] Timeout.
+- [ ] Duplicate call ID.
+- [ ] Round limit.
+- [ ] Parallel read-only.
+- [ ] Cancellation propagation.
+
+### Exit gate
+
+Model dapat memanggil demo tool, pengguna melihat progress, dan loop berhenti aman pada final answer atau limit.
+
+## 21. Phase 14: Web search dan safe fetch
+
+### Goal
+
+Menambahkan current-information tool tanpa memberikan network authority yang tidak terbatas.
+
+### Entry gate
+
+Pemilik proyek harus memilih:
+
+- search API;
+- siapa pemilik key;
+- quota dan error contract;
+- apakah hasil search sudah berisi snippet yang cukup;
+- apakah URL fetch harus dilakukan client, search backend, atau sandbox backend.
+
+Jika belum ada keputusan, phase berhenti di sini. Jangan membuat provider abstraction kosong.
+
+### Web search steps
+
+- [ ] Implementasikan satu provider search konkret.
+- [ ] Simpan search key di SecureStore.
+- [ ] Tool input: query, count maksimal 10, recencyDays optional.
+- [ ] Validate query length dan count.
+- [ ] Batasi response bytes.
+- [ ] Normalize title, URL, snippet, published date, dan source.
+- [ ] Tandai seluruh hasil sebagai untrusted external content.
+- [ ] Tampilkan source cards di UI.
+- [ ] Jangan membiarkan hasil web mengubah approval policy.
+- [ ] Persist query metadata dan result summary, bukan secret.
+
+### fetch_url decision
+
+expo/fetch tidak memberi aplikasi kontrol penuh atas DNS resolution dan redirect IP validation. Karena itu:
+
+- [ ] Prefer fetch melalui trusted backend yang memvalidasi DNS, private ranges, redirect, MIME, timeout, dan size.
+- [ ] Jika tidak ada backend, implementasikan native fetch module hanya setelah threat review.
+- [ ] Jangan mengklaim JS-only fetch sebagai SSRF-safe.
+- [ ] Jika tidak ada jalur aman, ship web_search tanpa fetch_url.
+
+### Exit gate
+
+Search bekerja dengan satu provider nyata, hasil memiliki source, output dibatasi, dan prompt injection tidak dapat melewati tool policy.
+
+## 22. Phase 15: Image dan file attachment
+
+### Goal
+
+Mengirim attachment hanya ke model dan protocol yang menyatakan dukungan.
+
+### Dependencies added
+
+- expo-image-picker
+- expo-document-picker
+- expo-file-system jika belum tersedia
+
+### Steps
+
+- [ ] Tentukan allowlist MIME dan max size.
+- [ ] Gunakan content URI dan copy file terpilih ke app-private staging.
+- [ ] Jangan membaca seluruh file besar ke JS memory.
+- [ ] Attachment composer hanya aktif jika modality model supported.
+- [ ] Unknown modality membutuhkan explicit user override.
+- [ ] Buat provider mapping untuk image/file input pada Responses.
+- [ ] Jangan mengasumsikan upload endpoint universal.
+- [ ] Jika endpoint memerlukan file upload API yang tidak kompatibel, tandai unsupported sampai adapter khusus dibuat.
+- [ ] Tampilkan upload progress jika benar-benar ada upload.
+- [ ] Hapus staging file setelah lifecycle selesai.
+- [ ] Delete conversation menghapus attachment yang tidak direferensikan.
+- [ ] Jangan mendukung video pada implementasi pertama.
+
+### Tests
+
+- [ ] Unsupported modality.
+- [ ] File terlalu besar.
+- [ ] MIME tidak diizinkan.
+- [ ] Permission ditolak.
+- [ ] Process restart saat staging.
+- [ ] Delete cleanup.
+
+### Exit gate
+
+Satu image flow yang didukung endpoint berhasil tanpa memory spike dan model text-only tidak menampilkan attachment control.
+
+## 23. Phase 16: Background generation
+
+### Goal
+
+Stream dapat berlanjut saat app di-background-kan melalui Android foreground service.
+
+### Entry gate
+
+Implementasikan hanya jika penggunaan nyata menunjukkan foreground-only tidak cukup.
+
+### Steps
+
+- [ ] Buat local Expo Module khusus Android untuk foreground generation.
+- [ ] Service dimulai akibat direct user action.
+- [ ] Notification menampilkan endpoint name, model, status, dan Cancel.
+- [ ] Jangan tampilkan prompt atau response content pada lock screen secara default.
+- [ ] Network request dimiliki service atau memiliki bridge lifecycle yang tidak mati bersama screen.
+- [ ] Event tetap dipersist ke SQLite.
+- [ ] Cancel notification membatalkan request dan menandai turn cancelled.
+- [ ] Tangani Android version restrictions dan service timeout.
+- [ ] Jangan gunakan WorkManager untuk interactive stream.
+- [ ] Jika OS membunuh service, tandai interrupted.
+
+### Exit gate
+
+Background, screen-off, cancel notification, process recreation, dan battery restriction scenarios diuji pada versi Android minimum dan terbaru.
+
+## 24. Phase 17: P1 completion
+
+### Goal
+
+Menutup fitur portability dan endpoint management setelah chat, tools, dan attachment stabil.
+
+### Steps
+
+- [ ] Tambahkan multi-endpoint profile list dan endpoint switcher.
+- [ ] Satu conversation tetap terikat ke endpointId dan modelId snapshot.
+- [ ] Switching endpoint tidak mengubah active stream.
+- [ ] Credential terpisah per profile.
+- [ ] Import/export endpoint config tidak membawa credential.
+- [ ] Export conversation membawa transcript, tool audit, usage, dan readable compaction summary.
+- [ ] Import conversation memvalidasi schema dan menghasilkan ID baru.
+- [ ] Tambahkan usage screen hanya jika endpoint profile memiliki documented usage path.
+- [ ] AmanAI profile boleh memakai /usage.
+- [ ] Endpoint lain tidak menampilkan usage screen palsu.
+- [ ] Tambahkan model cache cleanup untuk endpoint yang dihapus.
+- [ ] Delete endpoint meminta kebijakan untuk conversation terkait: keep read-only atau delete.
+
+### P1 release gate
+
+- [ ] Chat Completions fallback stabil.
+- [ ] Tool loop stabil.
+- [ ] Web search stabil.
+- [ ] Attachment yang didukung stabil.
+- [ ] Background behavior sesuai keputusan produk.
+- [ ] Multi-endpoint data tidak tercampur.
+- [ ] Export tidak mengandung secret.
+
+## 25. Phase 18: Command execution threat-model gate
+
+### Goal
+
+Memutuskan apakah command execution benar-benar diperlukan dan boundary mana yang dapat diterima.
+
+### Steps
+
+- [ ] Tulis use cases konkret. Contoh command generik tidak cukup.
+- [ ] Klasifikasikan data yang boleh masuk workspace.
+- [ ] Tentukan apakah network diperlukan.
+- [ ] Tentukan apakah command harus tetap berjalan saat app tutup.
+- [ ] Tentukan distribution channel karena Termux integration dapat memengaruhi Play Store path.
+- [ ] Bandingkan no-shell narrow tools, Termux, dan remote sandbox.
+- [ ] Buat satu proof of concept read-only tanpa model control.
+- [ ] Uji isolation, timeout, output cap, cancel, dan data leakage.
+- [ ] Dokumentasikan enforcement yang benar-benar tersedia.
+- [ ] Pilih satu backend pertama.
+
+### Exit outcomes
+
+- No-go: command execution tetap disabled.
+- Termux: lanjut Phase 19.
+- Remote: lanjut Phase 20.
+- Keduanya: implementasikan satu dulu, stabilkan, baru implementasi kedua.
+
+Jangan membuat CommandExecutor abstraction sebelum backend pertama disetujui. Extract interface saat backend kedua benar-benar mulai.
+
+## 26. Phase 19: Termux bridge
+
+### Goal
+
+Power user dapat menjalankan command melalui Termux dengan separation yang jelas, bukan klaim container sandbox.
+
+### Steps
+
+- [ ] Buat local Expo Module Kotlin untuk RUN_COMMAND Intent.
+- [ ] Tambahkan permission dan package visibility minimum.
+- [ ] Verifikasi package/signature jika feasible.
+- [ ] Buat onboarding yang menjelaskan dependency, permission, dan allow-external-apps.
+- [ ] Default disabled.
+- [ ] Gunakan dedicated workspace yang dibagikan secara explicit.
+- [ ] Jangan share database, model cache, atau credential.
+- [ ] Tampilkan exact argv atau shell string sebelum approval.
+- [ ] Satu active command untuk versi pertama.
+- [ ] Tambahkan timeout, output cap, stop, stdout, stderr, exit code, dan truncation marker.
+- [ ] Label enforcement sebagai termux-separated, bukan isolated.
+- [ ] Jangan meneruskan environment aplikasi.
+- [ ] Persist audit tanpa secret.
+- [ ] Tidak ada automatic retry untuk command.
+
+### Exit gate
+
+Missing Termux, permission denied, success, timeout, cancel, large output, dan app restart semuanya memiliki state yang dapat dipahami.
+
+## 27. Phase 20: Remote sandbox
+
+### Goal
+
+Menyediakan execution dengan container atau microVM boundary untuk pekerjaan serius.
+
+### Entry gate
+
+Phase ini membutuhkan backend terpisah, authentication design, budget, dan security review. Mobile client saja tidak cukup.
+
+### Backend minimum
+
+- [ ] Create/delete ephemeral sandbox.
+- [ ] Submit argv command dengan idempotency key.
+- [ ] Stream command events.
+- [ ] Send stdin jika diperlukan.
+- [ ] Non-root.
+- [ ] Read-only root filesystem.
+- [ ] Writable workspace terpisah.
+- [ ] CPU, memory, disk, PID, time, dan output limits.
+- [ ] Network default off atau allowlist.
+- [ ] No host socket.
+- [ ] Automatic cleanup.
+- [ ] Per-user auth.
+- [ ] Signed upload/download.
+- [ ] Audit dan abuse limits.
+
+### Mobile steps
+
+- [ ] Simpan sandbox credential di SecureStore.
+- [ ] Jangan mengirim LLM API key.
+- [ ] Tampilkan enforcement remote-isolated hanya jika server menjaminnya.
+- [ ] Resume event stream setelah network reconnect.
+- [ ] Delete sandbox action tersedia.
+- [ ] Handle expired sandbox dan orphan cleanup.
+
+### Exit gate
+
+Security review lulus dan isolation failure menghasilkan fail closed, bukan fallback ke local process.
+
+## 28. Phase 21: Workspace dan MCP
+
+### Goal
+
+Menambahkan file workspace dan MCP hanya setelah satu execution backend stabil.
+
+### Workspace steps
+
+- [ ] Scope browser ke dedicated workspace.
+- [ ] Canonicalize path.
+- [ ] Blok traversal dan symlink escape.
+- [ ] Preview diff sebelum write.
+- [ ] Batasi file size dan archive extraction.
+- [ ] Jangan expose app-private root.
+
+### MCP steps
+
+- [ ] Mulai dari remote HTTP MCP server, bukan arbitrary local stdio.
+- [ ] Tambahkan satu server profile manual.
+- [ ] Fetch tool list dan ubah menjadi ToolRegistry entries.
+- [ ] Apply approval policy yang sama seperti function tools.
+- [ ] Store MCP credentials di SecureStore.
+- [ ] Cap tool output dan timeout.
+- [ ] Tidak ada marketplace atau auto-install.
+
+### Exit gate
+
+Satu remote MCP server dapat dipakai tanpa melewati approval, credential, timeout, dan output limits.
+
+## 29. Phase 22: Advanced features
+
+### Goal
+
+Menambahkan hanya fitur lanjutan yang sudah memiliki use case, endpoint target, dan acceptance test konkret.
+
+Fitur di bawah tidak masuk sebelum data penggunaan membuktikan kebutuhannya.
+
+### Native Responses compaction
+
+- [ ] Implementasikan hanya jika endpoint capability supported.
+- [ ] Simpan opaque item tanpa parsing.
+- [ ] Fallback hanya pada unsupported statuses sebelum output.
+- [ ] Jangan mengganti local compaction yang sudah stabil tanpa comparative tests.
+
+### Cost estimation
+
+- [ ] Implementasikan hanya jika pricing unit dan currency dapat dinormalisasi.
+- [ ] Label estimate.
+- [ ] Pisahkan chat, compaction, tool, dan search cost.
+
+### Conversation branching
+
+- [ ] Tambahkan parentTurnId hanya ketika edit-and-resend benar-benar dibutuhkan.
+- [ ] Jangan menduplikasi transcript penuh.
+
+### Voice dan realtime
+
+- [ ] Pilih protocol setelah endpoint realtime target diketahui.
+- [ ] Treat audio permission, interruption, Bluetooth, dan background as separate project slice.
+
+### On-device compaction
+
+- [ ] Pertimbangkan hanya setelah ukuran model, kualitas summary, latency, dan battery diuji.
+
+### iOS
+
+- [ ] Jangan memulai port sebelum Android MVP dan P1 stabil.
+- [ ] Audit SecureStore, files, background tasks, attachments, dan native modules secara terpisah.
+
+### Exit gate
+
+Setiap subfitur dianggap release slice sendiri. Satu subfitur harus memiliki contract test, migration jika perlu, security review sesuai risikonya, dan tidak boleh memaksa subfitur lain ikut diimplementasikan.
+
+## 30. Database migration plan
+
+Jangan membuat migration framework kompleks. Gunakan integer user_version dan ordered functions.
+
+| Version | Introduced in | Tables/change |
+|---:|---|---|
+| 1 | Phase 6 | conversations, turns, items, usage, timing |
+| 2 | Phase 10 | compactions dan active compaction reference |
+| 3 | Phase 13 | tool_calls dan approval fields |
+| 4 | Phase 15 | attachments dan references |
+
+Aturan:
+
+- Migration berjalan dalam exclusive transaction.
+- Backup database sebelum destructive migration.
+- Tidak ada destructive migration pada MVP.
+- Fresh schema dan migrated schema harus menghasilkan bentuk yang sama.
+- Migration hanya ditulis saat version tersebut dibutuhkan.
+
+## 31. Test matrix
+
+### Setiap pull request
+
+- npm run lint
+- npm run typecheck
+- npm run test:ci
+- npx expo-doctor jika dependency berubah
+
+### Setiap fase transport
+
+- Fake endpoint success.
+- Slow first token.
+- Fragmented UTF-8 dan JSON.
+- Abrupt disconnect.
+- Auth, billing, rate limit, upstream error.
+- Cancel.
+
+### Setiap fase persistence
+
+- Fresh install.
+- Upgrade migration.
+- Process kill.
+- Corrupt JSON.
+- Low storage behavior.
+
+### Sebelum MVP release
+
+- Android API 26 emulator atau device.
+- Android 10.
+- Android 12 atau lebih baru.
+- Latest available Android target.
+- Wi-Fi ke mobile transition.
+- Offline cold start.
+- Font scale besar.
+- Dark mode.
+- Long conversation.
+- Long markdown.
+- AmanAI real smoke tests dengan low output limit.
+
+### Secret scanning
+
+Search build logs, source tree, exported config, SQLite dump, model JSON, and diagnostic export for:
+
+- Authorization
+- x-api-key
+- bearer
+- sk-
+- known test key value
+
+Gunakan hanya fake key pada automated tests.
+
+## 32. Requirement traceability
+
+| Requirement | Phase |
+|---|---:|
+| FR-001 Custom endpoint onboarding | 2 |
+| FR-002 Secure credential | 2, 11 |
+| FR-003 Automatic model discovery | 2, 3 |
+| FR-004 Model metadata | 3 |
+| FR-005 JSON override | 7 |
+| FR-006 Missing-field fallback | 3 |
+| FR-007 Responses streaming | 5 |
+| FR-008 Conversation | 6 |
+| FR-009 Reasoning picker | 7 |
+| FR-010 Output limit | 7 |
+| FR-011 Stats footer | 8 |
+| FR-012 Recovery | 6 |
+| FR-013 Diagnostics | 2, 11 |
+| FR-014 Context meter | 9 |
+| FR-015 Auto-compact | 10 |
+| FR-101 Chat Completions | 12 |
+| FR-102 Function tool loop | 13 |
+| FR-103 Web search | 14 |
+| FR-104 Safe fetch URL | 14, conditional |
+| FR-105 Tool approval | 13 |
+| FR-106 Attachment | 15 |
+| FR-107 Foreground generation | 16, conditional |
+| FR-108 Usage screen | 17 |
+| FR-109 Export/import | 7, 17 |
+| FR-110 Multi-endpoint | 17 |
+| FR-201 Termux | 19, conditional |
+| FR-202 Remote sandbox | 20, conditional |
+| FR-203 Workspace | 21 |
+| FR-204 MCP | 21 |
+| FR-205 Cost | 22 |
+| FR-206 Branching | 22 |
+| FR-207 Voice/realtime | 22 |
+
+## 33. Definition of done
+
+Sebuah phase hanya selesai jika:
+
+- scope phase bekerja pada Android;
+- tests phase lulus;
+- lint dan typecheck lulus;
+- error path utama diuji;
+- secret tidak masuk log atau storage yang salah;
+- dokumentasi behavior yang berubah diperbarui;
+- tidak ada TODO yang sebenarnya requirement phase aktif;
+- tidak ada dependency atau abstraction untuk phase masa depan;
+- exit gate dapat didemonstrasikan dari clean install atau migrated install.
+
+Project dianggap MVP selesai setelah Phase 11. Project dianggap P1 selesai setelah Phase 17. Phase 18 dan seterusnya adalah keputusan produk terpisah, bukan alasan menunda MVP.
+
+## 34. Sumber teknis untuk executor
+
+- Requirement research: RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md
+- Expo SDK compatibility: https://docs.expo.dev/versions/latest/
+- Expo Router: https://docs.expo.dev/router/introduction/
+- Expo streaming fetch: https://docs.expo.dev/versions/latest/sdk/expo/
+- Expo SQLite: https://docs.expo.dev/versions/latest/sdk/sqlite/
+- Expo SecureStore: https://docs.expo.dev/versions/latest/sdk/securestore/
+- Expo Jest setup: https://docs.expo.dev/develop/unit-testing/
+- React Native New Architecture: https://reactnative.dev/architecture/landing-page
+- OpenAI Models baseline: https://developers.openai.com/api/reference/ruby/resources/models
+- OpenAI Responses create: https://developers.openai.com/api/reference/cli/resources/responses/methods/create
+- OpenAI Responses compact: https://developers.openai.com/api/reference/java/resources/responses/methods/compact
+- AmanAI API reference: https://ai.amanai.dev/docs/reference/
+- AmanAI models: https://ai.amanai.dev/docs/models/
+
+Jika dokumentasi library berubah saat executor mulai, pilih stable release yang saling kompatibel, update lockfile, dan catat versi aktual. Jangan pindah ke beta atau canary hanya untuk mendapatkan fitur yang belum diperlukan.
