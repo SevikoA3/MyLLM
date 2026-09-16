@@ -2,7 +2,7 @@
 
 Aplikasi Android chat client untuk custom OpenAI-compatible endpoint.
 
-Fase saat ini adalah Phase 0 (bootstrap dan toolchain) dari PLAN.md: aplikasi shell dapat dibuild dan dijalankan pada Android, dan quality scripts dasar sudah tersedia. Belum ada endpoint onboarding, database, atau chat UI.
+Fase saat ini adalah Phase 1 (domain contracts dan fake endpoint) dari PLAN.md. Kontrak data minimum dan fake OpenAI-compatible server sudah ada; endpoint onboarding, database, dan chat UI belum.
 
 ## Perintah
 
@@ -14,7 +14,30 @@ Fase saat ini adalah Phase 0 (bootstrap dan toolchain) dari PLAN.md: aplikasi sh
 | `npm run typecheck` | `tsc --noEmit` dengan TypeScript strict |
 | `npm test` | Jest dalam watch mode |
 | `npm run test:ci` | Jest sekali jalan untuk CI |
+| `npm run test:server` | Contract test fake endpoint lewat `node --test` |
 | `npm run doctor` | `npx expo-doctor` |
+
+## Domain dan fake endpoint
+
+`src/domain/endpoint.ts` memuat `EndpointProfile`, normalisasi base URL, penggabungan path, dan pembuatan header auth. `src/domain/model-list.ts` memuat schema GET /models dan normalizer yang mengubah field hilang menjadi null atau unknown, bukan false atau nol. `src/domain/error.ts` memuat AppError terstruktur beserta redaksi secret.
+
+Ketentuan yang berlaku sejak fase ini:
+
+- Phase 1 hanya menerima HTTPS. HTTP lokal untuk pengembangan ditambahkan bersama transport chat, bukan dengan menurunkan validasi sekarang.
+- Nilai default `chatOutputCap` 8192 berasal dari dokumentasi Chat Completions AmanAI dan dipakai pada Phase 12.
+- `nativeContextManagement` bernilai unknown sampai endpoint benar-benar diuji, sehingga compaction lokal menjadi perilaku awal.
+
+Fake endpoint dijalankan terpisah dari Jest karena server tidak membutuhkan environment React Native:
+
+```sh
+node tools/fake-oai-server.mjs
+curl -H 'Authorization: Bearer fake-key' http://127.0.0.1:3999/v1/models
+curl -X POST -H 'Authorization: Bearer fake-key' -H 'content-type: application/json' \
+  -d '{"model":"amanai/glm-5.3","input":"halo","stream":false}' \
+  http://127.0.0.1:3999/v1/responses
+```
+
+Scenario lain dapat diminta lewat path, misalnya `/v1/scenario/models-401`, `/v1/scenario/models-empty`, `/v1/scenario/models-invalid-json`, atau `/v1/scenario/models-slow`, atau lewat header `X-Scenario`. Server hanya memakai API key palsu; jangan mengisi credential nyata ke fixture.
 
 ## Development build
 

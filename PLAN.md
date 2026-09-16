@@ -284,6 +284,13 @@ Endpoint form, database schema, chat UI, model types lengkap, native HTTP module
 
 ## 8. Phase 1: Domain contracts dan fake endpoint
 
+Status: selesai 16 September 2026. npm run lint, npm run typecheck, npm run test:ci (43 test), dan npm run test:server (10 test) lulus. Fake endpoint memakai node:http dan dijalankan terpisah dari Jest karena tidak membutuhkan environment React Native.
+
+Penyimpangan kecil dari rencana:
+
+- Validasi scheme dibatasi ke HTTPS saja, bukan hanya pada mode release. Tidak ada mode release yang dapat dikenali di layer domain, dan ini lebih ketat daripada rencana. HTTP lokal untuk pengembangan dibuka bersama transport chat.
+- Fixture malformed hanya tersedia sebagai scenario fake server, belum sebagai file fixture terpisah, karena belum ada konsumen di luar test.
+
 ### Goal
 
 Membentuk kontrak data minimum dan fake OpenAI-compatible server sebelum menyentuh API berbayar.
@@ -294,35 +301,37 @@ Membentuk kontrak data minimum dan fake OpenAI-compatible server sebelum menyent
 
 ### Steps
 
-- [ ] Tambahkan src/domain/endpoint.ts dengan EndpointProfile, AuthMode, ProtocolMode, dan endpoint ID.
-- [ ] Tambahkan src/domain/model.ts dengan normalized model record dan CapabilityState: supported, unsupported, unknown.
-- [ ] Tambahkan AppError terstruktur dengan category, message, httpStatus, providerCode, requestId, retryable, dan safeDetails.
-- [ ] Implementasikan normalizeBaseUrl sebagai pure function.
-- [ ] Implementasikan joinEndpointPath sebagai pure function. Jangan memakai string concatenation bebas.
-- [ ] Implementasikan buildAuthHeaders untuk Bearer dan x-api-key.
-- [ ] Tolak URL non-absolute, embedded credentials, scheme selain HTTPS pada mode release, dan hostname kosong.
-- [ ] Tambahkan zod untuk schema response GET /models standar.
-- [ ] Izinkan extension field tetap dibaca oleh normalizer tanpa menjadikannya wajib.
-- [ ] Buat tools/fake-oai-server.mjs memakai node:http.
-- [ ] Fake server awal menyediakan GET /v1/models dan POST /v1/responses non-stream.
-- [ ] Tambahkan scenario melalui path atau request header untuk 401, 403, 404, empty list, invalid JSON, slow response, dan basic success.
-- [ ] Simpan fixture standard models dan AmanAI-style enriched models.
-- [ ] Jangan menambahkan Express, MSW, atau Docker.
+- [x] Tambahkan src/domain/endpoint.ts dengan EndpointProfile, AuthMode, ProtocolMode, dan endpoint ID.
+- [x] Tambahkan src/domain/model.ts dengan normalized model record dan CapabilityState: supported, unsupported, unknown.
+- [x] Tambahkan AppError terstruktur dengan category, message, httpStatus, providerCode, requestId, retryable, dan safeDetails.
+- [x] Implementasikan normalizeBaseUrl sebagai pure function.
+- [x] Implementasikan joinEndpointPath sebagai pure function. Jangan memakai string concatenation bebas.
+- [x] Implementasikan buildAuthHeaders untuk Bearer dan x-api-key.
+- [x] Tolak URL non-absolute, embedded credentials, scheme selain HTTPS pada mode release, dan hostname kosong.
+- [x] Tambahkan zod untuk schema response GET /models standar.
+- [x] Izinkan extension field tetap dibaca oleh normalizer tanpa menjadikannya wajib.
+- [x] Buat tools/fake-oai-server.mjs memakai node:http.
+- [x] Fake server awal menyediakan GET /v1/models dan POST /v1/responses non-stream.
+- [x] Tambahkan scenario melalui path atau request header untuk 401, 403, 404, empty list, invalid JSON, slow response, dan basic success.
+- [x] Simpan fixture standard models dan AmanAI-style enriched models.
+- [x] Jangan menambahkan Express, MSW, atau Docker.
 
 ### Tests
 
-- [ ] Base URL dengan dan tanpa trailing slash.
-- [ ] Base URL yang sudah memiliki /v1.
-- [ ] Endpoint path tidak menghasilkan /v1/v1.
-- [ ] Embedded username/password ditolak.
-- [ ] Header auth benar dan tidak muncul di diagnostic.
-- [ ] Standard model list diterima.
-- [ ] Missing model ID ditolak per record.
-- [ ] Unknown extension tidak membuat parser gagal.
+- [x] Base URL dengan dan tanpa trailing slash.
+- [x] Base URL yang sudah memiliki /v1.
+- [x] Endpoint path tidak menghasilkan /v1/v1.
+- [x] Embedded username/password ditolak.
+- [x] Header auth benar dan tidak muncul di diagnostic.
+- [x] Standard model list diterima.
+- [x] Missing model ID ditolak per record.
+- [x] Unknown extension tidak membuat parser gagal.
 
 ### Exit gate
 
 Pure tests lulus dan fake endpoint dapat mengembalikan model list serta satu non-stream response dengan curl.
+
+Terpenuhi: 43 pure test lulus lewat npm run test:ci dan curl terhadap fake endpoint menghasilkan model list 200, enriched model list 200, 401 tanpa credential, dan satu non-stream response 200.
 
 ### Do not build yet
 
