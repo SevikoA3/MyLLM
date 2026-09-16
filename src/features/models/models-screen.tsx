@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MergedModel } from '../../domain/catalog-merge';
 import { endpointStore } from '../../services/persistence/endpoint-store';
+import { useTheme } from '../../ui/theme';
+import { Screen } from '../../ui/components';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { describeRefresh, modelBadges } from './model-badges';
 import { useModelCatalog } from './use-model-catalog';
@@ -14,10 +15,11 @@ export default function ModelsScreen() {
   const catalog = useModelCatalog(profile);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
+  const theme = useTheme();
 
   const models = catalog.runtime?.models ?? [];
-  const selected = models.find((model) => model.enabled) ?? null;
-  const pickerIds = new Set(models.filter((model) => model.enabled).map((model) => model.id));
+  const enabledIds = models.filter((model) => model.enabled).map((model) => model.id);
+  const hasActive = activeModelId !== null && enabledIds.includes(activeModelId);
 
   useEffect(() => {
     let alive = true;
@@ -33,7 +35,7 @@ export default function ModelsScreen() {
 
   const pick = useCallback(async (model: MergedModel) => {
     if (!model.enabled) {
-      setBlocked(model.id + ' sedang dimatikan oleh override.');
+      setBlocked(model.displayName + ' sedang dimatikan. Aktifkan dulu untuk memakainya.');
       return;
     }
     setBlocked(null);
@@ -43,38 +45,62 @@ export default function ModelsScreen() {
 
   if (status === 'loading' || catalog.loading) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-white dark:bg-black">
-        <ActivityIndicator accessibilityLabel="Memuat katalog model" />
-      </SafeAreaView>
+      <Screen>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={theme.colors.accent} />
+        </View>
+      </Screen>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-black">
-      <View className="gap-1 px-4 pt-4">
-        <Text className="text-xl font-bold text-black dark:text-white">Model</Text>
-        <Text className="text-sm text-neutral-600 dark:text-neutral-400">
-          {(profile?.name ?? 'Tanpa endpoint') + ' / '}
+    <Screen>
+      <View style={{ gap: 10, paddingHorizontal: theme.spacing.screen, paddingTop: theme.spacing.screen, paddingBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
+            Model
+          </Text>
+          <RefreshButton refreshing={catalog.refreshing} onPress={() => void catalog.refresh()} />
+        </View>
+
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+          {profile?.name ?? 'Tanpa endpoint'}
+        </Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
           {describeRefresh(catalog.failure, catalog.runtime?.lastFetchedAt ?? null)}
         </Text>
+        {!hasActive && models.length > 0 && (
+          <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta }}>
+            Belum ada model aktif. Ketuk salah satu model untuk dipakai.
+          </Text>
+        )}
         {blocked !== null && (
-          <Text className="text-sm text-amber-700 dark:text-amber-400">{blocked}</Text>
+          <Text style={{ color: theme.colors.warningText, fontSize: theme.typography.meta }}>
+            {blocked}
+          </Text>
         )}
       </View>
 
       <FlatList
         data={models}
         keyExtractor={(model) => model.id}
-        contentContainerClassName="gap-2 p-4"
+        contentContainerStyle={{ gap: theme.spacing.gap, padding: theme.spacing.screen, paddingTop: 0 }}
         refreshControl={
-          <RefreshControl refreshing={catalog.refreshing} onRefresh={() => void catalog.refresh()} />
+          <RefreshControl
+            refreshing={catalog.refreshing}
+            onRefresh={() => void catalog.refresh()}
+            tintColor={theme.colors.accent}
+            colors={[theme.colors.accent]}
+          />
         }
-        ListEmptyComponent={EmptyCatalog}
+        ListEmptyComponent={
+          <EmptyCatalog refreshing={catalog.refreshing} onPress={() => void catalog.refresh()} />
+        }
         renderItem={({ item }) => (
           <ModelRow
             model={item}
             active={item.id === activeModelId}
-            selectable={pickerIds.has(item.id)}
+            selectable={item.enabled}
             onPress={() => void pick(item)}
             onToggle={() =>
               void catalog.setOverride(item.id, {
@@ -85,17 +111,48 @@ export default function ModelsScreen() {
         )}
       />
 
-      <View className="border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
-        <Text className="text-sm text-neutral-600 dark:text-neutral-400">
-          {String(pickerIds.size) + ' dari ' + String(models.length) + ' model dapat dipilih.'}
-          {selected === null ? ' Belum ada model aktif.' : ''}
+      <View
+        style={{ paddingHorizontal: theme.spacing.screen, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+          {String(enabledIds.length) + ' dari ' + String(models.length) + ' model dapat dipilih.'}
         </Text>
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-function ModelRow({
+function RefreshButton({ refreshing, onPress }: { refreshing: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Refresh katalog"
+      accessibilityHint="Mengambil ulang daftar model dari endpoint"
+      accessibilityState={{ busy: refreshing, disabled: refreshing }}
+      disabled={refreshing}
+      onPress={onPress}
+      style={{
+        minHeight: 44,
+        minWidth: 96,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: theme.spacing.screen,
+        backgroundColor: refreshing ? theme.colors.surface : theme.colors.accent,
+        borderRadius: theme.radius.control,
+      }}>
+      <Text
+        style={{
+          color: refreshing ? theme.colors.textMuted : theme.colors.accentText,
+          fontSize: theme.typography.body,
+          fontWeight: '600',
+        }}>
+        {refreshing ? 'Memuat...' : 'Refresh'}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function ModelRow({
   model,
   active,
   selectable,
@@ -108,63 +165,102 @@ function ModelRow({
   onPress: () => void;
   onToggle: () => void;
 }) {
+  const theme = useTheme();
+  const rowStyle = {
+    minHeight: 48,
+    gap: 6,
+    padding: theme.spacing.screen,
+    borderRadius: theme.radius.card,
+    borderWidth: active ? 2 : 1,
+    borderColor: active ? theme.colors.borderStrong : theme.colors.border,
+    backgroundColor: active ? theme.colors.surface : theme.colors.background,
+  };
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={'Pilih model ' + model.id}
       accessibilityHint={
-        selectable ? 'Menjadikan model ini model aktif' : 'Model dimatikan oleh override'
+        selectable ? 'Menjadikan model ini model aktif' : 'Model sedang dimatikan'
       }
+      accessibilityState={{ selected: active, disabled: !selectable }}
       onPress={onPress}
-      className={
-        'min-h-[48px] gap-1 rounded-lg border p-3 ' +
-        (active
-          ? 'border-black bg-neutral-100 dark:border-white dark:bg-neutral-900'
-          : 'border-neutral-300 dark:border-neutral-700')
-      }>
-      <Text className="text-base font-semibold text-black dark:text-white">{model.displayName}</Text>
-      {model.displayName !== model.id && (
-        <Text className="text-xs text-neutral-500 dark:text-neutral-400">{model.id}</Text>
-      )}
-      <View className="flex-row flex-wrap gap-1">
-        {modelBadges(model).map((badge) => (
-          <Text
-            key={badge}
-            className="rounded bg-neutral-200 px-2 py-0.5 text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-            {badge}
-          </Text>
-        ))}
-        {active && (
-          <Text className="rounded bg-black px-2 py-0.5 text-xs text-white dark:bg-white dark:text-black">
-            aktif
-          </Text>
-        )}
-        {!model.enabled && (
-          <Text className="rounded bg-amber-200 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100">
-            dimatikan
-          </Text>
-        )}
-      </View>
+      style={rowStyle}>
       <Text
-        accessibilityRole="button"
-        accessibilityLabel={
-          (model.enabled ? 'Matikan model ' : 'Aktifkan model ') + model.id
-        }
-        onPress={onToggle}
-        className="min-h-[48px] pt-3 text-sm font-medium text-blue-600 dark:text-blue-400">
-        {model.enabled ? 'Matikan dari picker' : 'Aktifkan di picker'}
+        style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
+        {model.displayName}
       </Text>
+      {model.displayName !== model.id && (
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+          {model.id}
+        </Text>
+      )}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {modelBadges(model).map((badge) => (
+          <Badge key={badge} label={badge} tone="neutral" />
+        ))}
+        {active && <Badge label="aktif" tone="accent" />}
+        {!model.enabled && <Badge label="dimatikan" tone="warning" />}
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={(model.enabled ? 'Matikan model ' : 'Aktifkan model ') + model.id}
+        onPress={onToggle}
+        style={{ minHeight: 44, justifyContent: 'center' }}>
+        <Text
+          style={{
+            color: theme.colors.accent,
+            fontSize: theme.typography.body,
+            fontWeight: '600',
+          }}>
+          {model.enabled ? 'Matikan dari picker' : 'Aktifkan di picker'}
+        </Text>
+      </Pressable>
     </Pressable>
   );
 }
 
-function EmptyCatalog() {
+function Badge({ label, tone }: { label: string; tone: 'neutral' | 'accent' | 'warning' }) {
+  const theme = useTheme();
+  const palette = {
+    neutral: { backgroundColor: theme.colors.surface, color: theme.colors.textMuted },
+    accent: { backgroundColor: theme.colors.accent, color: theme.colors.accentText },
+    warning: { backgroundColor: theme.colors.warningBg, color: theme.colors.warningText },
+  }[tone];
   return (
-    <View className="gap-1 rounded-lg border border-neutral-300 p-4 dark:border-neutral-700">
-      <Text className="text-base font-semibold text-black dark:text-white">Katalog kosong</Text>
-      <Text className="text-sm text-neutral-600 dark:text-neutral-400">
-        Belum ada model tersimpan. Tarik ke bawah untuk refresh setelah perangkat online.
+    <Text
+      style={{
+        ...palette,
+        fontSize: theme.typography.meta,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: theme.radius.pill,
+        overflow: 'hidden',
+      }}>
+      {label}
+    </Text>
+  );
+}
+
+function EmptyCatalog({ refreshing, onPress }: { refreshing: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        gap: 10,
+        padding: theme.spacing.screen,
+        borderRadius: theme.radius.card,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.surface,
+      }}>
+      <Text style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
+        Katalog kosong
       </Text>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
+        Belum ada model tersimpan di perangkat ini. Tekan Refresh setelah perangkat online.
+      </Text>
+      <RefreshButton refreshing={refreshing} onPress={onPress} />
     </View>
   );
 }

@@ -22,6 +22,11 @@ export type ModelCatalogState = {
   setOverride: (modelId: string, patch: ModelOverride | null) => Promise<void>;
 };
 
+/** Profile tanpa credentialRef tidak boleh menulis credential yatim ke Keystore. */
+export function usesStoredCredential(profile: EndpointProfile | null): boolean {
+  return profile !== null && profile.credentialRef !== null;
+}
+
 /**
  * Cache dibaca lebih dulu supaya picker langsung terisi, lalu GET /models berjalan
  * di background. Repository dipegang di ref supaya refresh tetap di-coalesce.
@@ -49,6 +54,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
       fetchModels: async ({ baseUrl, modelListPath }) => {
         const apiKey =
           profile.credentialRef === null ? null : await credentialStore.read(profile.credentialRef);
+        // Tanpa credential tersimpan, refresh berhenti dengan pesan yang bisa ditindaklanjuti.
         if (apiKey === null) {
           return { ok: false, message: 'API key tidak tersedia di secure storage.' };
         }

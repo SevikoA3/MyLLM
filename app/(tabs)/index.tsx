@@ -1,21 +1,31 @@
-import { Link } from 'expo-router';
 import { Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { InfoBlock, LinkCard, Screen } from '../../src/ui/components';
+import { useTheme } from '../../src/ui/theme';
 
 export default function HomeScreen() {
+  const theme = useTheme();
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-black">
-      <View className="flex-1 items-center justify-center gap-2 px-6">
-        <Text className="text-2xl font-bold text-black dark:text-white">MyLLM</Text>
-        <Text className="text-base text-neutral-600 dark:text-neutral-400">
-          Endpoint aktif. Chat UI diisi pada Phase 4.
+    <Screen>
+      <View style={{ flex: 1, gap: theme.spacing.screen, padding: theme.spacing.screen }}>
+        <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
+          MyLLM
         </Text>
-        <Link href="/models" asChild>
-          <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">
-            Pilih model
-          </Text>
-        </Link>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
+          Endpoint aktif dan katalog model siap. Chat UI diisi pada Phase 4.
+        </Text>
+
+        <LinkCard
+          href="/models"
+          label="Model"
+          description="Pilih model aktif dan lihat metadata yang tersedia"
+        />
+
+        <InfoBlock
+          title="Langkah berikutnya"
+          body="Buka tab Model, tekan Refresh untuk mengambil daftar terbaru, lalu ketuk model yang ingin dipakai."
+        />
       </View>
-    </SafeAreaView>
+    </Screen>
   );
 }

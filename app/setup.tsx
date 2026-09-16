@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthModeSchema, validateBaseUrl } from '../src/domain/endpoint';
 import { describe, type ErrorCopy } from '../src/features/setup/error-copy';
@@ -10,15 +9,15 @@ import { useActiveEndpoint } from '../src/features/setup/use-active-endpoint';
 import { modelsUrl } from '../src/services/transport/models';
 import { seedCatalogCache } from '../src/services/persistence/catalog-seed';
 import { fileCatalogStorage, readBundledDefaults } from '../src/services/persistence/catalog-files';
-
-const inputClass =
-  'rounded-lg border border-neutral-300 bg-white px-3 py-2 text-base text-black dark:border-neutral-700 dark:bg-neutral-900 dark:text-white';
+import { InfoBlock, PrimaryButton, Screen } from '../src/ui/components';
+import { useTheme } from '../src/ui/theme';
 
 type Edits = Partial<SetupInput>;
 
 export default function SetupScreen() {
   const router = useRouter();
   const { status, profile } = useActiveEndpoint();
+  const theme = useTheme();
   // Field yang belum disentuh tetap mengikuti nilai dari endpoint tersimpan.
   const [edits, setEdits] = useState<Edits>({});
   // Key hanya hidup selama flow submit, tidak pernah dibaca ulang dari storage.
@@ -98,64 +97,84 @@ export default function SetupScreen() {
 
   if (status === 'loading') {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-white dark:bg-black">
-        <Text className="text-base text-neutral-600 dark:text-neutral-400">Memuat endpoint.</Text>
-      </SafeAreaView>
+      <Screen>
+        <View style={{ flex: 1, justifyContent: 'center', padding: theme.spacing.screen }}>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
+            Memuat endpoint.
+          </Text>
+        </View>
+      </Screen>
     );
   }
 
+  const inputStyle = {
+    minHeight: 48,
+    paddingHorizontal: theme.spacing.screen,
+    paddingVertical: 10,
+    borderRadius: theme.radius.control,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    color: theme.colors.text,
+    fontSize: theme.typography.body,
+  } as const;
+
   return (
-    <SafeAreaView className="flex-1 bg-white dark:bg-black">
-      <ScrollView contentContainerClassName="gap-4 p-4" keyboardShouldPersistTaps="handled">
-        <View className="gap-1">
-          <Text className="text-xl font-bold text-black dark:text-white">
+    <Screen>
+      <ScrollView
+        contentContainerStyle={{ gap: theme.spacing.screen, padding: theme.spacing.screen }}
+        keyboardShouldPersistTaps="handled">
+        <View style={{ gap: 4 }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
             {profile === null ? 'Setup endpoint' : 'Endpoint'}
           </Text>
-          <Text className="text-base text-neutral-600 dark:text-neutral-400">
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
             Endpoint OpenAI-compatible. Protokol fase ini hanya Responses (MVP support).
           </Text>
         </View>
 
         <Field label="Endpoint name">
           <TextInput
-            className={inputClass}
+            style={inputStyle}
             value={name}
             onChangeText={(value) => setEdits((current) => ({ ...current, name: value }))}
             placeholder={suggestName(baseUrl) || 'Endpoint saya'}
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={theme.colors.textMuted}
             autoCapitalize="none"
           />
         </Field>
 
         <Field label="Base URL">
           <TextInput
-            className={inputClass}
+            style={inputStyle}
             value={baseUrl}
             onChangeText={(value) => setEdits((current) => ({ ...current, baseUrl: value }))}
             placeholder="https://api.amanai.dev/v1"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={theme.colors.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
           />
         </Field>
         {urlError === null ? (
-          <Text className="text-sm text-neutral-500 dark:text-neutral-400">
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
             Preview: GET {previewUrl ?? '(lengkapi base URL)'}
           </Text>
         ) : (
-          <Text className="text-sm text-red-600 dark:text-red-400">{urlError}</Text>
+          <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta }}>
+            {urlError}
+          </Text>
         )}
 
         <Field label="API key">
           <TextInput
-            className={inputClass}
+            style={inputStyle}
             value={apiKey}
             onChangeText={setKeyDraft}
             placeholder={
               canReuseKey ? 'Tersimpan di secure storage. Isi untuk mengganti.' : 'sk-...'
             }
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={theme.colors.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry
@@ -163,23 +182,28 @@ export default function SetupScreen() {
         </Field>
 
         <Field label="Auth mode">
-          <View className="flex-row gap-2">
+          <View style={{ flexDirection: 'row', gap: theme.spacing.gap }}>
             {AuthModeSchema.options.map((mode) => (
               <Pressable
                 key={mode}
                 onPress={() => setEdits((current) => ({ ...current, authMode: mode }))}
-                className={
-                  'rounded-lg border px-3 py-2 ' +
-                  (authMode === mode
-                    ? 'border-black bg-black dark:border-white dark:bg-white'
-                    : 'border-neutral-300 dark:border-neutral-700')
-                }>
+                accessibilityRole="button"
+                accessibilityState={{ selected: authMode === mode }}
+                style={{
+                  minHeight: 48,
+                  justifyContent: 'center',
+                  paddingHorizontal: theme.spacing.screen,
+                  borderRadius: theme.radius.control,
+                  borderWidth: 1,
+                  borderColor: authMode === mode ? theme.colors.accent : theme.colors.border,
+                  backgroundColor: authMode === mode ? theme.colors.accent : theme.colors.surface,
+                }}>
                 <Text
-                  className={
-                    authMode === mode
-                      ? 'text-base text-white dark:text-black'
-                      : 'text-base text-black dark:text-white'
-                  }>
+                  style={{
+                    color: authMode === mode ? theme.colors.accentText : theme.colors.text,
+                    fontSize: theme.typography.body,
+                    fontWeight: authMode === mode ? '700' : '400',
+                  }}>
                   {mode}
                 </Text>
               </Pressable>
@@ -188,54 +212,49 @@ export default function SetupScreen() {
         </Field>
 
         <Pressable onPress={() => setAdvanced(!advanced)}>
-          <Text className="text-sm text-blue-600 dark:text-blue-400">
+          <Text style={{ color: theme.colors.accent, fontSize: theme.typography.meta }}>
             {advanced ? 'Sembunyikan advanced' : 'Advanced'}
           </Text>
         </Pressable>
         {advanced && (
           <Field label="Models path">
             <TextInput
-              className={inputClass}
+              style={inputStyle}
               value={modelListPath}
               onChangeText={(value) =>
                 setEdits((current) => ({ ...current, modelListPath: value }))
               }
               placeholder="/models"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={theme.colors.textMuted}
               autoCapitalize="none"
             />
           </Field>
         )}
 
-        <Pressable
+        <PrimaryButton
+          label={busy ? 'Menghubungkan...' : 'Connect & discover models'}
+          hint="Menguji endpoint, menyimpan key, dan mengambil daftar model"
+          busy={busy}
           disabled={!canConnect}
-          onPress={onConnect}
-          className={
-            'rounded-lg px-4 py-3 ' +
-            (canConnect ? 'bg-black dark:bg-white' : 'bg-neutral-300 dark:bg-neutral-700')
-          }>
-          <Text className="text-center text-base font-semibold text-white dark:text-black">
-            {busy ? 'Menghubungkan...' : 'Connect & discover models'}
-          </Text>
-        </Pressable>
+          onPress={() => void onConnect()}
+        />
 
         {failure !== null && (
-          <View className="gap-1 rounded-lg border border-red-300 p-3 dark:border-red-800">
-            <Text className="text-base font-semibold text-red-700 dark:text-red-400">
-              {failure.title}
-            </Text>
-            <Text className="text-sm text-red-700 dark:text-red-400">{failure.body}</Text>
-          </View>
+          <InfoBlock title={failure.title} body={failure.body} tone="danger" />
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const theme = useTheme();
   return (
-    <View className="gap-1">
-      <Text className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{label}</Text>
+    <View style={{ gap: 4 }}>
+      <Text
+        style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '600' }}>
+        {label}
+      </Text>
       {children}
     </View>
   );
