@@ -18,32 +18,43 @@ if (!baseUrl || !apiKey) {
 
 const { discoverModels } = await import('../.tests-build/services/transport/models.js');
 const { createEndpointProfile } = await import('../.tests-build/domain/endpoint.js');
-const { parseModelList } = await import('../.tests-build/domain/model-list.js');
-const { snapshotFromModels, mergedFrom } = await import(
+const { createCatalogRepository } = await import(
   '../.tests-build/services/persistence/catalog-store.js'
 );
 
 const profile = createEndpointProfile({ id: 'ep_smoke', name: 'AmanAI', baseUrl });
-const result = await discoverModels(profile, apiKey);
+const files = new Map();
+const repository = createCatalogRepository({
+  storage: {
+    readText: async (name) => files.get(name) ?? null,
+    writeText: async (name, text) => void files.set(name, text),
+    copy: async (from, to) => {
+      const value = files.get(from);
+      if (value !== undefined) files.set(to, value);
+    },
+    exists: async (name) => files.has(name),
+  },
+  readDefaults: async () => ({ schemaVersion: 1, models: [] }),
+  fetchModels: async ({ baseUrl: nextBaseUrl, modelListPath }) => {
+    const discovered = await discoverModels(
+      { ...profile, baseUrl: nextBaseUrl, compat: { ...profile.compat, modelListPath } },
+      apiKey,
+    );
+    return discovered.ok
+      ? { ok: true, models: discovered.models }
+      : { ok: false, message: discovered.error.message };
+  },
+});
+const result = await repository.refresh({
+  endpointId: profile.id,
+  baseUrl: profile.baseUrl,
+  modelListPath: profile.compat.modelListPath,
+});
 if (!result.ok) {
-  console.error('discovery gagal:', result.error.category, result.error.httpStatus ?? '-');
+  console.error('refresh gagal:', result.error.kind);
   process.exit(1);
 }
-
-const snapshot = snapshotFromModels(
-  profile.id,
-  profile.baseUrl,
-  result.models,
-  new Date().toISOString(),
-);
-const raw = await fetchRawModels(profile, apiKey);
-const normalized = raw === null ? result.models : parseModelList(raw).models;
-const runtime = mergedFrom(
-  { schemaVersion: 1, models: [] },
-  snapshotFromModels(profile.id, profile.baseUrl, normalized, new Date().toISOString()),
-  { schemaVersion: 1, endpoints: {} },
-  profile.id,
-);
+const runtime = result.catalog;
 
 console.log(`endpoint ${profile.baseUrl}`);
 console.log(`model ditemukan: ${runtime.models.length}`);
@@ -78,16 +89,4 @@ function readEnvFile(path) {
     entries[match[1]] = match[2].trim().replace(/^['"]|['"]$/g, '');
   }
   return entries;
-}
-
-async function fetchRawModels(profile, apiKey) {
-  const { joinEndpointPath, buildAuthHeaders } = await import('../.tests-build/domain/endpoint.js');
-  try {
-    const response = await fetch(joinEndpointPath(profile.baseUrl, profile.compat.modelListPath), {
-      headers: { Accept: 'application/json', ...buildAuthHeaders(profile.authMode, apiKey) },
-    });
-    return response.ok ? await response.text() : null;
-  } catch {
-    return null;
-  }
 }
