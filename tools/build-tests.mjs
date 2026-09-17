@@ -9,6 +9,7 @@ const OUT = '.tests-build';
 const ENTRIES = [
   'src/services/transport/models.ts',
   'src/services/transport/responses.ts',
+  'src/services/persistence/conversation-store.ts',
   'src/features/setup/onboarding.ts',
   // Fixture model memakai normalizer produksi supaya test tidak menyalin mapping field.
   'src/domain/model-list.ts',
@@ -96,5 +97,8 @@ if (!existsSync(join(OUT, 'services', 'transport', 'models.js'))) {
 }
 if (!existsSync(join(OUT, 'services', 'transport', 'responses.js'))) {
   throw new Error('kompilasi Responses client gagal');
+}
+if (!existsSync(join(OUT, 'services', 'persistence', 'conversation-store.js'))) {
+  throw new Error('kompilasi conversation repository gagal');
 }
 console.log('tests-build siap');

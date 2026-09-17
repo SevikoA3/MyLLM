@@ -10,6 +10,14 @@ import { useChat } from './use-chat';
 const mockCredentialRead = jest.fn(async () => 'sk-test');
 const mockLoadModel = jest.fn(async () => 'model-exact');
 const mockSend = jest.fn<Promise<SendResponseResult>, unknown[]>();
+const mockStartTurn = jest.fn(async (_input: unknown) => ({ conversationId: 'conv_1' }));
+const mockRestartTurn = jest.fn(async (_turnId: unknown, _itemId: unknown) => {});
+const mockFlushAssistant = jest.fn(
+  async (_turnId: unknown, _itemId: unknown, _text: unknown, _reasoning: unknown) => {},
+);
+const mockFinishTurn = jest.fn(async (_input: unknown) => {});
+const mockLoadConversation = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
+const mockLoadLatest = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
 
 jest.mock('../../services/credentials/store', () => ({
   credentialStore: { read: () => mockCredentialRead() },
@@ -17,6 +25,18 @@ jest.mock('../../services/credentials/store', () => ({
 
 jest.mock('../../services/persistence/settings-store', () => ({
   settingsStore: { loadActiveModelId: () => mockLoadModel() },
+}));
+
+jest.mock('../../services/persistence/conversation-store', () => ({
+  conversationRepository: {
+    startTurn: (input: unknown) => mockStartTurn(input),
+    restartTurn: (turnId: unknown, itemId: unknown) => mockRestartTurn(turnId, itemId),
+    flushAssistant: (turnId: unknown, itemId: unknown, text: unknown, reasoning: unknown) =>
+      mockFlushAssistant(turnId, itemId, text, reasoning),
+    finishTurn: (input: unknown) => mockFinishTurn(input),
+    loadConversation: (id: unknown) => mockLoadConversation(id),
+    loadLatest: (id: unknown) => mockLoadLatest(id),
+  },
 }));
 
 jest.mock('../../services/transport/responses', () => ({
@@ -84,6 +104,12 @@ describe('useChat', () => {
     mockCredentialRead.mockClear();
     mockLoadModel.mockClear();
     mockSend.mockReset();
+    mockStartTurn.mockClear();
+    mockRestartTurn.mockClear();
+    mockFlushAssistant.mockClear();
+    mockFinishTurn.mockClear();
+    mockLoadConversation.mockClear();
+    mockLoadLatest.mockClear();
   });
 
   it('menampilkan user segera, mencegah send duplikat, dan melanjutkan response id', async () => {
@@ -100,7 +126,7 @@ describe('useChat', () => {
       first = result.current.send(' Halo ');
       await Promise.resolve();
     });
-    expect(result.current.messages.map((entry) => entry.text)).toEqual(['Halo']);
+    expect(result.current.messages.map((entry) => entry.text)).toEqual(['Halo', '']);
     expect(result.current.pending).toBe(true);
 
     await expect(result.current.send('duplikat')).resolves.toBe(false);
@@ -142,7 +168,7 @@ describe('useChat', () => {
       await result.current.send('coba');
     });
     expect(result.current.canRetry).toBe(true);
-    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages.map((entry) => entry.status)).toEqual(['completed', 'failed']);
 
     await act(async () => {
       await result.current.retry();
@@ -227,6 +253,7 @@ describe('useChat', () => {
     expect(result.current.pending).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.messages.at(-1)?.text).toBe('jawaban partial');
+    expect(mockFlushAssistant).toHaveBeenCalledTimes(1);
   });
 
   it('error setelah event pertama mempertahankan partial dan tidak menawarkan retry', async () => {
@@ -250,5 +277,44 @@ describe('useChat', () => {
     expect(result.current.messages.map((entry) => entry.text)).toEqual(['halo', 'sebagian']);
     expect(result.current.canRetry).toBe(false);
     expect(result.current.error).not.toBeNull();
+  });
+
+  it('memuat partial conversation yang interrupted untuk retry', async () => {
+    mockLoadConversation.mockResolvedValueOnce({
+      id: 'conv_saved',
+      title: 'Percakapan tersimpan',
+      messages: [
+        {
+          id: 'user_saved',
+          role: 'user',
+          text: 'lanjutkan',
+          reasoningSummary: null,
+          status: 'completed',
+        },
+        {
+          id: 'assistant_saved',
+          role: 'assistant',
+          text: 'jawaban parsial',
+          reasoningSummary: null,
+          status: 'interrupted',
+        },
+      ],
+      previousResponseId: null,
+      previousResponseModelId: null,
+      retry: {
+        prompt: 'lanjutkan',
+        turnId: 'turn_saved',
+        assistantItemId: 'assistant_saved',
+      },
+    });
+    const hook = await renderHook(() => useChat(profile, 'conv_saved'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(hook.result.current.conversationId).toBe('conv_saved');
+    expect(hook.result.current.messages.at(-1)?.status).toBe('interrupted');
+    expect(hook.result.current.canRetry).toBe(true);
   });
 });

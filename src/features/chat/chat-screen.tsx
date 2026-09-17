@@ -1,6 +1,7 @@
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useState } from 'react';
+import Markdown from 'react-native-markdown-display';
 import {
   ActivityIndicator,
   FlatList,
@@ -21,9 +22,14 @@ import { useChat } from './use-chat';
 
 export default function ChatScreen() {
   const { status, profile } = useActiveEndpoint();
-  const chat = useChat(profile);
+  const params = useLocalSearchParams<{ conversationId?: string; fresh?: string }>();
+  const startFresh = params.conversationId === 'new';
+  const requestedConversationId =
+    typeof params.conversationId === 'string' && !startFresh ? params.conversationId : null;
+  const chat = useChat(profile, requestedConversationId, startFresh);
   const [draft, setDraft] = useState('');
   const theme = useTheme();
+  const router = useRouter();
   const reloadModel = chat.reloadModel;
 
   useFocusEffect(
@@ -34,14 +40,20 @@ export default function ChatScreen() {
 
   const submit = useCallback(() => {
     const prompt = draft.trim();
-    if (prompt.length === 0 || chat.pending || chat.activeModelId === null) {
+    if (
+      prompt.length === 0 ||
+      chat.pending ||
+      chat.loadingModel ||
+      chat.activeModelId === null
+    ) {
       return;
     }
     setDraft('');
     void chat.send(prompt);
   }, [chat, draft]);
   const sendDisabled =
-    !chat.pending && (chat.activeModelId === null || draft.trim().length === 0);
+    !chat.pending &&
+    (chat.loadingModel || chat.activeModelId === null || draft.trim().length === 0);
 
   if (status === 'loading') {
     return (
@@ -93,6 +105,12 @@ export default function ChatScreen() {
             onPress={() => {
               chat.newChat();
               setDraft('');
+              if (requestedConversationId !== null) {
+                router.replace({
+                  pathname: '/chat/[conversationId]',
+                  params: { conversationId: 'new' },
+                });
+              }
             }}
             style={({ pressed }) => ({
               minHeight: 44,
@@ -110,6 +128,25 @@ export default function ChatScreen() {
               }}>
               New chat
             </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Buka history"
+            onPress={() => router.push('/history')}
+            style={({ pressed }) => ({
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: theme.radius.control,
+              backgroundColor: theme.colors.surface,
+              opacity: pressed ? 0.7 : 1,
+            })}>
+            <SymbolView
+              name={{ ios: 'clock.arrow.circlepath', android: 'history' }}
+              size={21}
+              tintColor={theme.colors.text}
+            />
           </Pressable>
         </View>
 
@@ -155,12 +192,19 @@ export default function ChatScreen() {
             }}
             ListEmptyComponent={<EmptyChat />}
             ListFooterComponent={chat.pending ? <PendingMessage /> : null}
-            renderItem={({ item }) => <MessageBubble message={item} />}
+            renderItem={({ item }) =>
+              item.role === 'assistant' && item.status === 'sending' && item.text.length === 0
+                ? null
+                : <MessageBubble message={item} />
+            }
           />
         )}
 
         {chat.error !== null && (
           <ErrorCard error={chat.error} canRetry={chat.canRetry} onRetry={() => void chat.retry()} />
+        )}
+        {chat.error === null && chat.canRetry && (
+          <RetryCard onRetry={() => void chat.retry()} />
         )}
 
         <View
@@ -179,7 +223,7 @@ export default function ChatScreen() {
             onChangeText={setDraft}
             placeholder="Tulis pesan..."
             placeholderTextColor={theme.colors.textMuted}
-            editable={!chat.pending && chat.activeModelId !== null}
+            editable={!chat.pending && !chat.loadingModel && chat.activeModelId !== null}
             multiline
             style={{
               minHeight: 48,
@@ -265,14 +309,32 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           </Text>
         </View>
       )}
-      <Text
-        style={{
-          color: user ? theme.colors.accentText : theme.colors.text,
-          fontSize: theme.typography.body,
-          lineHeight: 22,
-        }}>
-        {message.text}
-      </Text>
+      {!user && message.status === 'completed' ? (
+        <Markdown
+          style={{
+            body: { color: theme.colors.text, fontSize: theme.typography.body, lineHeight: 22 },
+            code_inline: { backgroundColor: theme.colors.background, color: theme.colors.text },
+            code_block: { backgroundColor: theme.colors.background, color: theme.colors.text },
+            fence: { backgroundColor: theme.colors.background, color: theme.colors.text },
+            link: { color: theme.colors.accent },
+          }}>
+          {message.text}
+        </Markdown>
+      ) : (
+        <Text
+          style={{
+            color: user ? theme.colors.accentText : theme.colors.text,
+            fontSize: theme.typography.body,
+            lineHeight: 22,
+          }}>
+          {message.text}
+        </Text>
+      )}
+      {!user && message.status === 'interrupted' && (
+        <Text style={{ color: theme.colors.warningText, fontSize: theme.typography.meta }}>
+          Terputus saat aplikasi ditutup
+        </Text>
+      )}
     </View>
   );
 }
@@ -308,7 +370,7 @@ function EmptyChat() {
           textAlign: 'center',
           lineHeight: 21,
         }}>
-        Pesan disimpan di memory selama layar ini terbuka.
+        Percakapan disimpan otomatis dan tersedia di History.
       </Text>
     </View>
   );
@@ -370,6 +432,31 @@ function ErrorCard({
           </Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+function RetryCard({ onRetry }: { onRetry: () => void }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        marginHorizontal: theme.spacing.screen,
+        marginBottom: 4,
+        padding: 12,
+        borderRadius: theme.radius.control,
+        backgroundColor: theme.colors.warningBg,
+      }}>
+      <Text style={{ flex: 1, color: theme.colors.warningText, fontSize: theme.typography.meta }}>
+        Jawaban sebelumnya terputus.
+      </Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Coba lagi" onPress={onRetry}>
+        <Text style={{ color: theme.colors.warningText, fontWeight: '800' }}>Coba lagi</Text>
+      </Pressable>
     </View>
   );
 }

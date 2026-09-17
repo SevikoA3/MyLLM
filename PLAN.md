@@ -579,43 +579,47 @@ Menunggu laporan verifikasi manual Android. Test contract Node dan smoke AmanAI 
 
 ## 13. Phase 6: SQLite conversation, history, dan recovery
 
+Status: implementasi dan test otomatis selesai 17 September 2026. Exit gate process-kill Android menunggu verifikasi manual.
+
 ### Goal
 
 Conversation bertahan setelah process death dan dapat dikelola tanpa menyimpan seluruh transcript di global state.
 
 ### Steps
 
-- [ ] Buat migration version 1 dengan tables conversations, turns, items, usage, timing.
-- [ ] Aktifkan PRAGMA journal_mode=WAL dan PRAGMA foreign_keys=ON.
-- [ ] Gunakan prepared parameters untuk semua user/provider content.
-- [ ] Gunakan withExclusiveTransactionAsync untuk write batch yang harus atomic.
-- [ ] Jangan menambahkan ORM.
-- [ ] Buat repository methods yang dipakai screen saat ini saja.
-- [ ] Persist user turn sebelum network request.
-- [ ] Persist assistant placeholder dengan status sending.
-- [ ] Flush streaming text ke database per UI batch, bukan per token.
-- [ ] Persist response ID, model ID, endpoint ID, reasoning setting, dan output ceiling per turn.
-- [ ] Pada app start, ubah status sending atau streaming lama menjadi interrupted.
-- [ ] Buat history screen dengan pagination.
-- [ ] Buat New chat, rename, delete dengan confirmation, dan retry last turn.
-- [ ] Auto title memakai potongan prompt pertama. Jangan membuat request LLM tambahan.
-- [ ] Tambahkan react-native-markdown-display untuk completed response.
-- [ ] Render streaming text sederhana jika markdown reparse menyebabkan jank.
-- [ ] Gunakan FlatList, bukan list library baru.
-- [ ] Simpan draft composer per conversation di kv-store jika kehilangan draft terbukti mengganggu.
+- [x] Buat migration version 1 dengan tables conversations, turns, items, usage, timing.
+- [x] Aktifkan PRAGMA journal_mode=WAL dan PRAGMA foreign_keys=ON.
+- [x] Gunakan prepared parameters untuk semua user/provider content.
+- [x] Gunakan withExclusiveTransactionAsync untuk write batch yang harus atomic.
+- [x] Jangan menambahkan ORM.
+- [x] Buat repository methods yang dipakai screen saat ini saja.
+- [x] Persist user turn sebelum network request.
+- [x] Persist assistant placeholder dengan status sending.
+- [x] Flush streaming text ke database per UI batch, bukan per token.
+- [x] Persist response ID, model ID, endpoint ID, reasoning setting, dan output ceiling per turn.
+- [x] Pada app start, ubah status sending atau streaming lama menjadi interrupted.
+- [x] Buat history screen dengan pagination.
+- [x] Buat New chat, rename, delete dengan confirmation, dan retry last turn.
+- [x] Auto title memakai potongan prompt pertama. Jangan membuat request LLM tambahan.
+- [x] Tambahkan react-native-markdown-display untuk completed response.
+- [x] Render streaming text sederhana jika markdown reparse menyebabkan jank.
+- [x] Gunakan FlatList, bukan list library baru.
+- [x] Simpan draft composer per conversation di kv-store jika kehilangan draft terbukti mengganggu. Tidak dibangun karena kebutuhan kondisional belum terbukti.
 
 ### Tests
 
-- [ ] Migration dari database kosong.
-- [ ] Foreign key dan cascade delete.
-- [ ] Partial stream tersimpan.
-- [ ] Process restart menandai interrupted.
-- [ ] Delete membersihkan turns, items, usage, dan timing.
-- [ ] Pagination stabil dengan sort updatedAt dan ID.
+- [x] Migration dari database kosong.
+- [x] Foreign key dan cascade delete.
+- [x] Partial stream tersimpan.
+- [x] Process restart menandai interrupted.
+- [x] Delete membersihkan turns, items, usage, dan timing.
+- [x] Pagination stabil dengan sort updatedAt dan ID.
 
 ### Exit gate
 
 Kill app di tengah stream, buka kembali, dan pastikan partial response serta status interrupted muncul. History tidak hilang.
+
+Menunggu laporan verifikasi manual Android. Contract test SQLite membuktikan recovery partial response menjadi interrupted dan history tetap ada setelah repository dibuka ulang.
 
 ### Do not build yet
 

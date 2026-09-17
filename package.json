@@ -23,6 +23,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-css": "3.1.0-rc.0",
+    "react-native-markdown-display": "^7.0.2",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
@@ -56,6 +57,7 @@
     "test:transport": "node tools/build-tests.mjs && node --test tools/transport.test.mjs",
     "test:onboarding": "node tools/build-tests.mjs && node --test tools/onboarding.test.mjs",
     "test:responses": "node tools/build-tests.mjs && node --test tools/responses.test.mjs",
+    "test:conversations": "node tools/build-tests.mjs && node --test tools/conversations.test.mjs",
     "test:fields": "node tools/build-tests.mjs && node --test tools/model-fields.test.mjs",
     "smoke:models": "node tools/build-tests.mjs && node tools/smoke-models.mjs",
     "smoke:responses": "node tools/build-tests.mjs && node tools/smoke-responses.mjs"

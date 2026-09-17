@@ -2,7 +2,7 @@
 
 Aplikasi Android chat client untuk custom OpenAI-compatible endpoint.
 
-Implementasi Phase 5 selesai. Aplikasi memiliki endpoint onboarding, secure credential, model catalog, model picker, dan chat Responses API streaming dengan Stop serta partial output. Gate manual Android masih menunggu; database percakapan belum ada.
+Implementasi Phase 6 selesai. Aplikasi memiliki endpoint onboarding, model catalog, Responses streaming, Stop, SQLite history, dan recovery partial response. Gate manual Android untuk process-kill recovery masih menunggu.
 
 ## Perintah
 
@@ -18,6 +18,7 @@ Implementasi Phase 5 selesai. Aplikasi memiliki endpoint onboarding, secure cred
 | `npm run test:transport` | Contract test transport model discovery terhadap fake endpoint |
 | `npm run test:onboarding` | Smoke test alur connect dan discover terhadap fake endpoint |
 | `npm run test:responses` | Contract test Responses API streaming terhadap fake endpoint |
+| `npm run test:conversations` | Contract test SQLite conversation dan recovery |
 | `npm run smoke:models` | Refresh katalog nyata memakai endpoint lokal di `.env` |
 | `npm run smoke:responses` | Dua turn Responses API nyata memakai endpoint lokal di `.env` |
 | `npm run doctor` | `npx expo-doctor` |
@@ -45,7 +46,7 @@ Model picker menyimpan model ID exact sebagai model aktif. Chat membaca nilai it
 
 ## Chat streaming
 
-Tab Chat mengirim model exact, system instructions v1, input user, `stream: true`, dan `max_output_tokens` 1024 ke Responses API. Instructions dikirim pada setiap turn, termasuk saat memakai `previous_response_id`. Delta text dan reasoning muncul incremental dengan pembaruan UI yang dibatch sekitar 50 ms. Send berubah menjadi Stop selama request; output parsial tetap terlihat setelah Stop atau disconnect. Retry otomatis hanya dilakukan sebelum event model pertama. Response ID yang selesai disimpan di memory untuk turn berikutnya. New chat membersihkan state tersebut. Transcript belum disimpan ke SQLite.
+Tab Chat menyimpan user turn dan assistant placeholder ke SQLite sebelum request, lalu mengirim model exact, system instructions v1, input user, `stream: true`, dan `max_output_tokens` 1024. Delta text dan reasoning muncul incremental serta di-flush ke SQLite sekitar 50 ms. Send berubah menjadi Stop; output parsial tetap terlihat setelah Stop, disconnect, atau process restart. Completed response memakai markdown. History mendukung pagination, buka conversation, rename, delete confirmation, New chat, dan retry turn terakhir yang terputus.
 
 ## Contract test Node
 
