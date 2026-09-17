@@ -85,7 +85,30 @@ const SCENARIOS = {
     headers: { location: 'https://example.invalid/v1/models' },
     body: '',
   }),
-  'responses-ok': () => json(200, nonStreamResponse('fake call 1')),
+  'responses-ok': ({ body }) => {
+    const turn = typeof body?.previous_response_id === 'string' ? 2 : 1;
+    return json(200, nonStreamResponse(`fake call ${turn}`, `resp_fake_000${turn}`));
+  },
+  'responses-echo': ({ body }) => json(200, nonStreamResponse(JSON.stringify(body))),
+  'responses-multiple': () =>
+    json(200, {
+      id: 'resp_fake_multiple',
+      object: 'response',
+      status: 'completed',
+      output: [
+        { type: 'function_call', call_id: 'call_1', name: 'ignored' },
+        { type: 'message', content: [{ type: 'output_text', text: 'Bagian satu.' }] },
+        { type: 'reasoning', summary: [{ type: 'summary_text', text: 'Ringkasan.' }] },
+        { type: 'message', content: [{ type: 'output_text', text: 'Bagian dua.' }] },
+      ],
+    }),
+  'responses-no-text': () =>
+    json(200, {
+      id: 'resp_fake_no_text',
+      object: 'response',
+      status: 'completed',
+      output: [{ type: 'function_call', call_id: 'call_1', name: 'ignored' }],
+    }),
   'responses-401': () => json(401, { error: { message: 'Invalid API key', code: 'invalid_api_key' } }),
   'responses-402': () => json(402, { error: { message: 'Insufficient credits', code: 'insufficient_credits' } }),
   'responses-403': () => json(403, { error: { message: 'Model forbidden', code: 'model_forbidden' } }),
@@ -119,7 +142,7 @@ const server = createServer(async (req, res) => {
   }
 
   console.log(`${req.method} ${url.pathname} scenario=${scenario} auth=${authMode(req.headers)}`);
-  send(res, await handler());
+  send(res, await handler({ body, headers: req.headers }));
 });
 
 server.listen(PORT, HOST, () => {
@@ -167,9 +190,9 @@ function authMode(headers) {
   return 'body';
 }
 
-function nonStreamResponse(text) {
+function nonStreamResponse(text, id = 'resp_fake_0001') {
   return {
-    id: 'resp_fake_0001',
+    id,
     object: 'response',
     created_at: 1757900000,
     status: 'completed',

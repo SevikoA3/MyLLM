@@ -8,6 +8,7 @@ const OUT = '.tests-build';
 // Modul yang dipakai contract test Node: transport discovery dan orkestrasi onboarding.
 const ENTRIES = [
   'src/services/transport/models.ts',
+  'src/services/transport/responses.ts',
   'src/features/setup/onboarding.ts',
   // Fixture model memakai normalizer produksi supaya test tidak menyalin mapping field.
   'src/domain/model-list.ts',
@@ -88,5 +89,8 @@ for (const [relative, content] of Object.entries(STUBS)) {
 unlinkSync(GLOBALS);
 if (!existsSync(join(OUT, 'services', 'transport', 'models.js'))) {
   throw new Error('kompilasi transport gagal');
+}
+if (!existsSync(join(OUT, 'services', 'transport', 'responses.js'))) {
+  throw new Error('kompilasi Responses client gagal');
 }
 console.log('tests-build siap');

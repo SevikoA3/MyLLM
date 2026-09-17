@@ -478,40 +478,44 @@ Raw JSON editor, import/export, pricing dashboard, atau generic schema migration
 
 ## 11. Phase 4: Vertical slice chat non-stream
 
+Status: selesai 17 September 2026. npm run lint, npm run typecheck, npm run test:ci (96 test), npm run test:server (10 test), npm run test:responses (7 test), npm run test:transport (9 test), dan npm run test:onboarding (7 test) lulus. Android bundle berhasil dibuat. Smoke test `npm run smoke:responses` menyelesaikan dua turn non-stream terhadap AmanAI dengan `previous_response_id`, tanpa mencetak prompt atau response.
+
 ### Goal
 
 Membuktikan satu alur lengkap dari prompt sampai jawaban memakai Responses API sebelum mengerjakan streaming.
 
 ### Steps
 
-- [ ] Tambahkan tipe minimum Response request dan response item yang benar-benar dipakai.
-- [ ] Buat satu ResponsesClient konkret, belum perlu Transport interface.
-- [ ] Build URL dari EndpointProfile.
-- [ ] Ambil key dari CredentialStore tepat sebelum request.
-- [ ] Kirim model exact, input user, stream false, dan max_output_tokens kecil.
-- [ ] Jangan kirim reasoning jika model hanya memiliki auto atau metadata unknown.
-- [ ] Parse output items tanpa berasumsi output[0] selalu text message.
-- [ ] Extract output text dan optional reasoning summary.
-- [ ] Simpan previous_response_id di state conversation memory.
-- [ ] Buat chat screen sederhana dengan FlatList, composer, Send, loading, dan error card.
-- [ ] User message langsung terlihat setelah Send.
-- [ ] Disable duplicate Send selama request aktif.
-- [ ] Retry hanya membuat ulang request jika request sebelumnya gagal tanpa output.
-- [ ] Gunakan plain Text untuk response. Markdown belum diperlukan.
-- [ ] Buat New chat yang membersihkan state memory.
+- [x] Tambahkan tipe minimum Response request dan response item yang benar-benar dipakai.
+- [x] Buat satu ResponsesClient konkret, belum perlu Transport interface.
+- [x] Build URL dari EndpointProfile.
+- [x] Ambil key dari CredentialStore tepat sebelum request.
+- [x] Kirim model exact, input user, stream false, dan max_output_tokens kecil.
+- [x] Jangan kirim reasoning jika model hanya memiliki auto atau metadata unknown.
+- [x] Parse output items tanpa berasumsi output[0] selalu text message.
+- [x] Extract output text dan optional reasoning summary.
+- [x] Simpan previous_response_id di state conversation memory.
+- [x] Buat chat screen sederhana dengan FlatList, composer, Send, loading, dan error card.
+- [x] User message langsung terlihat setelah Send.
+- [x] Disable duplicate Send selama request aktif.
+- [x] Retry hanya membuat ulang request jika request sebelumnya gagal tanpa output.
+- [x] Gunakan plain Text untuk response. Markdown belum diperlukan.
+- [x] Buat New chat yang membersihkan state memory.
 
 ### Tests
 
-- [ ] Request body minimal.
-- [ ] Text response.
-- [ ] Multiple output items.
-- [ ] Response tanpa text.
-- [ ] Structured provider error.
-- [ ] 401, 402, 403, 429, dan 5xx mapping.
+- [x] Request body minimal.
+- [x] Text response.
+- [x] Multiple output items.
+- [x] Response tanpa text.
+- [x] Structured provider error.
+- [x] 401, 402, 403, 429, dan 5xx mapping.
 
 ### Exit gate
 
 Satu percakapan dua turn berhasil terhadap fake endpoint dan AmanAI tanpa streaming.
+
+Terpenuhi lewat `npm run test:responses` untuk fake endpoint dan `npm run smoke:responses` untuk AmanAI. Kedua jalur memakai `responsesClient` produksi, model ID exact, `stream: false`, dan response ID turn pertama pada request turn kedua.
 
 ### Do not build yet
 

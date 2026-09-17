@@ -2,7 +2,7 @@
 
 Aplikasi Android chat client untuk custom OpenAI-compatible endpoint.
 
-Fase saat ini adalah Phase 2 (endpoint onboarding dan secure credential) dari PLAN.md. Kontrak data, fake OpenAI-compatible server, form setup endpoint, penyimpanan credential di Keystore, dan model discovery sudah ada; model picker, database percakapan, dan chat UI belum.
+Phase 4 selesai. Aplikasi sudah memiliki endpoint onboarding, secure credential, model catalog, model picker, dan chat Responses API non-stream dua arah. Streaming dan database percakapan belum ada.
 
 ## Perintah
 
@@ -17,6 +17,9 @@ Fase saat ini adalah Phase 2 (endpoint onboarding dan secure credential) dari PL
 | `npm run test:server` | Contract test fake endpoint lewat `node --test` |
 | `npm run test:transport` | Contract test transport model discovery terhadap fake endpoint |
 | `npm run test:onboarding` | Smoke test alur connect dan discover terhadap fake endpoint |
+| `npm run test:responses` | Contract test Responses API non-stream terhadap fake endpoint |
+| `npm run smoke:models` | Refresh katalog nyata memakai endpoint lokal di `.env` |
+| `npm run smoke:responses` | Dua turn Responses API nyata memakai endpoint lokal di `.env` |
 | `npm run doctor` | `npx expo-doctor` |
 
 ## Domain dan fake endpoint
@@ -38,15 +41,20 @@ Fresh install membuka `app/setup.tsx`, bukan chat kosong. Alurnya:
 
 Secret hanya berada di Keystore. Profil endpoint, activeModelId, dan pesan error tidak pernah memuat API key. Kegagalan connect tidak menyisakan profile maupun credential, dan field API key dikosongkan setelah setiap percobaan submit.
 
-Pemilihan model aktif dan model picker dibangun pada Phase 3. Phase 2 menyimpan model pertama yang valid sebagai activeModelId.
+Model picker menyimpan model ID exact sebagai model aktif. Chat membaca nilai itu tepat sebelum request.
+
+## Chat non-stream
+
+Tab Chat mengirim model exact, input user, `stream: false`, dan `max_output_tokens` 1024 ke Responses API. Pesan user langsung muncul, Send dikunci selama request, dan error dapat dicoba ulang tanpa menggandakan pesan user. Response ID disimpan di memory untuk `previous_response_id` pada turn berikutnya. New chat membersihkan state tersebut. Transcript belum disimpan ke SQLite.
 
 ## Contract test Node
 
-Contract test transport dan onboarding menjalankan kode produksi hasil kompilasi TypeScript, bukan tiruan:
+Contract test transport, onboarding, dan Responses menjalankan kode produksi hasil kompilasi TypeScript, bukan tiruan:
 
 ```sh
 npm run test:transport
 npm run test:onboarding
+npm run test:responses
 ```
 
 `tools/build-tests.mjs` mengompilasi modul domain, transport, dan onboarding ke `.tests-build/` sebagai ESM, mengganti penanda `__DEV__`, lalu menambahkan ekstensi import agar dapat dimuat Node. Folder hasil kompilasi tidak di-commit. Native module SecureStore dan SQLite dimuat secara lazy supaya modul yang memakainya tetap dapat diuji di luar React Native.
