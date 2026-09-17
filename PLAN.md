@@ -478,7 +478,7 @@ Raw JSON editor, import/export, pricing dashboard, atau generic schema migration
 
 ## 11. Phase 4: Vertical slice chat non-stream
 
-Status: selesai 17 September 2026. npm run lint, npm run typecheck, npm run test:ci (96 test), npm run test:server (10 test), npm run test:responses (7 test), npm run test:transport (9 test), dan npm run test:onboarding (7 test) lulus. Android bundle berhasil dibuat. Smoke test `npm run smoke:responses` menyelesaikan dua turn non-stream terhadap AmanAI dengan `previous_response_id`, tanpa mencetak prompt atau response.
+Status: selesai 17 September 2026. npm run lint, npm run typecheck, npm run test:ci (97 test), npm run test:server (10 test), npm run test:responses (7 test), npm run test:transport (9 test), dan npm run test:onboarding (7 test) lulus. Android bundle berhasil dibuat. Smoke test `npm run smoke:responses` menyelesaikan dua turn non-stream terhadap AmanAI dengan `previous_response_id`, tanpa mencetak prompt atau response.
 
 ### Goal
 

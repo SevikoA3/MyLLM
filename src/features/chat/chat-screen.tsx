@@ -112,11 +112,11 @@ export default function ChatScreen() {
         </View>
 
         {profile === null ? (
-          <View style={{ padding: theme.spacing.screen }}>
+          <View style={{ flex: 1, padding: theme.spacing.screen }}>
             <InfoBlock title="Endpoint belum tersedia" body="Hubungkan endpoint sebelum mengirim pesan." />
           </View>
         ) : chat.activeModelId === null && !chat.loadingModel ? (
-          <View style={{ gap: 12, padding: theme.spacing.screen }}>
+          <View style={{ flex: 1, gap: 12, padding: theme.spacing.screen }}>
             <InfoBlock title="Pilih model" body="Chat membutuhkan satu model aktif dari katalog." />
             <Link href="/models" asChild>
               <Pressable
@@ -141,6 +141,7 @@ export default function ChatScreen() {
           </View>
         ) : (
           <FlatList
+            style={{ flex: 1 }}
             data={chat.messages}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"

@@ -8,7 +8,9 @@ import { useTheme } from './theme';
 export function Screen({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: theme.colors.background }}>
+    <SafeAreaView
+      className="flex-1"
+      style={{ flex: 1, backgroundColor: theme.colors.background }}>
       {children}
     </SafeAreaView>
   );
