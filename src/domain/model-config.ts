@@ -4,6 +4,7 @@ import type { EndpointProfile } from './endpoint';
 export type ModelRequestSnapshot = {
   modelId: string;
   reasoningEffort: string | null;
+  reasoningOptions: string[];
   outputLimit: number | null;
   effectiveMaxOutput: number | null;
 };
@@ -49,6 +50,7 @@ export function modelRequestSnapshot(
   return {
     modelId: model.id,
     reasoningEffort: effort,
+    reasoningOptions: reasoningChoices(model.reasoningEfforts),
     outputLimit,
     effectiveMaxOutput: ceiling,
   };

@@ -41,6 +41,11 @@ describe('model request config', () => {
       baseUrl: 'https://example.test/v1',
     });
     expect(modelRequestSnapshot(model(), profile).reasoningEffort).toBe('auto');
+    expect(modelRequestSnapshot(model(), profile).reasoningOptions).toEqual([
+      'auto',
+      'low',
+      'high',
+    ]);
   });
 
   it('menolak effort dan output limit yang tidak valid', () => {

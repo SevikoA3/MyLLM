@@ -5,6 +5,7 @@ import {
   modelsPathOf,
   pickerModels,
   readSnapshot,
+  saveModelReasoningEffort,
   snapshotFileName,
   writeSnapshot,
   type CatalogStorage,
@@ -285,5 +286,15 @@ describe('modelsPathOf', () => {
   it('memakai models path dari profile tanpa menghasilkan /v1/v1', () => {
     expect(modelsPathOf(profile)).toBe(joinEndpointPath(profile.baseUrl, '/models'));
     expect(modelsPathOf(profile)).toBe('https://api.amanai.dev/v1/models');
+  });
+});
+
+describe('chat reasoning override', () => {
+  it('menyimpan pilihan reasoning per endpoint dan model', async () => {
+    const { storage, files } = memoryStorage();
+    await saveModelReasoningEffort(storage, 'ep_1', 'model-exact', 'high');
+
+    expect(JSON.parse(files.get('model-overrides.json')!).endpoints.ep_1.models['model-exact'])
+      .toMatchObject({ request: { reasoningEffort: 'high' } });
   });
 });

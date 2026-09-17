@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -209,71 +210,137 @@ export default function ChatScreen() {
 
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'flex-end',
             gap: 8,
             padding: theme.spacing.screen,
             borderTopWidth: 1,
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.background,
           }}>
-          <TextInput
-            accessibilityLabel="Pesan"
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Tulis pesan..."
-            placeholderTextColor={theme.colors.textMuted}
-            editable={!chat.pending && !chat.loadingModel && chat.activeModelId !== null}
-            multiline
-            style={{
-              minHeight: 48,
-              maxHeight: 132,
-              flex: 1,
-              paddingHorizontal: 14,
-              paddingVertical: 12,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.card,
-              backgroundColor: theme.colors.surface,
-              color: theme.colors.text,
-              fontSize: theme.typography.body,
-              textAlignVertical: 'top',
-            }}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={chat.pending ? 'Stop' : 'Kirim'}
-            accessibilityHint={
-              chat.pending ? 'Menghentikan jawaban yang sedang berjalan' : 'Mengirim pesan'
-            }
-            disabled={sendDisabled}
-            onPress={chat.pending ? chat.stop : submit}
-            style={({ pressed }) => ({
-              width: 48,
-              height: 48,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 24,
-              backgroundColor: chat.pending ? theme.colors.danger : theme.colors.accent,
-              opacity: sendDisabled ? 0.45 : pressed ? 0.75 : 1,
-            })}>
-            {chat.pending ? (
-              <SymbolView
-                name={{ ios: 'stop.fill', android: 'stop' }}
-                size={21}
-                tintColor={theme.colors.accentText}
-              />
-            ) : (
-              <SymbolView
-                name={{ ios: 'paperplane.fill', android: 'send' }}
-                size={21}
-                tintColor={theme.colors.accentText}
-              />
-            )}
-          </Pressable>
+          {chat.reasoningOptions.length > 0 && (
+            <ReasoningSelector
+              options={chat.reasoningOptions}
+              selected={chat.reasoningEffort}
+              disabled={chat.pending}
+              onSelect={(effort) => void chat.setReasoningEffort(effort)}
+            />
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+            <TextInput
+              accessibilityLabel="Pesan"
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Tulis pesan..."
+              placeholderTextColor={theme.colors.textMuted}
+              editable={!chat.pending && !chat.loadingModel && chat.activeModelId !== null}
+              multiline
+              style={{
+                minHeight: 48,
+                maxHeight: 132,
+                flex: 1,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.card,
+                backgroundColor: theme.colors.surface,
+                color: theme.colors.text,
+                fontSize: theme.typography.body,
+                textAlignVertical: 'top',
+              }}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={chat.pending ? 'Stop' : 'Kirim'}
+              accessibilityHint={
+                chat.pending ? 'Menghentikan jawaban yang sedang berjalan' : 'Mengirim pesan'
+              }
+              disabled={sendDisabled}
+              onPress={chat.pending ? chat.stop : submit}
+              style={({ pressed }) => ({
+                width: 48,
+                height: 48,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 24,
+                backgroundColor: chat.pending ? theme.colors.danger : theme.colors.accent,
+                opacity: sendDisabled ? 0.45 : pressed ? 0.75 : 1,
+              })}>
+              {chat.pending ? (
+                <SymbolView
+                  name={{ ios: 'stop.fill', android: 'stop' }}
+                  size={21}
+                  tintColor={theme.colors.accentText}
+                />
+              ) : (
+                <SymbolView
+                  name={{ ios: 'paperplane.fill', android: 'send' }}
+                  size={21}
+                  tintColor={theme.colors.accentText}
+                />
+              )}
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Screen>
+  );
+}
+
+export function ReasoningSelector({
+  options,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  options: string[];
+  selected: string | null;
+  disabled: boolean;
+  onSelect: (effort: string) => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+        Reasoning
+      </Text>
+      <ScrollView
+        horizontal
+        keyboardShouldPersistTaps="handled"
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 6 }}>
+        {options.map((effort) => {
+          const active = effort === selected;
+          return (
+            <Pressable
+              key={effort}
+              accessibilityRole="radio"
+              accessibilityLabel={'Reasoning ' + effort}
+              accessibilityState={{ checked: active, disabled }}
+              disabled={disabled}
+              onPress={() => onSelect(effort)}
+              style={({ pressed }) => ({
+                minHeight: 38,
+                justifyContent: 'center',
+                paddingHorizontal: 12,
+                borderRadius: theme.radius.pill,
+                borderWidth: 1,
+                borderColor: active ? theme.colors.borderStrong : theme.colors.border,
+                backgroundColor: active ? theme.colors.accent : theme.colors.surface,
+                opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+              })}>
+              <Text
+                style={{
+                  color: active ? theme.colors.accentText : theme.colors.text,
+                  fontSize: theme.typography.meta,
+                  fontWeight: active ? '700' : '500',
+                }}>
+                {effort}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 

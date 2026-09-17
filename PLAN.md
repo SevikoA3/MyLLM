@@ -641,7 +641,7 @@ Pengguna dapat mengontrol reasoning, output limit, dan metadata model tanpa refr
 ### Steps
 
 - [x] Buat model detail screen yang menampilkan value dan provenance.
-- [x] Reasoning picker hanya muncul jika reasoningEfforts memiliki pilihan bermakna.
+- [x] Reasoning picker di detail model dan chat hanya muncul jika reasoningEfforts memiliki pilihan bermakna.
 - [x] Pertahankan urutan reasoning effort dari provider.
 - [x] Auto berarti omit field kecuali endpoint override menyatakan literal auto.
 - [x] Hitung effectiveMaxOutput dari model limit dan protocol cap.

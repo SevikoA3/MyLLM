@@ -9,12 +9,17 @@ import { useChat } from './use-chat';
 
 const mockCredentialRead = jest.fn(async () => 'sk-test');
 const mockLoadModel = jest.fn(async () => 'model-exact');
+let mockReasoningEffort = 'auto';
 const mockLoadModelConfig = jest.fn(async () => ({
   modelId: 'model-exact',
-  reasoningEffort: 'auto',
+  reasoningEffort: mockReasoningEffort,
+  reasoningOptions: ['auto', 'low', 'high'],
   outputLimit: null,
   effectiveMaxOutput: 128_000,
 }));
+const mockSaveReasoningEffort = jest.fn(async (_effort: string) => {
+  mockReasoningEffort = _effort;
+});
 const mockSend = jest.fn<Promise<SendResponseResult>, unknown[]>();
 const mockStartTurn = jest.fn(async (_input: unknown) => ({ conversationId: 'conv_1' }));
 const mockRestartTurn = jest.fn(async (_turnId: unknown, _itemId: unknown) => {});
@@ -40,6 +45,12 @@ jest.mock('../../services/persistence/catalog-files', () => ({
 
 jest.mock('../../services/persistence/catalog-store', () => ({
   loadModelRequestSnapshot: () => mockLoadModelConfig(),
+  saveModelReasoningEffort: (
+    _storage: unknown,
+    _endpointId: unknown,
+    _modelId: unknown,
+    effort: string,
+  ) => mockSaveReasoningEffort(effort),
 }));
 
 jest.mock('../../services/persistence/conversation-store', () => ({
@@ -116,9 +127,11 @@ describe('useChat', () => {
   afterEach(cleanup);
 
   beforeEach(() => {
+    mockReasoningEffort = 'auto';
     mockCredentialRead.mockClear();
     mockLoadModel.mockClear();
     mockLoadModelConfig.mockClear();
+    mockSaveReasoningEffort.mockClear();
     mockSend.mockReset();
     mockStartTurn.mockClear();
     mockRestartTurn.mockClear();
@@ -192,6 +205,27 @@ describe('useChat', () => {
     });
     expect(result.current.messages.map((entry) => entry.text)).toEqual(['coba', 'Berhasil']);
     expect(mockSend).toHaveBeenCalledTimes(2);
+  });
+
+  it('mengubah reasoning dari chat dan memakai snapshot baru saat send', async () => {
+    mockSend.mockResolvedValue(success('resp_1', 'Jawaban'));
+    const { result } = await setup();
+
+    expect(result.current.reasoningOptions).toEqual(['auto', 'low', 'high']);
+    expect(result.current.reasoningEffort).toBe('auto');
+    await act(async () => {
+      await result.current.setReasoningEffort('high');
+    });
+    expect(mockSaveReasoningEffort).toHaveBeenCalledWith('high');
+    expect(result.current.reasoningEffort).toBe('high');
+
+    await act(async () => {
+      await result.current.send('pakai high');
+    });
+    expect(mockSend.mock.calls[0][2]).toMatchObject({ reasoningEffort: 'high' });
+    expect(mockStartTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningSetting: 'high' }),
+    );
   });
 
   it('New chat membersihkan pesan, error, dan response id', async () => {

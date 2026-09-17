@@ -6,7 +6,10 @@ import { createAppError, type AppError } from '../../domain/error';
 import type { ModelRequestSnapshot } from '../../domain/model-config';
 import { credentialStore } from '../../services/credentials/store';
 import { fileCatalogStorage, readBundledDefaults } from '../../services/persistence/catalog-files';
-import { loadModelRequestSnapshot } from '../../services/persistence/catalog-store';
+import {
+  loadModelRequestSnapshot,
+  saveModelReasoningEffort,
+} from '../../services/persistence/catalog-store';
 import { conversationRepository } from '../../services/persistence/conversation-store';
 import { settingsStore } from '../../services/persistence/settings-store';
 import {
@@ -28,6 +31,8 @@ export type ChatState = {
   conversationId: string | null;
   messages: ChatMessage[];
   activeModelId: string | null;
+  reasoningEffort: string | null;
+  reasoningOptions: string[];
   loadingModel: boolean;
   pending: boolean;
   error: AppError | null;
@@ -37,6 +42,7 @@ export type ChatState = {
   retry: () => Promise<boolean>;
   newChat: () => void;
   reloadModel: () => Promise<void>;
+  setReasoningEffort: (effort: string) => Promise<boolean>;
 };
 
 export function useChat(
@@ -47,6 +53,8 @@ export function useChat(
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
+  const [reasoningEffort, setReasoningEffortState] = useState<string | null>(null);
+  const [reasoningOptions, setReasoningOptions] = useState<string[]>([]);
   const [loadingModel, setLoadingModel] = useState(profile !== null);
   const [loadingConversation, setLoadingConversation] = useState(profile !== null && !startFresh);
   const [pending, setPending] = useState(false);
@@ -55,6 +63,7 @@ export function useChat(
   const previousResponseId = useRef<string | null>(null);
   const previousResponseModelId = useRef<string | null>(null);
   const pendingRef = useRef(false);
+  const reasoningSavingRef = useRef(false);
   const activeController = useRef<AbortController | null>(null);
   const streamTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
@@ -62,6 +71,8 @@ export function useChat(
   const reloadModel = useCallback(async () => {
     if (profile === null) {
       setActiveModelId(null);
+      setReasoningEffortState(null);
+      setReasoningOptions([]);
       setLoadingModel(false);
       return;
     }
@@ -71,9 +82,34 @@ export function useChat(
         return;
       }
       setActiveModelId(modelId);
+      if (modelId === null) {
+        setReasoningEffortState(null);
+        setReasoningOptions([]);
+      } else {
+        try {
+          const config = await loadModelRequestSnapshot(
+            fileCatalogStorage,
+            readBundledDefaults,
+            profile,
+            modelId,
+          );
+          if (alive.current) {
+            setReasoningEffortState(config?.reasoningEffort ?? null);
+            setReasoningOptions(config?.reasoningOptions ?? []);
+          }
+        } catch {
+          if (alive.current) {
+            setReasoningEffortState(null);
+            setReasoningOptions([]);
+            setError(modelConfigError('Konfigurasi reasoning tidak valid. Periksa detail model.'));
+          }
+        }
+      }
     } catch {
       if (alive.current) {
         setActiveModelId(null);
+        setReasoningEffortState(null);
+        setReasoningOptions([]);
       }
     } finally {
       if (alive.current) {
@@ -410,6 +446,37 @@ export function useChat(
 
   const stop = useCallback(() => activeController.current?.abort(), []);
 
+  const setReasoningEffort = useCallback(
+    async (effort: string): Promise<boolean> => {
+      if (
+        pendingRef.current ||
+        profile === null ||
+        activeModelId === null ||
+        reasoningSavingRef.current ||
+        !reasoningOptions.includes(effort)
+      ) {
+        return false;
+      }
+      reasoningSavingRef.current = true;
+      try {
+        await saveModelReasoningEffort(fileCatalogStorage, profile.id, activeModelId, effort);
+        if (alive.current) {
+          setReasoningEffortState(effort);
+          setError(null);
+        }
+        return true;
+      } catch {
+        if (alive.current) {
+          setError(modelConfigError('Pilihan reasoning gagal disimpan.'));
+        }
+        return false;
+      } finally {
+        reasoningSavingRef.current = false;
+      }
+    },
+    [activeModelId, profile, reasoningOptions],
+  );
+
   const newChat = useCallback(() => {
     if (pendingRef.current) {
       return;
@@ -426,6 +493,8 @@ export function useChat(
     conversationId,
     messages,
     activeModelId,
+    reasoningEffort,
+    reasoningOptions,
     loadingModel: loadingModel || loadingConversation,
     pending,
     error,
@@ -435,6 +504,7 @@ export function useChat(
     retry,
     newChat,
     reloadModel,
+    setReasoningEffort,
   };
 }
 

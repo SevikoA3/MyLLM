@@ -474,6 +474,28 @@ export async function loadModelRequestSnapshot(
   return model === undefined ? null : modelRequestSnapshot(model, profile);
 }
 
+export async function saveModelReasoningEffort(
+  storage: CatalogStorage,
+  endpointId: string,
+  modelId: string,
+  reasoningEffort: string,
+): Promise<void> {
+  const overrides = await readOverrides(storage);
+  const models = { ...(overrides.endpoints[endpointId]?.models ?? {}) };
+  const current = models[modelId] ?? {};
+  models[modelId] = {
+    ...current,
+    request: { ...(current.request ?? {}), reasoningEffort },
+  };
+  await writeOverridesAtomic(storage, {
+    schemaVersion: 1,
+    endpoints: {
+      ...overrides.endpoints,
+      [endpointId]: { models },
+    },
+  });
+}
+
 function uniqueDiscovered(entries: ModelRecordType[]): ModelRecordType[] | null {
   const models: ModelRecordType[] = [];
   const seen = new Set<string>();
