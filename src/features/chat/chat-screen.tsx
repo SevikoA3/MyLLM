@@ -16,6 +16,14 @@ import {
 
 import type { ChatMessage } from '../../domain/conversation';
 import type { AppError } from '../../domain/error';
+import type { TurnMetrics } from '../../domain/usage';
+import {
+  formatCount,
+  formatDuration,
+  formatPercent,
+  formatRate,
+  summarizeMetrics,
+} from '../../domain/usage';
 import { InfoBlock, Screen } from '../../ui/components';
 import { useTheme } from '../../ui/theme';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
@@ -216,6 +224,7 @@ export default function ChatScreen() {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.background,
           }}>
+          {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
           {chat.reasoningOptions.length > 0 && (
             <ReasoningSelector
               options={chat.reasoningOptions}
@@ -283,6 +292,58 @@ export default function ChatScreen() {
         </View>
       </KeyboardAvoidingView>
     </Screen>
+  );
+}
+
+function MetricsFooter({ metrics }: { metrics: TurnMetrics[] }) {
+  const theme = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  const latest = metrics[metrics.length - 1];
+  const session = summarizeMetrics(metrics);
+  if (latest === undefined) {
+    return null;
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Statistik request"
+      accessibilityHint="Buka detail statistik per turn dan sesi"
+      onPress={() => setExpanded((value) => !value)}
+      style={{
+        gap: 5,
+        padding: 10,
+        borderRadius: theme.radius.control,
+        backgroundColor: theme.colors.surface,
+      }}>
+      <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
+        Statistik turn terakhir
+      </Text>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+        TTFT {formatDuration(latest.ttftMs)} · TPS {formatRate(latest.tokensPerSecond)} · Cache response{' '}
+        {formatPercent(latest.cacheHitPercent)}
+      </Text>
+      {expanded && (
+        <View style={{ gap: 4, paddingTop: 4 }}>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+            Turn: input {formatCount(latest.usage.inputTokens)}, cached {formatCount(latest.usage.cacheReadTokens)},
+            uncached {formatCount(latest.usage.uncachedInputTokens)}, cache write{' '}
+            {formatCount(latest.usage.cacheWriteTokens)}, output {formatCount(latest.usage.outputTokens)}
+          </Text>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+            Sesi {session.turnCount} turn: input {formatCount(session.inputTokens)}, cached{' '}
+            {formatCount(session.cacheReadTokens)}, output {formatCount(session.outputTokens)}, cache{' '}
+            {formatPercent(session.cacheHitPercent)}
+          </Text>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+            Rata-rata TTFT {formatDuration(session.averageTtftMs)} · Sesi TPS{' '}
+            {formatRate(session.tokensPerSecond)}
+          </Text>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+            Kualitas {latest.usage.quality} · sumber {latest.usage.source}
+          </Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 

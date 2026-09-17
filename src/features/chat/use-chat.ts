@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { ChatMessage, TurnStatus } from '../../domain/conversation';
+import type {
+  ChatMessage,
+  ConversationInputMessage,
+  TurnStatus,
+} from '../../domain/conversation';
 import type { EndpointProfile } from '../../domain/endpoint';
 import { createAppError, type AppError } from '../../domain/error';
 import type { ModelRequestSnapshot } from '../../domain/model-config';
+import type { TurnMetrics } from '../../domain/usage';
 import { credentialStore } from '../../services/credentials/store';
 import { fileCatalogStorage, readBundledDefaults } from '../../services/persistence/catalog-files';
 import {
@@ -30,6 +35,7 @@ type RetryState = {
 export type ChatState = {
   conversationId: string | null;
   messages: ChatMessage[];
+  metrics: TurnMetrics[];
   activeModelId: string | null;
   reasoningEffort: string | null;
   reasoningOptions: string[];
@@ -52,6 +58,7 @@ export function useChat(
 ): ChatState {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [metrics, setMetrics] = useState<TurnMetrics[]>([]);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [reasoningEffort, setReasoningEffortState] = useState<string | null>(null);
   const [reasoningOptions, setReasoningOptions] = useState<string[]>([]);
@@ -139,12 +146,22 @@ export function useChat(
         requestedConversationId === null
           ? await conversationRepository.loadLatest(profile.id)
           : await conversationRepository.loadConversation(requestedConversationId);
-      if (active && saved !== null) {
-        setConversationId(saved.id);
-        setMessages(saved.messages);
-      previousResponseId.current = saved.previousResponseId;
-      previousResponseModelId.current = saved.previousResponseModelId;
-        setRetryState(saved.retry);
+      if (active) {
+        if (saved === null) {
+          setConversationId(null);
+          setMessages([]);
+          setMetrics([]);
+          previousResponseId.current = null;
+          previousResponseModelId.current = null;
+          setRetryState(null);
+        } else {
+          setConversationId(saved.id);
+          setMessages(saved.messages);
+          setMetrics(saved.metrics);
+          previousResponseId.current = saved.previousResponseId;
+          previousResponseModelId.current = saved.previousResponseModelId;
+          setRetryState(saved.retry);
+        }
       }
       if (active) {
         setLoadingConversation(false);
@@ -208,6 +225,7 @@ export function useChat(
       const turnId = retry?.turnId ?? newId('turn');
       const userItemId = retry === null ? newId('msg') : null;
       const assistantItemId = retry?.assistantItemId ?? newId('msg');
+      let currentConversationId = conversationId;
       let streamedText = '';
       let streamedReasoning = '';
       let flushedText = '';
@@ -228,6 +246,7 @@ export function useChat(
             reasoningSetting: requestConfig.reasoningEffort,
             outputCeiling: requestConfig.outputLimit,
           });
+          currentConversationId = started.conversationId;
           setConversationId(started.conversationId);
           setMessages((current) => [
             ...current,
@@ -310,6 +329,13 @@ export function useChat(
       };
 
       try {
+        let requestHistory: ConversationInputMessage[] = [];
+        if (currentConversationId !== null) {
+          requestHistory = await conversationRepository.loadRequestHistory(currentConversationId);
+        }
+        if (requestHistory.length === 0) {
+          requestHistory = [{ role: 'user', content: prompt }];
+        }
         const apiKey =
           profile.credentialRef === null
             ? null
@@ -330,7 +356,9 @@ export function useChat(
           {
             modelId: activeModelId,
             prompt,
-            previousResponseId: chainResponseId,
+            history: requestHistory,
+            previousResponseId: null,
+            promptCacheKey: currentConversationId,
             maxOutputTokens: requestConfig.outputLimit,
             reasoningEffort: requestConfig.reasoningEffort,
           },
@@ -426,6 +454,12 @@ export function useChat(
           usage: result?.ok ? result.response.usage : null,
           timing: result?.timing ?? null,
         });
+        if (currentConversationId !== null) {
+          const nextMetrics = await conversationRepository.loadTurnMetrics(currentConversationId);
+          if (alive.current) {
+            setMetrics(nextMetrics);
+          }
+        }
       }
     },
     [activeModelId, conversationId, loadingConversation, profile],
@@ -482,6 +516,7 @@ export function useChat(
       return;
     }
     setConversationId(null);
+    setMetrics([]);
     previousResponseId.current = null;
     previousResponseModelId.current = null;
     setMessages([]);
@@ -492,6 +527,7 @@ export function useChat(
   return {
     conversationId,
     messages,
+    metrics,
     activeModelId,
     reasoningEffort,
     reasoningOptions,

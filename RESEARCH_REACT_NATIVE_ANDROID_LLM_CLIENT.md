@@ -806,7 +806,7 @@ Ada dua pilihan:
 
 Rekomendasi:
 
-- AmanAI Responses default: previous_response_id jika berhasil.
+- AmanAI reference docs saat ini mendokumentasikan `input` array, bukan `previous_response_id`; gunakan stateless replay untuk AmanAI. Pakai `previous_response_id` hanya jika capability endpoint terdokumentasi dan tervalidasi.
 - Simpan canonical local event log tetap wajib.
 - Jika provider tidak mendukung chaining, gunakan stateless replay.
 - Jangan memakai response ID lama setelah endpoint atau model diganti tanpa validasi.
@@ -968,6 +968,8 @@ Chat Completions:
 - completion_tokens_details.reasoning_tokens perlu dikenali.
 
 Jangan menjumlahkan aggregate prompt dengan cached subset dua kali.
+
+Optimasi cache harus menjaga prefix byte-identical: taruh instruksi stabil di awal, append message baru tanpa menulis ulang history lama, dan pertahankan parameter request yang memengaruhi prefix. Pada Responses API, gunakan `prompt_cache_key` stabil untuk request dalam conversation yang sama. DeepSeek juga mensyaratkan prefix dari token pertama tetap sama. Persentase tinggi tidak boleh dikejar dengan padding karena total token dan biaya dapat justru naik.
 
 ### 11.3 Formula
 
@@ -2019,6 +2021,7 @@ Jangan membuat plugin framework, dependency injection container, atau multi-pack
 ### AmanAI
 
 - API reference: https://ai.amanai.dev/docs/reference/
+- Billing dan cache read: https://ai.amanai.dev/docs/billing/
 - Model catalog documentation: https://ai.amanai.dev/docs/models/
 - Quickstart and reasoning effort: https://ai.amanai.dev/docs/
 - Live model endpoint: https://api.amanai.dev/v1/models
@@ -2030,8 +2033,12 @@ Jangan membuat plugin framework, dependency injection container, atau multi-pack
 - Responses create API: https://developers.openai.com/api/reference/cli/resources/responses/methods/create
 - Responses compact API: https://developers.openai.com/api/reference/java/resources/responses/methods/compact
 - Model and reasoning guidance: https://developers.openai.com/api/docs/guides/latest-model
+- Prompt caching: https://developers.openai.com/api/docs/guides/prompt-caching
 
 ### Repo pembanding
+
+- OpenAI Codex Responses client cache key: https://github.com/openai/codex/blob/main/codex-rs/core/src/client.rs
+- DeepSeek context caching: https://api-docs.deepseek.com/guides/kv_cache/
 
 - Hermes Agent README at inspected commit: https://github.com/NousResearch/hermes-agent/blob/682a95258ce9e877cfb607a5ada6436183efdebb/README.md
 - Hermes Android/Termux guide: https://github.com/NousResearch/hermes-agent/blob/682a95258ce9e877cfb607a5ada6436183efdebb/website/docs/getting-started/termux.md

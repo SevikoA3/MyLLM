@@ -6,6 +6,11 @@ export type ChatMessage = {
   status: TurnStatus;
 };
 
+export type ConversationInputMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 export type TurnStatus =
   | 'sending'
   | 'streaming'

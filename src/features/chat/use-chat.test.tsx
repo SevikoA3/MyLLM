@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react-native';
 
 import { createEndpointProfile } from '../../domain/endpoint';
+import type { ConversationInputMessage } from '../../domain/conversation';
 import type {
   SendResponseOptions,
   SendResponseResult,
@@ -27,6 +28,10 @@ const mockFlushAssistant = jest.fn(
   async (_turnId: unknown, _itemId: unknown, _text: unknown, _reasoning: unknown) => {},
 );
 const mockFinishTurn = jest.fn(async (_input: unknown) => {});
+const mockLoadTurnMetrics = jest.fn(async (_id: unknown) => []);
+const mockLoadRequestHistory = jest.fn<Promise<ConversationInputMessage[]>, [unknown]>(
+  async (_id) => [],
+);
 const mockLoadConversation = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
 const mockLoadLatest = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
 
@@ -60,6 +65,8 @@ jest.mock('../../services/persistence/conversation-store', () => ({
     flushAssistant: (turnId: unknown, itemId: unknown, text: unknown, reasoning: unknown) =>
       mockFlushAssistant(turnId, itemId, text, reasoning),
     finishTurn: (input: unknown) => mockFinishTurn(input),
+    loadRequestHistory: (id: unknown) => mockLoadRequestHistory(id),
+    loadTurnMetrics: (id: unknown) => mockLoadTurnMetrics(id),
     loadConversation: (id: unknown) => mockLoadConversation(id),
     loadLatest: (id: unknown) => mockLoadLatest(id),
   },
@@ -137,11 +144,13 @@ describe('useChat', () => {
     mockRestartTurn.mockClear();
     mockFlushAssistant.mockClear();
     mockFinishTurn.mockClear();
+    mockLoadRequestHistory.mockClear();
+    mockLoadTurnMetrics.mockClear();
     mockLoadConversation.mockClear();
     mockLoadLatest.mockClear();
   });
 
-  it('menampilkan user segera, mencegah send duplikat, dan melanjutkan response id', async () => {
+  it('menampilkan user segera, mencegah send duplikat, dan mengirim history lokal', async () => {
     let finish: ((result: SendResponseResult) => void) | undefined;
     mockSend.mockImplementationOnce(
       () => new Promise((resolve) => {
@@ -166,6 +175,11 @@ describe('useChat', () => {
       await first;
     });
 
+    mockLoadRequestHistory.mockResolvedValueOnce([
+      { role: 'user', content: 'Halo' },
+      { role: 'assistant', content: 'Jawaban satu' },
+      { role: 'user', content: 'lanjut' },
+    ]);
     mockSend.mockResolvedValueOnce(success('resp_2', 'Jawaban dua', 'Ringkas'));
     await act(async () => {
       await result.current.send('lanjut');
@@ -175,7 +189,13 @@ describe('useChat', () => {
     expect(mockSend.mock.calls[1][2]).toMatchObject({
       modelId: 'model-exact',
       prompt: 'lanjut',
-      previousResponseId: 'resp_1',
+      history: [
+        { role: 'user', content: 'Halo' },
+        { role: 'assistant', content: 'Jawaban satu' },
+        { role: 'user', content: 'lanjut' },
+      ],
+      previousResponseId: null,
+      promptCacheKey: 'conv_1',
       maxOutputTokens: null,
       reasoningEffort: 'auto',
     });
@@ -352,6 +372,7 @@ describe('useChat', () => {
       ],
       previousResponseId: null,
       previousResponseModelId: null,
+      metrics: [],
       retry: {
         prompt: 'lanjutkan',
         turnId: 'turn_saved',

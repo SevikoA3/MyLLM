@@ -41,6 +41,28 @@ test('partial stream tersimpan dan restart menandai assistant interrupted', asyn
   assert.equal(loaded.retry.prompt, 'partial prompt');
 });
 
+test('request history memuat user dan assistant completed secara berurutan', async () => {
+  const state = setup();
+  const first = await start(state.repository, 'turn_1', null, 'Jelaskan X.');
+  await state.repository.finishTurn({
+    turnId: 'turn_1',
+    assistantItemId: 'assistant_turn_1',
+    status: 'completed',
+    text: 'X adalah...',
+    reasoningSummary: null,
+    responseId: 'resp_1',
+    usage: null,
+    timing: null,
+  });
+  await start(state.repository, 'turn_2', first.conversationId, 'Kamu tahu tadi aku tanya apa?');
+
+  assert.deepEqual(await state.repository.loadRequestHistory(first.conversationId), [
+    { role: 'user', content: 'Jelaskan X.' },
+    { role: 'assistant', content: 'X adalah...' },
+    { role: 'user', content: 'Kamu tahu tadi aku tanya apa?' },
+  ]);
+});
+
 test('delete conversation membersihkan turn, item, usage, dan timing lewat cascade', async () => {
   const state = setup();
   const { conversationId } = await start(state.repository, 'turn_1', null, 'hapus saya');

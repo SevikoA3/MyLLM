@@ -23,6 +23,7 @@ const input = {
   modelId: 'amanai/glm-5.3',
   prompt: 'halo',
   previousResponseId: null,
+  promptCacheKey: null,
   maxOutputTokens: 1024,
   reasoningEffort: null,
 };
@@ -55,6 +56,31 @@ test('request body minimal memakai model exact dan stream true', async () => {
     max_output_tokens: 1024,
   });
   assert.equal('reasoning' in body, false);
+});
+
+test('request body dapat memakai seluruh history lokal', async () => {
+  const history = [
+    { role: 'user', content: 'Jelaskan X.' },
+    { role: 'assistant', content: 'X adalah...' },
+    { role: 'user', content: 'Kamu tahu tadi aku tanya apa?' },
+  ];
+  const result = await responsesClient.send(scenario('responses-echo'), KEY, {
+    ...input,
+    prompt: 'Kamu tahu tadi aku tanya apa?',
+    history,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(result.response.text).input, history);
+  assert.equal('previous_response_id' in JSON.parse(result.response.text), false);
+});
+
+test('request body memakai prompt cache key stabil bila tersedia', async () => {
+  const result = await responsesClient.send(scenario('responses-echo'), KEY, {
+    ...input,
+    promptCacheKey: 'conv_1',
+  });
+  assert.equal(result.ok, true);
+  assert.equal(JSON.parse(result.response.text).prompt_cache_key, 'conv_1');
 });
 
 test('instructions dikirim ulang pada turn dengan previous_response_id', async () => {

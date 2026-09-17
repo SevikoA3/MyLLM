@@ -10,6 +10,7 @@ const ENTRIES = [
   'src/services/transport/models.ts',
   'src/services/transport/responses.ts',
   'src/services/persistence/conversation-store.ts',
+  'src/domain/usage.ts',
   'src/features/setup/onboarding.ts',
   // Fixture model memakai normalizer produksi supaya test tidak menyalin mapping field.
   'src/domain/model-list.ts',

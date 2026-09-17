@@ -3,10 +3,12 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import {
   titleFromPrompt,
   type ChatMessage,
+  type ConversationInputMessage,
   type ConversationCursor,
   type ConversationSummary,
   type TurnStatus,
 } from '../../domain/conversation';
+import { buildTurnMetrics, normalizeUsage, type TurnMetrics } from '../../domain/usage';
 import type { StreamTiming } from '../transport/responses';
 
 const DATABASE_NAME = 'myllm.db';
@@ -51,6 +53,8 @@ type ItemRow = {
   turn_id: string;
 };
 
+type InputItemRow = Pick<ItemRow, 'role' | 'status' | 'content_json'>;
+
 type TurnRow = {
   id: string;
   status: TurnStatus;
@@ -59,6 +63,17 @@ type TurnRow = {
 };
 
 type SummaryRow = ConversationRow & { status: TurnStatus | null };
+
+type MetricRow = {
+  turn_id: string;
+  ordinal: number;
+  model_id: string;
+  raw_json: string | null;
+  request_start: number | null;
+  first_event: number | null;
+  first_visible_token: number | null;
+  completed: number | null;
+};
 
 async function nativeDatabase(): Promise<SQLiteDatabase> {
   const { openDatabaseAsync } = await import('expo-sqlite');
@@ -285,6 +300,7 @@ export function createConversationRepository(
     previousResponseId: string | null;
     previousResponseModelId: string | null;
     retry: { turnId: string; assistantItemId: string; prompt: string } | null;
+    metrics: TurnMetrics[];
   } | null> {
     await initialize();
     const db = await database();
@@ -324,6 +340,7 @@ export function createConversationRepository(
       messages: rows.map(messageFromRow),
       previousResponseId: previous?.response_id ?? null,
       previousResponseModelId: previous?.model_id ?? null,
+      metrics: await loadTurnMetrics(conversation.id),
       retry:
         last !== null && last.status !== 'completed' && assistant !== null
           ? {
@@ -344,6 +361,56 @@ export function createConversationRepository(
       [endpointId],
     );
     return latest === null ? null : loadConversation(latest.id);
+  }
+
+  async function loadRequestHistory(conversationId: string): Promise<ConversationInputMessage[]> {
+    await initialize();
+    const db = await database();
+    const rows = await db.getAllAsync<InputItemRow>(
+      `SELECT i.role, i.status, i.content_json
+       FROM items i JOIN turns t ON t.id = i.turn_id
+       WHERE t.conversation_id = ?
+         AND (i.role = 'user' OR (i.role = 'assistant' AND i.status = 'completed'))
+       ORDER BY t.ordinal ASC, CASE i.role WHEN 'user' THEN 0 ELSE 1 END`,
+      [conversationId],
+    );
+    return rows.flatMap((row) => {
+      if (row.role === null) {
+        return [];
+      }
+      const text = parseContent(row.content_json).text;
+      return text.length === 0 ? [] : [{ role: row.role, content: text }];
+    });
+  }
+
+  async function loadTurnMetrics(conversationId: string): Promise<TurnMetrics[]> {
+    await initialize();
+    const db = await database();
+    const rows = await db.getAllAsync<MetricRow>(
+      `SELECT t.id AS turn_id, t.ordinal, t.model_id, u.raw_json,
+              ti.request_start, ti.first_event, ti.first_visible_token, ti.completed
+       FROM turns t
+       LEFT JOIN usage u ON u.turn_id = t.id
+       LEFT JOIN timing ti ON ti.turn_id = t.id
+       WHERE t.conversation_id = ?
+         AND t.status = 'completed'
+       ORDER BY t.ordinal ASC`,
+      [conversationId],
+    );
+    return rows.map((row) =>
+      buildTurnMetrics(
+        row.turn_id,
+        row.ordinal,
+        row.model_id,
+        normalizeUsage(parseRawUsage(row.raw_json)),
+        {
+          requestStart: row.request_start,
+          firstEvent: row.first_event,
+          firstVisibleToken: row.first_visible_token,
+          completed: row.completed,
+        },
+      ),
+    );
   }
 
   async function list(
@@ -398,6 +465,8 @@ export function createConversationRepository(
     finishTurn,
     loadConversation,
     loadLatest,
+    loadRequestHistory,
+    loadTurnMetrics,
     list,
     rename,
     remove,
@@ -426,6 +495,17 @@ function parseContent(value: string | null): { text: string; reasoningSummary: s
     // Invalid persisted content is rendered empty instead of crashing history.
   }
   return { text: '', reasoningSummary: null };
+}
+
+function parseRawUsage(value: string | null): unknown {
+  if (value === null) {
+    return null;
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 function messageFromRow(row: ItemRow): ChatMessage {

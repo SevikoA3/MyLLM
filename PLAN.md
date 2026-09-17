@@ -61,7 +61,7 @@ Gunakan default berikut sampai pemilik proyek memutuskan lain:
 | Protocol MVP | Responses API |
 | Chat Completions | Ditambahkan setelah MVP core stabil |
 | Content MVP | Text only |
-| State remote | previous_response_id jika berhasil |
+| State remote | Stateless replay dari history lokal; `previous_response_id` hanya jika endpoint mendokumentasikan dukungan |
 | Local history | Selalu authoritative untuk UI |
 | Database encryption | Tidak memakai SQLCipher pada MVP |
 | Background generation | Foreground-only pada MVP |
@@ -478,7 +478,7 @@ Raw JSON editor, import/export, pricing dashboard, atau generic schema migration
 
 ## 11. Phase 4: Vertical slice chat non-stream
 
-Status: selesai 17 September 2026. npm run lint, npm run typecheck, npm run test:ci (97 test), npm run test:server (10 test), npm run test:responses (7 test), npm run test:transport (9 test), dan npm run test:onboarding (7 test) lulus. Android bundle berhasil dibuat. Smoke test `npm run smoke:responses` menyelesaikan dua turn non-stream terhadap AmanAI dengan `previous_response_id`, tanpa mencetak prompt atau response.
+Status: selesai 17 September 2026. npm run lint, npm run typecheck, npm run test:ci (97 test), npm run test:server (10 test), npm run test:responses (7 test), npm run test:transport (9 test), dan npm run test:onboarding (7 test) lulus. Android bundle berhasil dibuat. Transport smoke test mencakup `previous_response_id`; chat app memakai stateless replay karena reference docs AmanAI hanya mendokumentasikan `input` array.
 
 ### Goal
 
@@ -494,7 +494,7 @@ Membuktikan satu alur lengkap dari prompt sampai jawaban memakai Responses API s
 - [x] Jangan kirim reasoning jika model hanya memiliki auto atau metadata unknown.
 - [x] Parse output items tanpa berasumsi output[0] selalu text message.
 - [x] Extract output text dan optional reasoning summary.
-- [x] Simpan previous_response_id di state conversation memory.
+- [x] Simpan response ID per turn untuk audit; request chat memakai stateless replay dari history lokal.
 - [x] Buat chat screen sederhana dengan FlatList, composer, Send, loading, dan error card.
 - [x] User message langsung terlihat setelah Send.
 - [x] Disable duplicate Send selama request aktif.
@@ -515,7 +515,7 @@ Membuktikan satu alur lengkap dari prompt sampai jawaban memakai Responses API s
 
 Satu percakapan dua turn berhasil terhadap fake endpoint dan AmanAI tanpa streaming.
 
-Terpenuhi lewat `npm run test:responses` untuk fake endpoint dan `npm run smoke:responses` untuk AmanAI. Kedua jalur memakai `responsesClient` produksi, model ID exact, `stream: false`, dan response ID turn pertama pada request turn kedua.
+Terpenuhi lewat `npm run test:responses` untuk fake endpoint dan smoke path Responses. `useChat` mengirim seluruh history lokal sebagai `input` setiap turn, sehingga recall tidak bergantung pada state remote provider.
 
 ### Do not build yet
 
@@ -677,42 +677,46 @@ Menunggu laporan verifikasi manual Android. Test repository membuktikan override
 
 ## 15. Phase 8: Usage normalization dan metrics footer
 
+Status: implementasi dan test otomatis selesai 17 September 2026. `npm run lint`, `npm run typecheck`, `npm run test:ci`, `npm run test:conversations`, `npm run test:responses`, dan `npm run test:server` lulus. Verifikasi manual Android untuk footer masih menunggu.
+
 ### Goal
 
 Menampilkan TTFT, TPS, token, dan cache hit tanpa angka palsu.
 
 ### Steps
 
-- [ ] Tambahkan normalized Usage type dengan nullable buckets dan quality.
-- [ ] Parse Responses input_tokens, cached_tokens, cache_write_tokens, output_tokens, dan reasoning_tokens.
-- [ ] Kenali provider extension yang sudah ada di fixture.
-- [ ] Pastikan cached token subset tidak ditambahkan dua kali ke aggregate input.
-- [ ] Hitung TTFT dari request dispatch ke first model event.
-- [ ] Catat first visible token terpisah.
-- [ ] Hitung decode duration dari first output token ke completed.
-- [ ] Hitung TPS dari provider-reported output tokens.
-- [ ] Jangan memakai estimated output token untuk final exact TPS.
-- [ ] Hitung cache hit hanya jika denominator dapat dipertanggungjawabkan.
-- [ ] Jika cache field tidak ada, tampilkan unavailable, bukan 0%.
-- [ ] Persist usage dan timing per turn.
-- [ ] Tambahkan compact stats footer.
-- [ ] Tap footer membuka detail per-turn dan session cumulative.
-- [ ] Label exact, estimated, provider-reported, atau unavailable.
-- [ ] Jangan menambahkan pricing atau cost pada fase ini.
+- [x] Tambahkan normalized Usage type dengan nullable buckets dan quality.
+- [x] Parse Responses input_tokens, cached_tokens, cache_write_tokens, output_tokens, dan reasoning_tokens.
+- [x] Kenali provider extension yang sudah ada di fixture.
+- [x] Pastikan cached token subset tidak ditambahkan dua kali ke aggregate input.
+- [x] Hitung TTFT dari request dispatch ke first model event.
+- [x] Catat first visible token terpisah.
+- [x] Hitung decode duration dari first output token ke completed.
+- [x] Hitung TPS dari provider-reported output tokens.
+- [x] Jangan memakai estimated output token untuk final exact TPS.
+- [x] Hitung cache hit hanya jika denominator dapat dipertanggungjawabkan.
+- [x] Jika cache field tidak ada, tampilkan unavailable, bukan 0%.
+- [x] Pertahankan history append-only dan kirim `prompt_cache_key` stabil per conversation.
+- [x] Persist usage dan timing per turn.
+- [x] Tambahkan compact stats footer.
+- [x] Tap footer membuka detail per-turn dan session cumulative.
+- [x] Label exact, estimated, provider-reported, atau unavailable.
+- [x] Jangan menambahkan pricing atau cost pada fase ini.
 
 ### Tests
 
-- [ ] Exact TPS formula.
-- [ ] Zero-duration guard.
-- [ ] Missing first token.
-- [ ] Cached subset.
-- [ ] Cache read/write/uncached buckets.
-- [ ] Missing usage.
-- [ ] Reasoning token subset.
+- [x] Exact TPS formula.
+- [x] Zero-duration guard.
+- [x] Missing first token.
+- [x] Cached subset.
+- [x] Cache read/write/uncached buckets.
+- [x] Missing usage.
+- [x] Reasoning token subset.
+- [x] Responses body mengirim cache key hanya saat tersedia.
 
 ### Exit gate
 
-Fixture metrics cocok dengan hasil manual dan tidak ada cache 0% palsu.
+Fixture metrics cocok dengan formula manual dan tidak ada cache 0% palsu. Footer tetap menunggu verifikasi manual Android; cache provider tetap `unavailable` bila endpoint tidak mengirim field cache.
 
 ## 16. Phase 9: Context meter
 
@@ -1467,5 +1471,5 @@ Saat fase berikutnya menambah folder baru, tambahkan juga bagiannya di CODEBASE.
 
 - `src/domain/conversation.ts`, `src/domain/usage.ts`, `src/domain/context.ts`, dan `src/domain/tool.ts` dibuat pada fase yang benar-benar memakainya.
 - Folder `src/features/chat/`, `src/features/history/`, dan `src/features/settings/` menyusul pada Phase 4, 6, dan 7.
-- `src/services/metrics/` dan `src/services/context/` menyusul pada Phase 8 dan 9.
+- `src/domain/usage.ts` dibuat pada Phase 8; `src/services/metrics/` tidak dibuat karena normalizer dan formula metrics pure, sedangkan persistence tetap di `conversation-store.ts`. `src/services/context/` menyusul pada Phase 9.
 - Folder `modules/` hanya dibuat setelah native feature disetujui.

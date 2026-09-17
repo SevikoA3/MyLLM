@@ -53,14 +53,16 @@ myllm/
       model-config.test.ts
       conversation.ts               tipe message, status turn, summary, cursor, auto title
       conversation.test.ts
+      usage.ts                      normalisasi usage provider, timing, cache bucket, dan metrics
+      usage.test.ts
       sse.ts                        parser frame SSE incremental dan UTF-8 streaming
       sse.test.ts
       system-prompt.ts              system prompt v1 berdasarkan model ID exact
       system-prompt.test.ts
     features/                       UI dan orkestrasi per layar
       chat/
-        chat-screen.tsx             FlatList pesan, composer, reasoning picker, streaming, Stop, retry, New chat
-        use-chat.ts                 state chat memory, batching delta, cancellation, request orchestration
+        chat-screen.tsx             FlatList pesan, composer, reasoning picker, streaming, metrics footer, Stop, retry, New chat
+        use-chat.ts                 state chat memory dan metrics, stateless history replay, batching delta, cancellation, request orchestration
         use-chat.test.tsx
       history/
         history-screen.tsx          pagination, buka, rename, delete, New chat
@@ -86,7 +88,7 @@ myllm/
         models.ts                   GET /models dengan timeout dan tanpa redirect
         responses.ts                POST /responses streaming, event mapping, timing, cancellation
       persistence/
-        conversation-store.ts       migration SQLite, repository history dan recovery
+        conversation-store.ts       migration SQLite, repository history, metrics, dan recovery
         endpoint-store.ts           profile endpoint dan activeModelId di kv-store
         endpoint-store.test.ts
         settings-store.ts           activeModelId untuk endpoint aktif
@@ -159,6 +161,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `catalog-merge.ts` | `mergeCatalog`, `MergedModel`, `ProvenanceMap`, `CATALOG_SOURCES` | Urutan menang: user-override, live, bundled. `enabled`, request setting, dan provenance dihitung di sini. |
 | `model-config.ts` | `effectiveMaxOutput`, `reasoningChoices`, `modelRequestSnapshot`, `protocolOutputCap` | Memvalidasi effort, output limit, dan membuat config immutable sebelum request. |
 | `conversation.ts` | `ChatMessage`, `TurnStatus`, `ConversationSummary`, `ConversationCursor`, `titleFromPrompt` | Status mengunci sending, streaming, terminal, dan interrupted. |
+| `usage.ts` | `NormalizedUsage`, `TurnMetrics`, normalisasi field Responses, cache bucket, TTFT, TPS, dan session summary | Field usage yang hilang tetap null; cached input tidak dijumlahkan ulang. |
 | `sse.ts` | `createSseParser`, `SseFrame`, parser incremental `Uint8Array` dengan `TextDecoder` stream mode | Menangani LF, CRLF, comment, multiline data, event field, `[DONE]`, dan EOF. |
 | `system-prompt.ts` | `buildSystemPrompt`, `SYSTEM_PROMPT_VERSION`, instruksi asisten MyLLM dan model ID exact | Hanya menyebut capability yang tersedia; model ID di-escape sebagai JSON string. |
 
@@ -171,8 +174,8 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/onboarding.ts` | `connectAndDiscover`, `profileFromInput`, `suggestName`, `newCredentialId`, `loadCredentialFor` | `domain/endpoint`, `domain/error`, `services/credentials/store`, `services/transport/models`, `services/persistence/endpoint-store` |
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
-| `chat/chat-screen.tsx` | FlatList pesan, composer, reasoning picker, Send atau Stop, partial output, error, retry, dan New chat | `domain/conversation`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
-| `chat/use-chat.ts` | Orkestrasi conversation aktif, reasoning override, config snapshot model, SQLite sebelum request, batching UI dan DB 50 ms, recovery, cancellation, retry, dan response chaining | `domain/*`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
+| `chat/chat-screen.tsx` | FlatList pesan, composer, reasoning picker, metrics footer, Send atau Stop, partial output, error, retry, dan New chat | `domain/conversation`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
+| `chat/use-chat.ts` | Orkestrasi conversation aktif, reasoning override, config snapshot model, SQLite sebelum request, metrics per turn, stateless history replay, cache key per conversation, batching UI dan DB 50 ms, recovery, cancellation, dan retry | `domain/*`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
 | `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
 | `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
 | `models/model-detail-screen.tsx` | Nilai efektif dan provenance, reasoning, output limit, metadata override, reset field dan model | `domain/catalog`, `domain/model-config`, `models/use-model-catalog`, `ui/*` |
@@ -189,13 +192,13 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 |---|---|---|
 | `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.` | modul native dimuat lazy |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
-| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, request reasoning dan output optional, POST streaming, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, request reasoning, output, dan prompt cache key optional, POST streaming, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
 | `persistence/endpoint-store.ts` | Profile endpoint dan activeModelId di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
 | `persistence/catalog-store.ts` | `createCatalogRepository`, atomic snapshot dan override, preview/import, custom model, `loadModelRequestSnapshot`, dan `saveModelReasoningEffort` | `domain/catalog`, `domain/catalog-merge`, `domain/model-config`, `domain/endpoint` |
 | `persistence/catalog-files.ts` | `fileCatalogStorage` dan `readBundledDefaults` di document directory | `expo-file-system`, `assets/model-defaults.json` |
 | `persistence/catalog-transfer.ts` | `pickOverridesJson` dan `shareOverridesJson` untuk Android document picker dan share sheet | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
-| `persistence/conversation-store.ts` | `conversationRepository`, migration v1, WAL, foreign key, atomic turn writes, recovery, pagination, rename, delete | `domain/conversation`, `services/transport/responses`, `expo-sqlite` |
+| `persistence/conversation-store.ts` | `conversationRepository`, migration v1, WAL, foreign key, atomic turn writes, recovery, request history, pagination, normalized metrics, rename, delete | `domain/conversation`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
 
 `CatalogStorage` sengaja sempit supaya test memakai `Map`, bukan berkas nyata. Ikuti pola ini untuk service baru.
 
@@ -240,13 +243,17 @@ Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` memuat conversation
 
 History: `history-screen.tsx` membaca `conversationRepository.list` dengan keyset pagination `(updatedAt, id)`. Conversation dapat dibuka, diubah judulnya, atau dihapus dengan confirmation. Foreign key cascade membersihkan turn, item, usage, dan timing.
 
+Metrics: `conversationRepository.loadTurnMetrics` membaca usage dan timing per turn, lalu `domain/usage` menormalkan token provider serta menghitung TTFT, TPS, cache read, cache write, dan input uncached. `chat-screen.tsx` menampilkan turn terakhir dan ringkasan sesi; field cache yang hilang ditampilkan sebagai unavailable.
+
+Request history: `conversationRepository.loadRequestHistory` mengambil user item dan assistant item completed secara berurutan. `use-chat.ts` mengirim hasilnya sebagai Responses `input`, tanpa menggantungkan recall pada `previous_response_id` remote. Conversation ID yang sama dikirim sebagai `prompt_cache_key` agar endpoint kompatibel dapat mempertahankan cache affinity.
+
 ## 5. Yang belum ada
 
 | Area | Fase | Keterangan |
 |---|---|---|
 | Gate Android streaming | 5 | Implementasi selesai; verifikasi emulator dan device fisik menunggu laporan manual. |
 | Gate Android recovery | 6 | Implementasi selesai; verifikasi kill app saat stream dan recovery UI menunggu laporan manual. |
-| Usage, context meter, auto-compact | 8 sampai 10 | Belum ada. |
+| Context meter, auto-compact | 9 sampai 10 | Belum ada. Usage normalization dan metrics footer Phase 8 sudah ada; verifikasi Android/manual masih menunggu. |
 | MVP hardening | 11 | Belum ada. |
 
 ## 6. Aturan saat menambah berkas

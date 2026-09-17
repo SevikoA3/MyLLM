@@ -1,5 +1,6 @@
 import { fetch as expoFetch } from 'expo/fetch';
 
+import type { ConversationInputMessage } from '../../domain/conversation';
 import {
   buildAuthHeaders,
   buildCustomHeaders,
@@ -24,7 +25,9 @@ const MAX_ATTEMPTS = 2;
 export type SendResponseInput = {
   modelId: string;
   prompt: string;
+  history?: ConversationInputMessage[];
   previousResponseId: string | null;
+  promptCacheKey: string | null;
   maxOutputTokens: number | null;
   reasoningEffort: string | null;
 };
@@ -129,7 +132,7 @@ export function buildResponsesBody(
   const body: Record<string, unknown> = {
     model: input.modelId,
     instructions: buildSystemPrompt(input.modelId),
-    input: [{ role: 'user', content: input.prompt }],
+    input: input.history ?? [{ role: 'user', content: input.prompt }],
     stream: true,
   };
   if (input.maxOutputTokens !== null) {
@@ -143,6 +146,9 @@ export function buildResponsesBody(
   }
   if (input.previousResponseId !== null) {
     body.previous_response_id = input.previousResponseId;
+  }
+  if (input.promptCacheKey !== null) {
+    body.prompt_cache_key = input.promptCacheKey;
   }
   return body;
 }

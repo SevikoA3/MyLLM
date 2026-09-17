@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Smoke test billable: dua turn Responses API streaming terhadap endpoint di .env.
+// Smoke test billable: dua turn Responses API streaming dengan stateless history replay.
 // Prompt dan response tidak dicetak.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -30,7 +30,9 @@ const modelId = env.AMANAI_MODEL?.trim() || discovered.models[0].id;
 const first = await responsesClient.send(profile, apiKey, {
   modelId,
   prompt: 'Balas hanya dengan kata OK.',
+  history: [{ role: 'user', content: 'Balas hanya dengan kata OK.' }],
   previousResponseId: null,
+  promptCacheKey: 'smoke-cache-thread',
   maxOutputTokens: 256,
   reasoningEffort: null,
 });
@@ -42,7 +44,13 @@ verifyStream('turn 1', first);
 const second = await responsesClient.send(profile, apiKey, {
   modelId,
   prompt: 'Balas hanya dengan kata LANJUT.',
-  previousResponseId: first.response.id,
+  history: [
+    { role: 'user', content: 'Balas hanya dengan kata OK.' },
+    { role: 'assistant', content: first.response.text ?? '' },
+    { role: 'user', content: 'Balas hanya dengan kata LANJUT.' },
+  ],
+  previousResponseId: null,
+  promptCacheKey: 'smoke-cache-thread',
   maxOutputTokens: 256,
   reasoningEffort: null,
 });
@@ -52,7 +60,7 @@ if (!second.ok) {
 verifyStream('turn 2', second);
 
 console.log('Responses streaming: 2/2 turn berhasil');
-console.log('previous_response_id: berhasil');
+console.log('stateless history replay: berhasil');
 console.log('output text: tersedia pada kedua turn');
 console.log('timing stream: tersedia pada kedua turn');
 

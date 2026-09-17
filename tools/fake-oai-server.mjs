@@ -325,7 +325,13 @@ function completed(id) {
     response: {
       id,
       status: 'completed',
-      usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 },
+      usage: {
+        input_tokens: 12,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens: 4,
+        output_tokens_details: { reasoning_tokens: 0 },
+        total_tokens: 16,
+      },
     },
   });
 }
