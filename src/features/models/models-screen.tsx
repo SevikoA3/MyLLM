@@ -223,17 +223,34 @@ export function ModelRow({
         {!model.enabled && <Badge label="dimatikan" tone="warning" />}
       </View>
       <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={(model.enabled ? 'Matikan model ' : 'Aktifkan model ') + model.id}
+        accessibilityRole="checkbox"
+        accessibilityLabel={'Tampilkan ' + model.id + ' di picker'}
+        accessibilityHint="Centang agar model tersedia untuk dipilih"
+        accessibilityState={{ checked: model.enabled }}
         onPress={onToggle}
-        style={{ minHeight: 44, justifyContent: 'center' }}>
+        style={({ pressed }) => ({
+          minHeight: 44,
+          alignSelf: 'flex-start',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          opacity: pressed ? 0.7 : 1,
+        })}>
+        <SymbolView
+          name={{
+            ios: model.enabled ? 'checkmark.square.fill' : 'square',
+            android: model.enabled ? 'check_box' : 'check_box_outline_blank',
+          }}
+          size={26}
+          tintColor={model.enabled ? theme.colors.accent : theme.colors.textMuted}
+        />
         <Text
           style={{
-            color: theme.colors.accent,
+            color: theme.colors.text,
             fontSize: theme.typography.body,
             fontWeight: '600',
           }}>
-          {model.enabled ? 'Matikan dari picker' : 'Aktifkan di picker'}
+          Tampilkan di picker
         </Text>
       </Pressable>
     </Pressable>

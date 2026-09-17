@@ -55,7 +55,7 @@ describe('ModelRow', () => {
     expect(view.getByText('ctx unknown')).toBeTruthy();
   });
 
-  it('menjelaskan model yang dimatikan dan menyediakan tombol aktifkan', async () => {
+  it('menjelaskan model yang dimatikan dan menyediakan checkbox picker', async () => {
     const view = await render(
       <ModelRow
         model={model({ enabled: false })}
@@ -67,6 +67,7 @@ describe('ModelRow', () => {
     );
 
     expect(view.getByText('dimatikan')).toBeTruthy();
-    expect(view.getByText('Aktifkan di picker')).toBeTruthy();
+    expect(view.getByText('Tampilkan di picker')).toBeTruthy();
+    expect(view.getByRole('checkbox').props.accessibilityState).toEqual({ checked: false });
   });
 });
