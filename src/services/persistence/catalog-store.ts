@@ -12,7 +12,6 @@ import {
 } from '../../domain/catalog';
 import { mergeCatalog, type MergedModel } from '../../domain/catalog-merge';
 import { joinEndpointPath } from '../../domain/endpoint';
-import { normalizeModelRecord } from '../../domain/model-list';
 import type { ModelRecord as ModelRecordType } from '../../domain/model';
 
 export const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -204,7 +203,7 @@ export type CatalogRepositoryDeps = {
   storage: CatalogStorage;
   readDefaults: () => Promise<CatalogDefaults>;
   fetchModels: (input: { baseUrl: string; modelListPath: string }) => Promise<
-    { ok: true; models: unknown[] } | { ok: false; message: string }
+    { ok: true; models: ModelRecordType[] } | { ok: false; message: string }
   >;
   now?: () => number;
 };
@@ -270,7 +269,7 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
     if (!fetched.ok) {
       return { ok: false, catalog: current, error: { kind: 'network', message: fetched.message } };
     }
-    const models = normalizeDiscovered(fetched.models);
+    const models = uniqueDiscovered(fetched.models);
     if (models === null) {
       return {
         ok: false,
@@ -339,16 +338,15 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
   }
 }
 
-function normalizeDiscovered(entries: unknown[]): ModelRecordType[] | null {
+function uniqueDiscovered(entries: ModelRecordType[]): ModelRecordType[] | null {
   const models: ModelRecordType[] = [];
   const seen = new Set<string>();
-  for (const entry of entries) {
-    const record = normalizeModelRecord(entry);
-    if (record === null || seen.has(record.id)) {
+  for (const model of entries) {
+    if (seen.has(model.id)) {
       continue;
     }
-    seen.add(record.id);
-    models.push(record);
+    seen.add(model.id);
+    models.push(model);
   }
   return models.length === 0 ? null : models;
 }

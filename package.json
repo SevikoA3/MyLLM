@@ -55,6 +55,7 @@
     "test:server": "node --test tools/fake-server.test.mjs",
     "test:transport": "node tools/build-tests.mjs && node --test tools/transport.test.mjs",
     "test:onboarding": "node tools/build-tests.mjs && node --test tools/onboarding.test.mjs",
+    "test:fields": "node tools/build-tests.mjs && node --test tools/model-fields.test.mjs",
     "smoke:models": "node tools/build-tests.mjs && node tools/smoke-models.mjs"
   },
   "jest": {

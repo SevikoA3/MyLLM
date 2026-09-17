@@ -411,7 +411,9 @@ Chat request, model override editor, multi-endpoint UI, atau capability probing.
 
 ## 10. Phase 3: Model catalog JSON dan model picker
 
-Status: selesai 16 September 2026. npm run lint, npm run typecheck, npm run test:ci (80 test), npm run test:server (10 test), npm run test:transport (9 test), dan npm run test:onboarding (7 test) lulus. Smoke test nyata terhadap AmanAI lewat npm run smoke:models menunjukkan 40 model terbaca dengan contextWindow terisi 40/40.
+Status: selesai 16 September 2026, diperbaiki 17 September 2026. npm run lint, npm run typecheck, npm run test:ci (89 test), npm run test:server (10 test), npm run test:transport (9 test), npm run test:onboarding (7 test), dan npm run test:fields (6 test) lulus. Smoke test nyata terhadap AmanAI lewat npm run smoke:models menunjukkan 40 model terbaca dengan contextWindow terisi 40/40.
+
+Perbaikan 17 September menghapus normalisasi kedua pada hasil `discoverModels`. Sebelumnya refresh mengubah `contextWindow` yang sudah dinormalisasi kembali menjadi null. Refresh manual sekarang juga menampilkan status memuat, home memakai hierarki visual yang lebih jelas, dan tab memakai ikon native dari `expo-symbols` yang sudah terpasang.
 
 Catatan pipeline pengujian: contract test Node mengompilasi modul produksi ke .tests-build lalu menimpa services/persistence/catalog-files.js dengan stub in-memory, karena expo-file-system adalah native module. Lapisan katalog diuji di Jest (test:ci) sebanyak 20 test, sedangkan jalur onboarding plus seed katalog diuji di Node.
 

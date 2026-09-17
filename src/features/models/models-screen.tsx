@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { SymbolView } from 'expo-symbols';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import type { MergedModel } from '../../domain/catalog-merge';
@@ -131,15 +132,27 @@ function RefreshButton({ refreshing, onPress }: { refreshing: boolean; onPress: 
       accessibilityState={{ busy: refreshing, disabled: refreshing }}
       disabled={refreshing}
       onPress={onPress}
-      style={{
+      style={({ pressed }) => ({
         minHeight: 44,
-        minWidth: 96,
+        minWidth: 110,
+        flexDirection: 'row',
+        gap: 8,
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: theme.spacing.screen,
         backgroundColor: refreshing ? theme.colors.surface : theme.colors.accent,
         borderRadius: theme.radius.control,
-      }}>
+        opacity: pressed ? 0.8 : 1,
+      })}>
+      {refreshing ? (
+        <ActivityIndicator size="small" color={theme.colors.textMuted} />
+      ) : (
+        <SymbolView
+          name={{ ios: 'arrow.clockwise', android: 'refresh' }}
+          size={18}
+          tintColor={theme.colors.accentText}
+        />
+      )}
       <Text
         style={{
           color: refreshing ? theme.colors.textMuted : theme.colors.accentText,

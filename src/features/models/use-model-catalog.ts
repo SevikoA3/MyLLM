@@ -113,13 +113,22 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     if (repository === null || profile === null) {
       return;
     }
-    const result = await repository.refresh({
-      endpointId: profile.id,
-      baseUrl: profile.baseUrl,
-      modelListPath: profile.compat.modelListPath,
-    });
-    setRuntime(result.catalog);
-    setFailure(result.ok ? null : result.error);
+    setRefreshing(true);
+    try {
+      const result = await repository.refresh({
+        endpointId: profile.id,
+        baseUrl: profile.baseUrl,
+        modelListPath: profile.compat.modelListPath,
+      });
+      if (alive.current) {
+        setRuntime(result.catalog);
+        setFailure(result.ok ? null : result.error);
+      }
+    } finally {
+      if (alive.current) {
+        setRefreshing(false);
+      }
+    }
   }, [profile]);
 
   const setOverride = useCallback(
