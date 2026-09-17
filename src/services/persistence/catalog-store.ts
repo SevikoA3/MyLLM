@@ -5,13 +5,18 @@ import {
   CatalogSnapshotSchema,
   HistoryModelsFileSchema,
   ModelOverridesFileSchema,
+  changedOverrideModelIds,
+  parseModelOverridesText,
+  serializeModelOverrides,
   type CatalogDefaults,
   type CatalogSnapshot,
   type ModelOverride,
   type ModelOverridesFile,
+  type OverrideValidationFailure,
 } from '../../domain/catalog';
 import { mergeCatalog, type MergedModel } from '../../domain/catalog-merge';
-import { joinEndpointPath } from '../../domain/endpoint';
+import { joinEndpointPath, type EndpointProfile } from '../../domain/endpoint';
+import { modelRequestSnapshot, type ModelRequestSnapshot } from '../../domain/model-config';
 import type { ModelRecord as ModelRecordType } from '../../domain/model';
 
 export const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -39,6 +44,10 @@ export type CatalogRuntime = {
   overrides: ModelOverridesFile;
   defaults: CatalogDefaults;
 };
+
+export type OverridesPreview =
+  | { ok: true; value: ModelOverridesFile; affectedModelIds: string[] }
+  | OverrideValidationFailure;
 
 export type RefreshInput = {
   endpointId: string;
@@ -137,6 +146,50 @@ async function readJsonFile<T>(
   return null;
 }
 
+async function readOverrides(storage: CatalogStorage): Promise<ModelOverridesFile> {
+  const parsed = await readJsonFile(storage, 'model-overrides.json', ModelOverridesFileSchema);
+  if (parsed !== null) {
+    return parsed;
+  }
+  const backup = await readValidated(
+    storage,
+    'model-overrides.json.backup',
+    ModelOverridesFileSchema,
+  );
+  return backup ?? { schemaVersion: 1, endpoints: {} };
+}
+
+async function readSnapshotWithBackup(
+  storage: CatalogStorage,
+  endpointId: string,
+): Promise<CatalogSnapshot | null> {
+  const primary = await readSnapshot(storage, endpointId);
+  if (primary !== null) {
+    return primary;
+  }
+  return readValidated(storage, backupFileName(endpointId), CatalogSnapshotSchema);
+}
+
+async function writeOverridesAtomic(
+  storage: CatalogStorage,
+  next: ModelOverridesFile,
+): Promise<void> {
+  const validated = ModelOverridesFileSchema.parse(next);
+  const name = 'model-overrides.json';
+  const temp = `${name}.tmp`;
+  await storage.writeText(temp, serializeModelOverrides(validated));
+  const confirmed = await readValidated(storage, temp, ModelOverridesFileSchema);
+  if (confirmed === null) {
+    await storage.writeText(temp, '');
+    throw new Error('Override gagal divalidasi setelah ditulis. File aktif dipertahankan.');
+  }
+  if (await storage.exists(name)) {
+    await storage.copy(name, `${name}.backup`);
+  }
+  await storage.copy(temp, name);
+  await storage.writeText(temp, '');
+}
+
 export function defaultSnapshot(endpointId: string, baseUrl: string, models: ModelRecordType[]): CatalogSnapshot {
   return CatalogSnapshotSchema.parse({
     schemaVersion: 1,
@@ -219,11 +272,6 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
   let runtime: CatalogRuntime | null = null;
   let refreshInFlight: Promise<RefreshResult> | null = null;
 
-  async function readOverrides(): Promise<ModelOverridesFile> {
-    const parsed = await readJsonFile(deps.storage, 'model-overrides.json', ModelOverridesFileSchema);
-    return parsed ?? { schemaVersion: 1, endpoints: {} };
-  }
-
   async function readHistory(endpointId: string): Promise<{ id: string; displayName: string }[]> {
     const parsed = await readJsonFile(deps.storage, 'history-models.json', HistoryModelsFileSchema);
     const entries = parsed?.endpoints[endpointId] ?? {};
@@ -233,20 +281,12 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
   async function load(endpointId: string): Promise<CatalogRuntime> {
     const defaults = CatalogDefaultsSchema.parse(await deps.readDefaults());
     const [snapshot, overrides, history] = await Promise.all([
-      readSnapshotWithBackup(endpointId),
-      readOverrides(),
+      readSnapshotWithBackup(deps.storage, endpointId),
+      readOverrides(deps.storage),
       readHistory(endpointId),
     ]);
     runtime = mergedFrom(defaults, snapshot, overrides, endpointId, history);
     return runtime;
-  }
-
-  async function readSnapshotWithBackup(endpointId: string): Promise<CatalogSnapshot | null> {
-    const primary = await readSnapshot(deps.storage, endpointId);
-    if (primary !== null) {
-      return primary;
-    }
-    return readValidated(deps.storage, backupFileName(endpointId), CatalogSnapshotSchema);
   }
 
   /** Satu GET /models untuk semua pemanggil yang datang bersamaan. */
@@ -287,7 +327,12 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
     if (!written.ok) {
       return { ok: false, catalog: current, error: { kind: 'cache-write', message: written.message } };
     }
-    runtime = mergedFrom(current.defaults, snapshot, current.overrides, input.endpointId);
+    runtime = mergedFrom(
+      current.defaults,
+      snapshot,
+      await readOverrides(deps.storage),
+      input.endpointId,
+    );
     return { ok: true, catalog: runtime };
   }
 
@@ -296,46 +341,137 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
     refresh,
     current: () => runtime,
     applyOverrides,
+    previewOverrides,
+    applyOverridesText,
+    exportOverrides: () => serializeModelOverrides(
+      runtime?.overrides ?? { schemaVersion: 1, endpoints: {} },
+    ),
+    async addCustomModel(endpointId: string, modelId: string): Promise<void> {
+      const id = modelId.trim();
+      if (id.length === 0) {
+        throw new Error('Model ID wajib diisi.');
+      }
+      const current = runtime ?? (await load(endpointId));
+      if (current.models.some((model) => model.id === id)) {
+        throw new Error('Model ID sudah ada.');
+      }
+      await setOverride(endpointId, id, { displayName: id, enabled: true });
+    },
     async setOverride(
       endpointId: string,
       modelId: string,
       patch: ModelOverride | null,
     ): Promise<void> {
-      const overrides = await readOverrides();
-      const bucket = overrides.endpoints[endpointId]?.models ?? {};
-      if (patch === null) {
-        delete bucket[modelId];
-      } else {
-        bucket[modelId] = { ...bucket[modelId], ...patch };
-      }
-      const next: ModelOverridesFile = {
-        schemaVersion: 1,
-        endpoints: {
-          ...overrides.endpoints,
-          [endpointId]: { models: bucket },
-        },
-      };
-      await applyOverrides(endpointId, next);
+      await setOverride(endpointId, modelId, patch);
     },
   };
+
+  async function setOverride(
+    endpointId: string,
+    modelId: string,
+    patch: ModelOverride | null,
+  ): Promise<void> {
+    const overrides = await readOverrides(deps.storage);
+    const bucket = { ...(overrides.endpoints[endpointId]?.models ?? {}) };
+    if (patch === null) {
+      delete bucket[modelId];
+    } else {
+      bucket[modelId] = {
+        ...bucket[modelId],
+        ...patch,
+        ...(patch.enabled === undefined ? {} : { disabledAt: null }),
+      };
+    }
+    const next: ModelOverridesFile = {
+      schemaVersion: 1,
+      endpoints: {
+        ...overrides.endpoints,
+        [endpointId]: { models: bucket },
+      },
+    };
+    await applyOverrides(endpointId, next);
+  }
+
+  async function previewOverrides(
+    endpointId: string,
+    text: string,
+    profile?: EndpointProfile,
+  ): Promise<OverridesPreview> {
+    const parsed = parseModelOverridesText(text);
+    if (!parsed.ok) {
+      return parsed;
+    }
+    const current = runtime ?? (await load(endpointId));
+    if (profile !== undefined) {
+      const snapshot = await readSnapshotWithBackup(deps.storage, endpointId);
+      const nextRuntime = mergedFrom(current.defaults, snapshot, parsed.value, endpointId);
+      for (const model of nextRuntime.models) {
+        try {
+          modelRequestSnapshot(model, profile);
+        } catch (error) {
+          return {
+            ok: false,
+            path: `$.endpoints.${endpointId}.models.${model.id}.request`,
+            message: error instanceof Error ? error.message : 'Konfigurasi request tidak valid.',
+          };
+        }
+      }
+    }
+    return {
+      ok: true,
+      value: parsed.value,
+      affectedModelIds: changedOverrideModelIds(current.overrides, parsed.value, endpointId),
+    };
+  }
+
+  async function applyOverridesText(
+    endpointId: string,
+    text: string,
+    profile?: EndpointProfile,
+  ): Promise<OverridesPreview> {
+    const preview = await previewOverrides(endpointId, text, profile);
+    if (!preview.ok) {
+      return preview;
+    }
+    await applyOverrides(endpointId, preview.value);
+    return preview;
+  }
 
   /** File override selalu dijaga berpasangan dengan backup satu generasi. */
   async function applyOverrides(endpointId: string, next: ModelOverridesFile): Promise<void> {
     const validated = ModelOverridesFileSchema.parse(next);
-    const name = 'model-overrides.json';
-    if (await deps.storage.exists(name)) {
-      await deps.storage.copy(name, `${name}.backup`);
-    }
-    await deps.storage.writeText(name, JSON.stringify(validated));
+    await writeOverridesAtomic(deps.storage, validated);
     if (runtime !== null) {
       runtime = mergedFrom(
         runtime.defaults,
-        await readSnapshotWithBackup(endpointId),
+        await readSnapshotWithBackup(deps.storage, endpointId),
         validated,
         endpointId,
       );
     }
   }
+}
+
+/** Satu immutable config dibaca sebelum request mulai. */
+export async function loadModelRequestSnapshot(
+  storage: CatalogStorage,
+  readDefaults: () => Promise<CatalogDefaults>,
+  profile: EndpointProfile,
+  modelId: string,
+): Promise<ModelRequestSnapshot | null> {
+  const [defaults, snapshot, overrides] = await Promise.all([
+    readDefaults(),
+    readSnapshotWithBackup(storage, profile.id),
+    readOverrides(storage),
+  ]);
+  const runtime = mergedFrom(
+    CatalogDefaultsSchema.parse(defaults),
+    snapshot,
+    overrides,
+    profile.id,
+  );
+  const model = runtime.models.find((entry) => entry.id === modelId);
+  return model === undefined ? null : modelRequestSnapshot(model, profile);
 }
 
 function uniqueDiscovered(entries: ModelRecordType[]): ModelRecordType[] | null {

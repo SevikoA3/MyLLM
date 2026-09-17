@@ -3,6 +3,7 @@ import {
   type CatalogModelFields,
   type HistoryModelEntry,
   type ModelOverride,
+  type ModelRequestOverride,
   type Pricing,
 } from './catalog';
 import { UNKNOWN_CAPABILITIES, type ModelCapabilities, type ModelRecord } from './model';
@@ -10,11 +11,15 @@ import { UNKNOWN_CAPABILITIES, type ModelCapabilities, type ModelRecord } from '
 export const CATALOG_SOURCES = ['bundled', 'live', 'user-override', 'history'] as const;
 export type CatalogSource = (typeof CATALOG_SOURCES)[number];
 
-export type ProvenanceMap = Record<string, { value: string | number | null; source: CatalogSource }>;
+export type ProvenanceMap = Record<
+  string,
+  { value: string | number | boolean | null; source: CatalogSource }
+>;
 
 export type MergedModel = ModelRecord & {
   pricing: Pricing | null;
   provenance: ProvenanceMap;
+  request: { reasoningEffort: string | null; outputLimit: number | null };
   /** false hanya jika pengguna mematikan model ini; model orphan tetap true. */
   enabled: boolean;
   /** true jika model tidak ada di defaults dan tidak ada di snapshot live. */
@@ -47,7 +52,37 @@ export function mergeCatalog(input: MergeInput): MergedModel[] {
     const fields = { ...layers.get(id) };
     const map = provenance[id] ?? (provenance[id] = {});
     for (const [key, value] of Object.entries(override)) {
-      if (key === 'id' || key === 'disabledAt' || value === undefined) {
+      if (value === undefined || key === 'disabledAt') {
+        continue;
+      }
+      if (key === 'enabled') {
+        if (typeof value === 'boolean') {
+          map.enabled = { value, source: 'user-override' };
+        } else {
+          delete map.enabled;
+        }
+        continue;
+      }
+      if (key === 'request') {
+        if (isRecord(value)) {
+          for (const [requestKey, requestValue] of Object.entries(value)) {
+            const path = `request.${requestKey}`;
+            if (requestValue === null) {
+              delete map[path];
+            } else {
+              map[path] = { value: scalar(requestValue), source: 'user-override' };
+            }
+          }
+        }
+        continue;
+      }
+      if (key === 'capabilities') {
+        fields.capabilities = mergeCapabilities(
+          fields.capabilities,
+          inherited.get(id)?.capabilities,
+          value,
+          map,
+        );
         continue;
       }
       if (value === null) {
@@ -58,7 +93,6 @@ export function mergeCatalog(input: MergeInput): MergedModel[] {
           delete map[key];
         } else {
           fields[key] = inheritedValue;
-          map[key] = { value: scalar(inheritedValue), source: 'live' };
         }
         continue;
       }
@@ -110,6 +144,24 @@ function collect(
       if (key === 'id' || value === undefined || value === null) {
         continue;
       }
+      if (key === 'capabilities') {
+        const next = { ...(isRecord(current.capabilities) ? current.capabilities : {}) };
+        const inheritedNext = { ...(isRecord(inherit.capabilities) ? inherit.capabilities : {}) };
+        for (const [capability, state] of Object.entries(value)) {
+          if (state === undefined || state === null) {
+            continue;
+          }
+          next[capability] = state;
+          inheritedNext[capability] = state;
+          map[`capabilities.${capability}`] = {
+            value: scalar(state),
+            source: provenanceSource,
+          };
+        }
+        current.capabilities = next;
+        inherit.capabilities = inheritedNext;
+        continue;
+      }
       current[key] = value;
       inherit[key] = value;
       map[key] = { value: scalar(value), source: provenanceSource };
@@ -158,10 +210,49 @@ function toRecord(
     raw,
     pricing: pricingFromRaw(raw),
     provenance,
-    enabled: override?.disabledAt == null,
+    request: requestFromOverride(override?.request),
+    enabled:
+      typeof override?.enabled === 'boolean' ? override.enabled : override?.disabledAt == null,
     orphaned,
   };
   return record;
+}
+
+function mergeCapabilities(
+  currentValue: unknown,
+  inheritedValue: unknown,
+  overrideValue: unknown,
+  provenance: ProvenanceMap,
+): Record<string, unknown> {
+  const current = { ...(isRecord(currentValue) ? currentValue : {}) };
+  const inherited = isRecord(inheritedValue) ? inheritedValue : {};
+  if (!isRecord(overrideValue)) {
+    return current;
+  }
+  for (const [key, value] of Object.entries(overrideValue)) {
+    if (value === null) {
+      if (inherited[key] === undefined) {
+        delete current[key];
+        delete provenance[`capabilities.${key}`];
+      } else {
+        current[key] = inherited[key];
+      }
+      continue;
+    }
+    current[key] = value;
+    provenance[`capabilities.${key}`] = {
+      value: scalar(value),
+      source: 'user-override',
+    };
+  }
+  return current;
+}
+
+function requestFromOverride(value: ModelRequestOverride | null | undefined): MergedModel['request'] {
+  return {
+    reasoningEffort: typeof value?.reasoningEffort === 'string' ? value.reasoningEffort : null,
+    outputLimit: typeof value?.outputLimit === 'number' ? value.outputLimit : null,
+  };
 }
 
 type CapabilityStateValue = ModelCapabilities[keyof ModelCapabilities];
@@ -174,8 +265,8 @@ function inferVendor(id: string, ownedBy: string | null): string | null {
   return ownedBy;
 }
 
-function scalar(value: unknown): string | number | null {
-  if (typeof value === 'string' || typeof value === 'number') {
+function scalar(value: unknown): string | number | boolean | null {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return value;
   }
   return null;

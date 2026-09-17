@@ -7,6 +7,7 @@ import {
   REFRESH_INTERVAL_MS,
   type CatalogRuntime,
   type CatalogRepository,
+  type OverridesPreview,
   type RefreshFailure,
 } from '../../services/persistence/catalog-store';
 import { fileCatalogStorage, readBundledDefaults } from '../../services/persistence/catalog-files';
@@ -18,8 +19,13 @@ export type ModelCatalogState = {
   loading: boolean;
   refreshing: boolean;
   failure: RefreshFailure | null;
+  reload: () => Promise<void>;
   refresh: () => Promise<void>;
   setOverride: (modelId: string, patch: ModelOverride | null) => Promise<void>;
+  addCustomModel: (modelId: string) => Promise<void>;
+  previewOverrides: (text: string) => Promise<OverridesPreview>;
+  applyOverridesText: (text: string) => Promise<OverridesPreview>;
+  exportOverrides: () => string;
 };
 
 /** Profile tanpa credentialRef tidak boleh menulis credential yatim ke Keystore. */
@@ -131,6 +137,17 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     }
   }, [profile]);
 
+  const reload = useCallback(async () => {
+    const repository = repositoryRef.current;
+    if (repository === null || profile === null) {
+      return;
+    }
+    const next = await repository.load(profile.id);
+    if (alive.current) {
+      setRuntime(next);
+    }
+  }, [profile]);
+
   const setOverride = useCallback(
     async (modelId: string, patch: ModelOverride | null) => {
       const repository = repositoryRef.current;
@@ -146,5 +163,64 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     [profile],
   );
 
-  return { runtime, loading, refreshing, failure, refresh, setOverride };
+  const addCustomModel = useCallback(
+    async (modelId: string) => {
+      const repository = repositoryRef.current;
+      if (repository === null || profile === null) {
+        return;
+      }
+      await repository.addCustomModel(profile.id, modelId);
+      const next = repository.current();
+      if (next !== null) {
+        setRuntime({ ...next });
+      }
+    },
+    [profile],
+  );
+
+  const previewOverrides = useCallback(
+    async (text: string): Promise<OverridesPreview> => {
+      const repository = repositoryRef.current;
+      if (repository === null || profile === null) {
+        return { ok: false, path: '$', message: 'Katalog belum siap.' };
+      }
+      return repository.previewOverrides(profile.id, text, profile);
+    },
+    [profile],
+  );
+
+  const applyOverridesText = useCallback(
+    async (text: string): Promise<OverridesPreview> => {
+      const repository = repositoryRef.current;
+      if (repository === null || profile === null) {
+        return { ok: false, path: '$', message: 'Katalog belum siap.' };
+      }
+      const result = await repository.applyOverridesText(profile.id, text, profile);
+      const next = repository.current();
+      if (result.ok && next !== null) {
+        setRuntime({ ...next });
+      }
+      return result;
+    },
+    [profile],
+  );
+
+  const exportOverrides = useCallback(
+    () => repositoryRef.current?.exportOverrides() ?? '{\n  "schemaVersion": 1,\n  "endpoints": {}\n}',
+    [],
+  );
+
+  return {
+    runtime,
+    loading,
+    refreshing,
+    failure,
+    reload,
+    refresh,
+    setOverride,
+    addCustomModel,
+    previewOverrides,
+    applyOverridesText,
+    exportOverrides,
+  };
 }

@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import type { MergedModel } from '../../domain/catalog-merge';
 import { endpointStore } from '../../services/persistence/endpoint-store';
@@ -14,8 +23,11 @@ import { useModelCatalog } from './use-model-catalog';
 export default function ModelsScreen() {
   const { status, profile } = useActiveEndpoint();
   const catalog = useModelCatalog(profile);
+  const reloadCatalog = catalog.reload;
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [customId, setCustomId] = useState('');
   const theme = useTheme();
 
   const models = catalog.runtime?.models ?? [];
@@ -34,6 +46,12 @@ export default function ModelsScreen() {
     };
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      void reloadCatalog();
+    }, [reloadCatalog]),
+  );
+
   const pick = useCallback(async (model: MergedModel) => {
     if (!model.enabled) {
       setBlocked(model.displayName + ' sedang dimatikan. Aktifkan dulu untuk memakainya.');
@@ -43,6 +61,19 @@ export default function ModelsScreen() {
     await endpointStore.saveActiveModelId(model.id);
     setActiveModelId(model.id);
   }, []);
+
+  const addCustomModel = useCallback(async () => {
+    const id = customId.trim();
+    try {
+      await catalog.addCustomModel(id);
+      setAdding(false);
+      setCustomId('');
+      setBlocked(null);
+      router.push({ pathname: '/settings/model', params: { modelId: id } });
+    } catch (error) {
+      setBlocked(error instanceof Error ? error.message : 'Model custom gagal ditambahkan.');
+    }
+  }, [catalog, customId]);
 
   if (status === 'loading' || catalog.loading) {
     return (
@@ -80,6 +111,33 @@ export default function ModelsScreen() {
             {blocked}
           </Text>
         )}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <SmallButton label="Tambah model" onPress={() => setAdding((value) => !value)} />
+          <SmallButton label="JSON" onPress={() => router.push('/settings/models-json')} />
+        </View>
+        {adding && (
+          <View style={{ gap: 8 }}>
+            <TextInput
+              accessibilityLabel="Model ID custom"
+              value={customId}
+              onChangeText={setCustomId}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="provider/model-exact"
+              placeholderTextColor={theme.colors.textMuted}
+              style={{
+                minHeight: 48,
+                color: theme.colors.text,
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderWidth: 1,
+                borderRadius: theme.radius.control,
+                paddingHorizontal: 12,
+              }}
+            />
+            <SmallButton label="Tambahkan" onPress={() => void addCustomModel()} />
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -104,9 +162,12 @@ export default function ModelsScreen() {
             active={item.id === activeModelId}
             selectable={item.enabled}
             onPress={() => void pick(item)}
+            onEdit={() =>
+              router.push({ pathname: '/settings/model', params: { modelId: item.id } })
+            }
             onToggle={() =>
               void catalog.setOverride(item.id, {
-                disabledAt: item.enabled ? new Date().toISOString() : null,
+                enabled: !item.enabled,
               })
             }
           />
@@ -178,12 +239,14 @@ export function ModelRow({
   selectable,
   onPress,
   onToggle,
+  onEdit,
 }: {
   model: MergedModel;
   active: boolean;
   selectable: boolean;
   onPress: () => void;
   onToggle: () => void;
+  onEdit: () => void;
 }) {
   const theme = useTheme();
   const rowStyle = {
@@ -197,31 +260,34 @@ export function ModelRow({
   };
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={'Pilih model ' + model.id}
-      accessibilityHint={
-        selectable ? 'Menjadikan model ini model aktif' : 'Model sedang dimatikan'
-      }
-      accessibilityState={{ selected: active, disabled: !selectable }}
-      onPress={onPress}
-      style={rowStyle}>
-      <Text
-        style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
-        {model.displayName}
-      </Text>
-      {model.displayName !== model.id && (
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-          {model.id}
+    <View style={rowStyle}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={'Pilih model ' + model.id}
+        accessibilityHint={
+          selectable ? 'Menjadikan model ini model aktif' : 'Model sedang dimatikan'
+        }
+        accessibilityState={{ selected: active, disabled: !selectable }}
+        onPress={onPress}
+        style={({ pressed }) => ({ gap: 6, opacity: pressed ? 0.7 : 1 })}>
+        <Text
+          style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
+          {model.displayName}
         </Text>
-      )}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {modelBadges(model).map((badge) => (
-          <Badge key={badge} label={badge} tone="neutral" />
-        ))}
-        {active && <Badge label="aktif" tone="accent" />}
-        {!model.enabled && <Badge label="dimatikan" tone="warning" />}
-      </View>
+        {model.displayName !== model.id && (
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+            {model.id}
+          </Text>
+        )}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {modelBadges(model).map((badge) => (
+            <Badge key={badge} label={badge} tone="neutral" />
+          ))}
+          {active && <Badge label="aktif" tone="accent" />}
+          {!model.enabled && <Badge label="dimatikan" tone="warning" />}
+        </View>
+      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityLabel={'Tampilkan ' + model.id + ' di picker'}
@@ -253,6 +319,32 @@ export function ModelRow({
           Tampilkan di picker
         </Text>
       </Pressable>
+        <SmallButton label="Detail" onPress={onEdit} />
+      </View>
+    </View>
+  );
+}
+
+function SmallButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        justifyContent: 'center',
+        paddingHorizontal: 12,
+        borderRadius: theme.radius.control,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.surface,
+        opacity: pressed ? 0.7 : 1,
+      })}>
+      <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
+        {label}
+      </Text>
     </Pressable>
   );
 }

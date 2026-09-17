@@ -23,6 +23,7 @@ function model(overrides: Partial<MergedModel> = {}): MergedModel {
     raw: {},
     pricing: null,
     provenance: {},
+    request: { reasoningEffort: null, outputLimit: null },
     enabled: true,
     orphaned: false,
     ...overrides,
@@ -32,7 +33,14 @@ function model(overrides: Partial<MergedModel> = {}): MergedModel {
 describe('ModelRow', () => {
   it('menampilkan metadata yang tersedia sebagai badge yang terbaca', async () => {
     const view = await render(
-      <ModelRow model={model()} active selectable onPress={() => {}} onToggle={() => {}} />,
+      <ModelRow
+        model={model()}
+        active
+        selectable
+        onPress={() => {}}
+        onToggle={() => {}}
+        onEdit={() => {}}
+      />,
     );
 
     expect(view.getByText('1M ctx')).toBeTruthy();
@@ -49,6 +57,7 @@ describe('ModelRow', () => {
         selectable
         onPress={() => {}}
         onToggle={() => {}}
+        onEdit={() => {}}
       />,
     );
 
@@ -63,6 +72,7 @@ describe('ModelRow', () => {
         selectable={false}
         onPress={() => {}}
         onToggle={() => {}}
+        onEdit={() => {}}
       />,
     );
 

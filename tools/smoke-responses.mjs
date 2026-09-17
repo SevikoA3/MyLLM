@@ -32,6 +32,7 @@ const first = await responsesClient.send(profile, apiKey, {
   prompt: 'Balas hanya dengan kata OK.',
   previousResponseId: null,
   maxOutputTokens: 256,
+  reasoningEffort: null,
 });
 if (!first.ok) {
   fail('turn 1', first.error);
@@ -43,6 +44,7 @@ const second = await responsesClient.send(profile, apiKey, {
   prompt: 'Balas hanya dengan kata LANJUT.',
   previousResponseId: first.response.id,
   maxOutputTokens: 256,
+  reasoningEffort: null,
 });
 if (!second.ok) {
   fail('turn 2', second.error);

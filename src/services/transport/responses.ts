@@ -25,7 +25,8 @@ export type SendResponseInput = {
   modelId: string;
   prompt: string;
   previousResponseId: string | null;
-  maxOutputTokens: number;
+  maxOutputTokens: number | null;
+  reasoningEffort: string | null;
 };
 
 export type StreamTiming = {
@@ -130,8 +131,16 @@ export function buildResponsesBody(
     instructions: buildSystemPrompt(input.modelId),
     input: [{ role: 'user', content: input.prompt }],
     stream: true,
-    [profile.compat.responsesMaxTokensField]: input.maxOutputTokens,
   };
+  if (input.maxOutputTokens !== null) {
+    body[profile.compat.responsesMaxTokensField] = input.maxOutputTokens;
+  }
+  if (
+    input.reasoningEffort !== null &&
+    (input.reasoningEffort !== 'auto' || profile.compat.autoReasoningBehavior === 'literal-auto')
+  ) {
+    body.reasoning = { effort: input.reasoningEffort };
+  }
   if (input.previousResponseId !== null) {
     body.previous_response_id = input.previousResponseId;
   }

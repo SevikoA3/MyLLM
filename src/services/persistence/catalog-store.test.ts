@@ -202,7 +202,7 @@ describe('createCatalogRepository', () => {
   });
 
   it('menyimpan override dan menerapkannya ke runtime tanpa refresh', async () => {
-    const { repo } = repository();
+    const { repo, memory } = repository();
     await repo.load('ep_1');
     await repo.refresh({ endpointId: 'ep_1', baseUrl: profile.baseUrl, modelListPath: '/models' });
     await repo.setOverride('ep_1', 'model-baru', { displayName: 'Nama baru', contextWindow: 8_000 });
@@ -211,6 +211,54 @@ describe('createCatalogRepository', () => {
     expect(current?.models[0].displayName).toBe('Nama baru');
     expect(current?.models[0].contextWindow).toBe(8_000);
     expect(pickerModels(current!).map((entry) => entry.id)).toEqual(['model-baru']);
+    expect(memory.files.get('model-overrides.json.tmp')).toBe('');
+
+    await repo.setOverride('ep_1', 'model-baru', { displayName: 'Nama terbaru' });
+    expect(memory.files.get('model-overrides.json.backup')).toContain('Nama baru');
+  });
+
+  it('menolak import rusak tanpa mengubah file aktif', async () => {
+    const { repo, memory } = repository();
+    await repo.load('ep_1');
+    await repo.setOverride('ep_1', 'model-baru', { contextWindow: 8_000 });
+    const before = memory.files.get('model-overrides.json');
+
+    const result = await repo.applyOverridesText('ep_1', '{rusak');
+
+    expect(result.ok).toBe(false);
+    expect(memory.files.get('model-overrides.json')).toBe(before);
+  });
+
+  it('menolak custom model dengan exact ID duplikat', async () => {
+    const { repo } = repository();
+    await repo.load('ep_1');
+    await repo.refresh({ endpointId: 'ep_1', baseUrl: profile.baseUrl, modelListPath: '/models' });
+    await expect(repo.addCustomModel('ep_1', 'model-baru')).rejects.toThrow('Model ID sudah ada');
+  });
+
+  it('override bertahan setelah repository dibuka ulang dan katalog direfresh', async () => {
+    const memory = memoryStorage();
+    const first = createCatalogRepository({
+      storage: memory.storage,
+      readDefaults: async () => emptyDefaults,
+      fetchModels: async () => ({ ok: true, models: [model('model-baru')] }),
+    });
+    await first.load('ep_1');
+    await first.setOverride('ep_1', 'model-baru', { contextWindow: 32_000 });
+
+    const reopened = createCatalogRepository({
+      storage: memory.storage,
+      readDefaults: async () => emptyDefaults,
+      fetchModels: async () => ({
+        ok: true,
+        models: [model('model-baru', { contextWindow: 64_000 })],
+      }),
+    });
+    await reopened.load('ep_1');
+    await reopened.refresh({ endpointId: 'ep_1', baseUrl: profile.baseUrl, modelListPath: '/models' });
+
+    expect(reopened.current()?.models[0].contextWindow).toBe(32_000);
+    expect(reopened.current()?.models[0].provenance.contextWindow?.source).toBe('user-override');
   });
 
   it('dua endpoint tidak berbagi cache', async () => {

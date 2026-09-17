@@ -9,6 +9,12 @@ import { useChat } from './use-chat';
 
 const mockCredentialRead = jest.fn(async () => 'sk-test');
 const mockLoadModel = jest.fn(async () => 'model-exact');
+const mockLoadModelConfig = jest.fn(async () => ({
+  modelId: 'model-exact',
+  reasoningEffort: 'auto',
+  outputLimit: null,
+  effectiveMaxOutput: 128_000,
+}));
 const mockSend = jest.fn<Promise<SendResponseResult>, unknown[]>();
 const mockStartTurn = jest.fn(async (_input: unknown) => ({ conversationId: 'conv_1' }));
 const mockRestartTurn = jest.fn(async (_turnId: unknown, _itemId: unknown) => {});
@@ -25,6 +31,15 @@ jest.mock('../../services/credentials/store', () => ({
 
 jest.mock('../../services/persistence/settings-store', () => ({
   settingsStore: { loadActiveModelId: () => mockLoadModel() },
+}));
+
+jest.mock('../../services/persistence/catalog-files', () => ({
+  fileCatalogStorage: {},
+  readBundledDefaults: jest.fn(),
+}));
+
+jest.mock('../../services/persistence/catalog-store', () => ({
+  loadModelRequestSnapshot: () => mockLoadModelConfig(),
 }));
 
 jest.mock('../../services/persistence/conversation-store', () => ({
@@ -103,6 +118,7 @@ describe('useChat', () => {
   beforeEach(() => {
     mockCredentialRead.mockClear();
     mockLoadModel.mockClear();
+    mockLoadModelConfig.mockClear();
     mockSend.mockReset();
     mockStartTurn.mockClear();
     mockRestartTurn.mockClear();
@@ -147,7 +163,8 @@ describe('useChat', () => {
       modelId: 'model-exact',
       prompt: 'lanjut',
       previousResponseId: 'resp_1',
-      maxOutputTokens: 1024,
+      maxOutputTokens: null,
+      reasoningEffort: 'auto',
     });
     expect(result.current.messages.map((entry) => entry.text)).toEqual([
       'Halo',

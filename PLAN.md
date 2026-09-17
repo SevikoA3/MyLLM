@@ -627,6 +627,8 @@ Branching conversation, full-text search, SQLCipher, cloud sync, atau semantic m
 
 ## 14. Phase 7: Model controls dan editable JSON
 
+Status: implementasi dan test otomatis selesai 17 September 2026. Exit gate Android menunggu verifikasi manual.
+
 ### Goal
 
 Pengguna dapat mengontrol reasoning, output limit, dan metadata model tanpa refresh menimpa edit.
@@ -638,38 +640,40 @@ Pengguna dapat mengontrol reasoning, output limit, dan metadata model tanpa refr
 
 ### Steps
 
-- [ ] Buat model detail screen yang menampilkan value dan provenance.
-- [ ] Reasoning picker hanya muncul jika reasoningEfforts memiliki pilihan bermakna.
-- [ ] Pertahankan urutan reasoning effort dari provider.
-- [ ] Auto berarti omit field kecuali endpoint override menyatakan literal auto.
-- [ ] Hitung effectiveMaxOutput dari model limit dan protocol cap.
-- [ ] Output limit UI memiliki Auto dan angka explicit yang tervalidasi.
-- [ ] Request assembler memakai model config snapshot pada awal request.
-- [ ] Buat override form untuk displayName, enabled, contextWindow, maxOutputTokens, reasoningEfforts, modalities, dan capability tri-state.
-- [ ] Buat Add custom model dengan exact ID.
-- [ ] Buat Reset field dan Reset model.
-- [ ] Buat raw JSON editor memakai multiline TextInput. Jangan menambahkan code editor package.
-- [ ] Parse dan validate di memory sebelum save.
-- [ ] Tampilkan validation path dan message.
-- [ ] Tampilkan preview perubahan model yang terkena.
-- [ ] Backup override sebelum replace.
-- [ ] Import hanya menerima schemaVersion yang didukung.
-- [ ] Export tidak membawa credential.
-- [ ] Future schemaVersion ditolak dengan pesan upgrade app.
-- [ ] Jangan membangun migration registry sebelum schema version 2 benar-benar ada.
+- [x] Buat model detail screen yang menampilkan value dan provenance.
+- [x] Reasoning picker hanya muncul jika reasoningEfforts memiliki pilihan bermakna.
+- [x] Pertahankan urutan reasoning effort dari provider.
+- [x] Auto berarti omit field kecuali endpoint override menyatakan literal auto.
+- [x] Hitung effectiveMaxOutput dari model limit dan protocol cap.
+- [x] Output limit UI memiliki Auto dan angka explicit yang tervalidasi.
+- [x] Request assembler memakai model config snapshot pada awal request.
+- [x] Buat override form untuk displayName, enabled, contextWindow, maxOutputTokens, reasoningEfforts, modalities, dan capability tri-state.
+- [x] Buat Add custom model dengan exact ID.
+- [x] Buat Reset field dan Reset model.
+- [x] Buat raw JSON editor memakai multiline TextInput. Jangan menambahkan code editor package.
+- [x] Parse dan validate di memory sebelum save.
+- [x] Tampilkan validation path dan message.
+- [x] Tampilkan preview perubahan model yang terkena.
+- [x] Backup override sebelum replace.
+- [x] Import hanya menerima schemaVersion yang didukung.
+- [x] Export tidak membawa credential.
+- [x] Future schemaVersion ditolak dengan pesan upgrade app.
+- [x] Jangan membangun migration registry sebelum schema version 2 benar-benar ada.
 
 ### Tests
 
-- [ ] Invalid number, negative token, duplicate model ID, dan invalid effort.
-- [ ] null kembali inherit.
-- [ ] Array mengganti upstream.
-- [ ] Save atomic.
-- [ ] Import corrupt tidak merusak file aktif.
-- [ ] Export tidak mengandung key.
+- [x] Invalid number, negative token, duplicate model ID, dan invalid effort.
+- [x] null kembali inherit.
+- [x] Array mengganti upstream.
+- [x] Save atomic.
+- [x] Import corrupt tidak merusak file aktif.
+- [x] Export tidak mengandung key.
 
 ### Exit gate
 
 Pengguna dapat memperbaiki context window model unknown, restart app, refresh katalog, dan override tetap berlaku.
+
+Menunggu laporan verifikasi manual Android. Test repository membuktikan override context window bertahan setelah repository dibuka ulang dan refresh katalog.
 
 ## 15. Phase 8: Usage normalization dan metrics footer
 

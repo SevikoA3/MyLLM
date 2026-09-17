@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: implementasi fase 6 selesai. Gate manual Android untuk streaming, process-kill recovery, dan history masih menunggu.
+Status: implementasi fase 7 selesai. Gate manual Android untuk streaming, recovery, dan model override masih menunggu.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -30,6 +30,8 @@ myllm/
     settings/
       index.tsx                     placeholder settings (Phase 2, 3, 10)
       models.tsx                    re-export src/features/models/models-screen
+      model.tsx                     re-export detail dan override satu model
+      models-json.tsx               re-export editor JSON model override
     chat/
       [conversationId].tsx          re-export layar chat untuk conversation tersimpan atau new
   src/
@@ -44,8 +46,11 @@ myllm/
       model-list.ts                 parse GET /models dan normalizer per record
       model-list.test.ts
       catalog.ts                    schema katalog tiga lapis, pricing, override
+      catalog.test.ts
       catalog-merge.ts              merge bundled, live, override, history
       catalog-merge.test.ts
+      model-config.ts               reasoning, output cap, dan request config snapshot
+      model-config.test.ts
       conversation.ts               tipe message, status turn, summary, cursor, auto title
       conversation.test.ts
       sse.ts                        parser frame SSE incremental dan UTF-8 streaming
@@ -67,6 +72,8 @@ myllm/
       models/
         models-screen.tsx           layar picker model
         models-screen.test.tsx
+        model-detail-screen.tsx     detail provenance, request control, dan override form
+        models-json-screen.tsx      editor, preview, import, dan export override JSON
         use-model-catalog.ts        hook runtime katalog
         use-model-catalog.test.tsx
         catalog-seed.ts             tulis snapshot hasil discover pertama
@@ -87,6 +94,7 @@ myllm/
         catalog-store.test.ts
         catalog-files.ts            implementasi CatalogStorage lewat expo-file-system
         catalog-files.test.ts
+        catalog-transfer.ts         import document picker dan export share sheet
     ui/
       tokens.ts                     spacing dan radius
       theme.ts                      warna light/dark dan token visual aktif
@@ -131,6 +139,8 @@ Folder yang muncul di struktur target tetapi belum ada: `modules/`, dan berkas `
 | `app/(tabs)/index.tsx` | Re-export layar chat utama | `features/chat/chat-screen` |
 | `app/(tabs)/models.tsx` | Re-export layar picker | `features/models/models-screen` |
 | `app/settings/models.tsx` | Re-export layar picker | `features/models/models-screen` |
+| `app/settings/model.tsx` | Re-export detail dan override model | `features/models/model-detail-screen` |
+| `app/settings/models-json.tsx` | Re-export editor JSON override | `features/models/models-json-screen` |
 | `app/settings/index.tsx` | Placeholder settings | react-native |
 | `app/history.tsx` | Re-export layar history | `features/history/history-screen` |
 | `app/chat/[conversationId].tsx` | Re-export chat untuk membuka conversation tersimpan atau route `new` | `features/chat/chat-screen` |
@@ -145,8 +155,9 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `error.ts` | `AppError`, `createAppError`, `redactText`, `categorizeHttpStatus`, `parseProviderErrorBody`, `fromHttpResponse`, `fromNetworkError`, `appErrorToDiagnostic` | Setiap pesan yang mungkin memuat secret melewati redaksi. |
 | `model.ts` | `ModelRecord`, `ModelCapabilities`, `CapabilityState`, `UNKNOWN_CAPABILITIES` | Field hilang bernilai null atau unknown, bukan false atau nol. |
 | `model-list.ts` | `parseModelList`, `normalizeModelRecord`, `OpenAiModelListSchema`, `EnrichedModelFieldsSchema` | Envelope divalidasi, elemen data loose, record rusak ditolak per record. |
-| `catalog.ts` | Schema katalog bundled, snapshot live, override pengguna, riwayat model, dan pricing | Field yang tidak ada berarti inherit, null berarti hapus override. |
-| `catalog-merge.ts` | `mergeCatalog`, `MergedModel`, `ProvenanceMap`, `CATALOG_SOURCES` | Urutan menang: user-override, live, bundled. `orphaned` dan `enabled` dihitung di sini. |
+| `catalog.ts` | Schema katalog, override, parser JSON, preview perubahan, serializer, dan pricing | Field yang tidak ada berarti inherit, null berarti hapus override. Schema future ditolak. |
+| `catalog-merge.ts` | `mergeCatalog`, `MergedModel`, `ProvenanceMap`, `CATALOG_SOURCES` | Urutan menang: user-override, live, bundled. `enabled`, request setting, dan provenance dihitung di sini. |
+| `model-config.ts` | `effectiveMaxOutput`, `reasoningChoices`, `modelRequestSnapshot`, `protocolOutputCap` | Memvalidasi effort, output limit, dan membuat config immutable sebelum request. |
 | `conversation.ts` | `ChatMessage`, `TurnStatus`, `ConversationSummary`, `ConversationCursor`, `titleFromPrompt` | Status mengunci sending, streaming, terminal, dan interrupted. |
 | `sse.ts` | `createSseParser`, `SseFrame`, parser incremental `Uint8Array` dengan `TextDecoder` stream mode | Menangani LF, CRLF, comment, multiline data, event field, `[DONE]`, dan EOF. |
 | `system-prompt.ts` | `buildSystemPrompt`, `SYSTEM_PROMPT_VERSION`, instruksi asisten MyLLM dan model ID exact | Hanya menyebut capability yang tersedia; model ID di-escape sebagai JSON string. |
@@ -161,10 +172,12 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
 | `chat/chat-screen.tsx` | FlatList pesan, composer, Send atau Stop, partial output, error, retry, dan New chat | `domain/conversation`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
-| `chat/use-chat.ts` | Orkestrasi conversation aktif, SQLite sebelum request, batching UI dan DB 50 ms, recovery, cancellation, retry, dan response chaining | `domain/*`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
+| `chat/use-chat.ts` | Orkestrasi conversation aktif, config snapshot model, SQLite sebelum request, batching UI dan DB 50 ms, recovery, cancellation, retry, dan response chaining | `domain/*`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
 | `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
-| `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
-| `models/use-model-catalog.ts` | `useModelCatalog` menyatukan repository katalog, storage berkas, defaults, transport, dan status refresh manual | `services/persistence/catalog-store`, `services/persistence/catalog-files`, `services/credentials/store`, `services/transport/models` |
+| `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
+| `models/model-detail-screen.tsx` | Nilai efektif dan provenance, reasoning, output limit, metadata override, reset field dan model | `domain/catalog`, `domain/model-config`, `models/use-model-catalog`, `ui/*` |
+| `models/models-json-screen.tsx` | Raw JSON editor, validation path, preview model, import, export, dan save | `models/use-model-catalog`, `services/persistence/catalog-transfer`, `ui/*` |
+| `models/use-model-catalog.ts` | `useModelCatalog` menyatukan refresh, model override, custom model, preview, replace JSON, dan export | `services/persistence/catalog-store`, `services/persistence/catalog-files`, `services/credentials/store`, `services/transport/models` |
 | `models/catalog-seed.ts` | `seedCatalogCache` menulis snapshot setelah discover pertama | `services/persistence/catalog-store` |
 | `models/model-badges.ts` | `modelBadges`, `formatTokens`, `describeRefresh` | `domain/catalog-merge` |
 
@@ -176,11 +189,12 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 |---|---|---|
 | `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.` | modul native dimuat lazy |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
-| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, POST streaming lewat `expo/fetch`, system instructions tiap turn, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, request reasoning dan output optional, POST streaming, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
 | `persistence/endpoint-store.ts` | Profile endpoint dan activeModelId di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
-| `persistence/catalog-store.ts` | `createCatalogRepository`, `readSnapshot`, `writeSnapshot`, `defaultSnapshot`, `snapshotFromModels`, `mergedFrom`, `pickerModels`, `CatalogStorage` | `domain/catalog`, `domain/catalog-merge`, `domain/model-list`, `domain/endpoint` |
+| `persistence/catalog-store.ts` | `createCatalogRepository`, atomic snapshot dan override, preview/import, custom model, dan `loadModelRequestSnapshot` | `domain/catalog`, `domain/catalog-merge`, `domain/model-config`, `domain/endpoint` |
 | `persistence/catalog-files.ts` | `fileCatalogStorage` dan `readBundledDefaults` di document directory | `expo-file-system`, `assets/model-defaults.json` |
+| `persistence/catalog-transfer.ts` | `pickOverridesJson` dan `shareOverridesJson` untuk Android document picker dan share sheet | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
 | `persistence/conversation-store.ts` | `conversationRepository`, migration v1, WAL, foreign key, atomic turn writes, recovery, pagination, rename, delete | `domain/conversation`, `services/transport/responses`, `expo-sqlite` |
 
 `CatalogStorage` sengaja sempit supaya test memakai `Map`, bukan berkas nyata. Ikuti pola ini untuk service baru.
@@ -218,11 +232,11 @@ Menambah modul yang dipakai contract test berarti menambah entry di `ENTRIES` pa
 
 Onboarding: `app/setup.tsx` menormalkan base URL, menampilkan preview URL final, lalu memanggil `connectAndDiscover` di `features/setup/onboarding.ts`. Fungsi itu membuat profile tanpa secret, memanggil `discoverModels` di `services/transport/models.ts`, menulis API key ke Keystore lewat `credentialStore`, dan menulis profile ke kv-store lewat `endpointStore`. Setelah berhasil, `seedCatalogCache` menulis snapshot live ke berkas katalog.
 
-Katalog: `useModelCatalog` merakit repository dari `createCatalogRepository` dengan `fileCatalogStorage` dan `readBundledDefaults`. `discoverModels` menormalisasi payload provider satu kali, lalu repository menyimpan `ModelRecord` itu tanpa normalisasi ulang. `mergeCatalog` menggabungkan bundled, live, override, dan riwayat menjadi `MergedModel`. `pickerModels` menyaring daftar untuk picker, lalu `models-screen.tsx` merender badge dari `model-badges.ts`.
+Katalog: `useModelCatalog` merakit repository dari `createCatalogRepository` dengan `fileCatalogStorage` dan `readBundledDefaults`. `discoverModels` menormalisasi payload provider satu kali, lalu repository menyimpan `ModelRecord` itu tanpa normalisasi ulang. `mergeCatalog` menggabungkan bundled, live, override, dan riwayat menjadi `MergedModel`. Picker dapat menambah model custom dan membuka detail. Detail menyimpan metadata serta request override. Editor JSON memvalidasi dan menampilkan preview sebelum replace atomik; import tidak menyentuh file aktif sebelum save, sedangkan export hanya memakai schema override.
 
 Gerbang masuk: `app/index.tsx` memakai `useActiveEndpoint`, yang membaca profile dari kv-store. Fresh install mengembalikan null dan diarahkan ke `app/setup.tsx`.
 
-Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` memuat conversation terakhir atau ID route dari SQLite. User turn dan assistant placeholder ditulis atomik sebelum network. `responsesClient` mengirim system instructions v1 dan membaca SSE dari `expo/fetch`; delta text dan reasoning di-flush ke UI dan SQLite sekitar 50 ms. Final response menyimpan status, response ID, usage, dan timing. Startup mengubah sending atau streaming lama menjadi interrupted. Completed response memakai markdown; streaming dan partial memakai Text.
+Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` memuat conversation terakhir atau ID route dari SQLite. Sebelum request, config reasoning dan output limit dibaca sebagai snapshot immutable dari katalog. User turn dan assistant placeholder ditulis atomik sebelum network. `responsesClient` mengirim system instructions v1 dan membaca SSE dari `expo/fetch`; delta text dan reasoning di-flush ke UI dan SQLite sekitar 50 ms. Final response menyimpan status, response ID, usage, dan timing. Startup mengubah sending atau streaming lama menjadi interrupted. Completed response memakai markdown; streaming dan partial memakai Text.
 
 History: `history-screen.tsx` membaca `conversationRepository.list` dengan keyset pagination `(updatedAt, id)`. Conversation dapat dibuka, diubah judulnya, atau dihapus dengan confirmation. Foreign key cascade membersihkan turn, item, usage, dan timing.
 
@@ -232,7 +246,6 @@ History: `history-screen.tsx` membaca `conversationRepository.list` dengan keyse
 |---|---|---|
 | Gate Android streaming | 5 | Implementasi selesai; verifikasi emulator dan device fisik menunggu laporan manual. |
 | Gate Android recovery | 6 | Implementasi selesai; verifikasi kill app saat stream dan recovery UI menunggu laporan manual. |
-| Model controls dan editable JSON | 7 | Override sudah ada di domain, UI kontrol belum. |
 | Usage, context meter, auto-compact | 8 sampai 10 | Belum ada. |
 | MVP hardening | 11 | Belum ada. |
 

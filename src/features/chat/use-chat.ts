@@ -3,7 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, TurnStatus } from '../../domain/conversation';
 import type { EndpointProfile } from '../../domain/endpoint';
 import { createAppError, type AppError } from '../../domain/error';
+import type { ModelRequestSnapshot } from '../../domain/model-config';
 import { credentialStore } from '../../services/credentials/store';
+import { fileCatalogStorage, readBundledDefaults } from '../../services/persistence/catalog-files';
+import { loadModelRequestSnapshot } from '../../services/persistence/catalog-store';
 import { conversationRepository } from '../../services/persistence/conversation-store';
 import { settingsStore } from '../../services/persistence/settings-store';
 import {
@@ -12,7 +15,6 @@ import {
   type SendResponseResult,
 } from '../../services/transport/responses';
 
-const MAX_OUTPUT_TOKENS = 1024;
 const UI_BATCH_MS = 50;
 let idSequence = 0;
 
@@ -132,11 +134,39 @@ export function useChat(
       ) {
         return false;
       }
-      const chainResponseId =
-        previousResponseModelId.current === activeModelId ? previousResponseId.current : null;
       pendingRef.current = true;
       setPending(true);
       setError(null);
+      let requestConfig: ModelRequestSnapshot | null;
+      try {
+        requestConfig = await loadModelRequestSnapshot(
+          fileCatalogStorage,
+          readBundledDefaults,
+          profile,
+          activeModelId,
+        );
+      } catch {
+        pendingRef.current = false;
+        if (alive.current) {
+          setPending(false);
+          setError(modelConfigError('Konfigurasi model tidak valid. Periksa detail model.'));
+        }
+        return false;
+      }
+      if (requestConfig === null) {
+        pendingRef.current = false;
+        if (alive.current) {
+          setPending(false);
+          setError(modelConfigError('Model aktif tidak ditemukan di katalog. Refresh atau pilih model lagi.'));
+        }
+        return false;
+      }
+      if (!alive.current) {
+        pendingRef.current = false;
+        return false;
+      }
+      const chainResponseId =
+        previousResponseModelId.current === activeModelId ? previousResponseId.current : null;
       const controller = new AbortController();
       activeController.current = controller;
       const turnId = retry?.turnId ?? newId('turn');
@@ -159,8 +189,8 @@ export function useChat(
             endpointId: profile.id,
             modelId: activeModelId,
             previousResponseId: chainResponseId,
-            reasoningSetting: null,
-            outputCeiling: MAX_OUTPUT_TOKENS,
+            reasoningSetting: requestConfig.reasoningEffort,
+            outputCeiling: requestConfig.outputLimit,
           });
           setConversationId(started.conversationId);
           setMessages((current) => [
@@ -265,7 +295,8 @@ export function useChat(
             modelId: activeModelId,
             prompt,
             previousResponseId: chainResponseId,
-            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            maxOutputTokens: requestConfig.outputLimit,
+            reasoningEffort: requestConfig.reasoningEffort,
           },
           { signal: controller.signal, onEvent },
         );
@@ -449,6 +480,18 @@ function localRequestError(): AppError {
     providerCode: null,
     requestId: null,
     retryable: true,
+    safeDetails: {},
+  });
+}
+
+function modelConfigError(message: string): AppError {
+  return createAppError({
+    category: 'request',
+    message,
+    httpStatus: null,
+    providerCode: null,
+    requestId: null,
+    retryable: false,
     safeDetails: {},
   });
 }

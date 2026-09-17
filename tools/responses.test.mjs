@@ -24,6 +24,7 @@ const input = {
   prompt: 'halo',
   previousResponseId: null,
   maxOutputTokens: 1024,
+  reasoningEffort: null,
 };
 
 let server;
@@ -66,6 +67,27 @@ test('instructions dikirim ulang pada turn dengan previous_response_id', async (
   const body = JSON.parse(result.response.text);
   assert.equal(body.instructions, buildSystemPrompt(input.modelId));
   assert.equal(body.previous_response_id, 'resp_previous');
+});
+
+test('Auto menghapus field request kecuali endpoint meminta literal auto', async () => {
+  const omitted = await responsesClient.send(scenario('responses-echo'), KEY, {
+    ...input,
+    maxOutputTokens: null,
+    reasoningEffort: 'auto',
+  });
+  assert.equal(omitted.ok, true);
+  const omittedBody = JSON.parse(omitted.response.text);
+  assert.equal('max_output_tokens' in omittedBody, false);
+  assert.equal('reasoning' in omittedBody, false);
+
+  const literalProfile = scenario('responses-echo');
+  literalProfile.compat.autoReasoningBehavior = 'literal-auto';
+  const literal = await responsesClient.send(literalProfile, KEY, {
+    ...input,
+    reasoningEffort: 'auto',
+  });
+  assert.equal(literal.ok, true);
+  assert.deepEqual(JSON.parse(literal.response.text).reasoning, { effort: 'auto' });
 });
 
 test('delta datang incremental dan dua turn memakai response id sebelumnya', async () => {
