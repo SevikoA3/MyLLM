@@ -29,7 +29,7 @@ let server;
 
 before(async () => {
   server = spawn(process.execPath, ['tools/fake-oai-server.mjs'], {
-    env: { ...process.env, FAKE_PORT: String(PORT), FAKE_API_KEY: KEY },
+    env: { ...process.env, FAKE_PORT: String(PORT), FAKE_API_KEY: KEY, FAKE_SLOW_MS: '1000' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise((resolve) => {
@@ -41,23 +41,30 @@ before(async () => {
 
 after(() => server?.kill());
 
-test('request body minimal memakai model exact tanpa reasoning', async () => {
+test('request body minimal memakai model exact dan stream true', async () => {
   const result = await responsesClient.send(scenario('responses-echo'), KEY, input);
   assert.equal(result.ok, true);
   const body = JSON.parse(result.response.text);
   assert.deepEqual(body, {
     model: 'amanai/glm-5.3',
     input: [{ role: 'user', content: 'halo' }],
-    stream: false,
+    stream: true,
     max_output_tokens: 1024,
   });
   assert.equal('reasoning' in body, false);
 });
 
-test('dua turn memakai response id sebelumnya', async () => {
-  const first = await responsesClient.send(profile, KEY, input);
+test('delta datang incremental dan dua turn memakai response id sebelumnya', async () => {
+  const events = [];
+  const first = await responsesClient.send(profile, KEY, input, {
+    onEvent: (event) => events.push(event),
+  });
   assert.equal(first.ok, true);
   assert.equal(first.response.text, 'fake call 1');
+  assert.equal(events.filter((event) => event.type === 'text.delta').length, 2);
+  assert.ok(first.timing.requestStart <= first.timing.firstEvent);
+  assert.ok(first.timing.firstEvent <= first.timing.firstVisibleToken);
+  assert.ok(first.timing.firstVisibleToken <= first.timing.completed);
 
   const second = await responsesClient.send(profile, KEY, {
     ...input,
@@ -69,26 +76,114 @@ test('dua turn memakai response id sebelumnya', async () => {
   assert.notEqual(second.response.id, first.response.id);
 });
 
-test('multiple output items dan reasoning summary diekstrak', async () => {
+test('multiple text item dan reasoning delta digabung', async () => {
   const result = await responsesClient.send(scenario('responses-multiple'), KEY, input);
   assert.equal(result.ok, true);
   assert.equal(result.response.text, 'Bagian satu.\n\nBagian dua.');
   assert.equal(result.response.reasoningSummary, 'Ringkasan.');
 });
 
-test('response tanpa text menjadi schema error tanpa output palsu', async () => {
+test('heartbeat diabaikan dan unknown event menjadi safe diagnostic', async () => {
+  const result = await responsesClient.send(scenario('responses-unknown-event'), KEY, input);
+  assert.equal(result.ok, true);
+  assert.equal(result.response.text, 'tetap berhasil');
+  assert.deepEqual(result.diagnostics, [
+    { kind: 'unknown-event', eventType: 'response.future.delta' },
+  ]);
+});
+
+test('fragmented tool arguments disimpan tanpa dieksekusi', async () => {
+  const result = await responsesClient.send(scenario('responses-tool-fragments'), KEY, input);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.response.toolCalls, [
+    {
+      itemId: 'item_1',
+      callId: 'call_1',
+      name: 'weather',
+      arguments: '{"city":"Jakarta"}',
+    },
+  ]);
+});
+
+test('usage baru diterbitkan dari event completed', async () => {
+  const types = [];
+  const result = await responsesClient.send(profile, KEY, input, {
+    onEvent: (event) => types.push(event.type),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(types.filter((type) => type === 'usage.updated').length, 1);
+  assert.deepEqual(types.slice(-2), ['usage.updated', 'response.completed']);
+  assert.equal(result.response.usage.total_tokens, 16);
+});
+
+test('abrupt EOF menghasilkan error dan mempertahankan partial text', async () => {
+  const result = await responsesClient.send(scenario('responses-abrupt-eof'), KEY, input);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.category, 'network');
+  assert.equal(result.hadModelEvent, true);
+  assert.equal(result.partial.text, 'partial');
+  assert.equal(result.attempts, 1);
+});
+
+test('error body non-SSE tetap dipetakan sebelum parser stream', async () => {
+  const result = await responsesClient.send(scenario('responses-402'), KEY, input);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.category, 'billing');
+  assert.equal(result.error.providerCode, 'insufficient_credits');
+  assert.equal(result.error.httpStatus, 402);
+});
+
+test('cancel sebelum first token menutup request tanpa partial', async () => {
+  const controller = new AbortController();
+  const pending = responsesClient.send(scenario('responses-slow-before-token'), KEY, input, {
+    signal: controller.signal,
+  });
+  setTimeout(() => controller.abort(), 50);
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.cancelled, true);
+  assert.equal(result.hadModelEvent, false);
+  assert.equal(result.partial.text, null);
+});
+
+test('cancel setelah partial text mempertahankan output', async () => {
+  const controller = new AbortController();
+  const result = await responsesClient.send(scenario('responses-slow-after-partial'), KEY, input, {
+    signal: controller.signal,
+    onEvent: (event) => {
+      if (event.type === 'text.delta') controller.abort();
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.cancelled, true);
+  assert.equal(result.hadModelEvent, true);
+  assert.equal(result.partial.text, 'partial');
+});
+
+test('retry otomatis hanya terjadi sebelum event model pertama', async () => {
+  const result = await responsesClient.send(scenario('responses-retry-before-event'), KEY, input);
+  assert.equal(result.ok, true);
+  assert.equal(result.attempts, 2);
+  assert.equal(result.response.text, 'berhasil setelah retry');
+
+  const partial = await responsesClient.send(scenario('responses-abrupt-eof'), KEY, input);
+  assert.equal(partial.ok, false);
+  assert.equal(partial.attempts, 1);
+});
+
+test('response tanpa text atau tool menjadi schema error', async () => {
   const result = await responsesClient.send(scenario('responses-no-text'), KEY, input);
   assert.equal(result.ok, false);
   assert.equal(result.error.category, 'schema');
   assert.match(result.error.message, /tanpa output text/);
 });
 
-test('structured provider error mempertahankan kategori dan code', async () => {
-  const result = await responsesClient.send(scenario('responses-402'), KEY, input);
+test('response.failed membawa provider code tanpa auto retry', async () => {
+  const result = await responsesClient.send(scenario('responses-failed-event'), KEY, input);
   assert.equal(result.ok, false);
-  assert.equal(result.error.category, 'billing');
-  assert.equal(result.error.providerCode, 'insufficient_credits');
-  assert.equal(result.error.httpStatus, 402);
+  assert.equal(result.error.providerCode, 'upstream_error');
+  assert.equal(result.hadModelEvent, true);
+  assert.equal(result.attempts, 1);
 });
 
 test('401, 403, 429, dan 5xx dipetakan konsisten', async () => {

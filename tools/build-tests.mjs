@@ -19,6 +19,7 @@ const ENTRIES = [
 // expo-file-system adalah native module. Contract test Node menimpa modul hasil
 // kompilasi dengan stub supaya orkestrasi onboarding tetap dapat diuji.
 const STUBS = {
+  'expo-fetch.js': 'export const fetch = globalThis.fetch;\n',
   'services/persistence/catalog-files.js': [
     'export const fileCatalogStorage = {',
     '  readText: async () => null,',
@@ -72,6 +73,9 @@ function walk(directory) {
 
 for (const file of walk(OUT).filter((path) => path.endsWith('.js'))) {
   const patched = readFileSync(file, 'utf8')
+    // expo/fetch memakai native module pada aplikasi. Contract test Node memakai
+    // fetch bawaan dengan kontrak ReadableStream yang sama.
+    .replace("from 'expo/fetch'", "from '../../expo-fetch.js'")
     .replace(
       /(from ')(\.\.?\/[^']*?)(')/g,
       (match, start, specifier, end) =>

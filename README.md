@@ -2,7 +2,7 @@
 
 Aplikasi Android chat client untuk custom OpenAI-compatible endpoint.
 
-Phase 4 selesai. Aplikasi sudah memiliki endpoint onboarding, secure credential, model catalog, model picker, dan chat Responses API non-stream dua arah. Streaming dan database percakapan belum ada.
+Implementasi Phase 5 selesai. Aplikasi memiliki endpoint onboarding, secure credential, model catalog, model picker, dan chat Responses API streaming dengan Stop serta partial output. Gate manual Android masih menunggu; database percakapan belum ada.
 
 ## Perintah
 
@@ -17,7 +17,7 @@ Phase 4 selesai. Aplikasi sudah memiliki endpoint onboarding, secure credential,
 | `npm run test:server` | Contract test fake endpoint lewat `node --test` |
 | `npm run test:transport` | Contract test transport model discovery terhadap fake endpoint |
 | `npm run test:onboarding` | Smoke test alur connect dan discover terhadap fake endpoint |
-| `npm run test:responses` | Contract test Responses API non-stream terhadap fake endpoint |
+| `npm run test:responses` | Contract test Responses API streaming terhadap fake endpoint |
 | `npm run smoke:models` | Refresh katalog nyata memakai endpoint lokal di `.env` |
 | `npm run smoke:responses` | Dua turn Responses API nyata memakai endpoint lokal di `.env` |
 | `npm run doctor` | `npx expo-doctor` |
@@ -43,9 +43,9 @@ Secret hanya berada di Keystore. Profil endpoint, activeModelId, dan pesan error
 
 Model picker menyimpan model ID exact sebagai model aktif. Chat membaca nilai itu tepat sebelum request.
 
-## Chat non-stream
+## Chat streaming
 
-Tab Chat mengirim model exact, input user, `stream: false`, dan `max_output_tokens` 1024 ke Responses API. Pesan user langsung muncul, Send dikunci selama request, dan error dapat dicoba ulang tanpa menggandakan pesan user. Response ID disimpan di memory untuk `previous_response_id` pada turn berikutnya. New chat membersihkan state tersebut. Transcript belum disimpan ke SQLite.
+Tab Chat mengirim model exact, input user, `stream: true`, dan `max_output_tokens` 1024 ke Responses API. Delta text dan reasoning muncul incremental dengan pembaruan UI yang dibatch sekitar 50 ms. Send berubah menjadi Stop selama request; output parsial tetap terlihat setelah Stop atau disconnect. Retry otomatis hanya dilakukan sebelum event model pertama. Response ID yang selesai disimpan di memory untuk `previous_response_id` pada turn berikutnya. New chat membersihkan state tersebut. Transcript belum disimpan ke SQLite.
 
 ## Contract test Node
 
@@ -65,7 +65,7 @@ Fake endpoint dijalankan terpisah dari Jest karena server tidak membutuhkan envi
 node tools/fake-oai-server.mjs
 curl -H 'Authorization: Bearer fake-key' http://127.0.0.1:3999/v1/models
 curl -X POST -H 'Authorization: Bearer fake-key' -H 'content-type: application/json' \
-  -d '{"model":"amanai/glm-5.3","input":"halo","stream":false}' \
+  -d '{"model":"amanai/glm-5.3","input":"halo","stream":true}' \
   http://127.0.0.1:3999/v1/responses
 ```
 

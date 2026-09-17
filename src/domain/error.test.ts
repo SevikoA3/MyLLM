@@ -175,4 +175,10 @@ describe('fromNetworkError', () => {
     expect(error.category).toBe('tls');
     expect(error.retryable).toBe(false);
   });
+
+  it('menandai network failure generik sebagai retryable', () => {
+    const error = fromNetworkError(new Error('Connection reset'), { endpointId: 'x' });
+    expect(error.category).toBe('network');
+    expect(error.retryable).toBe(true);
+  });
 });

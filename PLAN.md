@@ -523,27 +523,29 @@ SQLite history, markdown, tools, auto title request, atau protocol fallback.
 
 ## 12. Phase 5: Responses streaming dan cancellation
 
+Status: implementasi dan test otomatis selesai 17 September 2026. Native transport decision gate dan exit gate Android menunggu verifikasi manual pada emulator dan device fisik.
+
 ### Goal
 
 Jawaban muncul incremental, dapat dihentikan, dan event parser tahan fragmentasi jaringan.
 
 ### Steps
 
-- [ ] Ubah request menjadi stream true.
-- [ ] Gunakan expo/fetch response.body.getReader.
-- [ ] Implementasikan incremental UTF-8 decode dengan TextDecoder stream mode.
-- [ ] Buat SSE parser pure TypeScript untuk LF, CRLF, comments, multiline data, event field, dan DONE.
-- [ ] Parser menerima chunk Uint8Array dan mengeluarkan complete SSE frames.
-- [ ] Buat internal event minimum: request.started, response.created, reasoning.delta, text.delta, tool_call events, usage.updated, response.completed, response.failed, request.cancelled.
-- [ ] Unknown event dicatat sebagai safe diagnostic dan diabaikan.
-- [ ] Fragmented tool argument disimpan tetapi belum dieksekusi.
-- [ ] Batch UI delta sekitar 50 ms.
-- [ ] Catat requestStart, firstEvent, firstVisibleToken, dan completed dengan performance.now.
-- [ ] Stop memanggil AbortController.abort.
-- [ ] Partial output tetap tampil setelah stop atau disconnect.
-- [ ] Retry otomatis hanya sebelum event model pertama.
-- [ ] Setelah event pertama, error menjadi partial response, bukan auto-retry.
-- [ ] Pastikan hanya satu active request per conversation.
+- [x] Ubah request menjadi stream true.
+- [x] Gunakan expo/fetch response.body.getReader.
+- [x] Implementasikan incremental UTF-8 decode dengan TextDecoder stream mode.
+- [x] Buat SSE parser pure TypeScript untuk LF, CRLF, comments, multiline data, event field, dan DONE.
+- [x] Parser menerima chunk Uint8Array dan mengeluarkan complete SSE frames.
+- [x] Buat internal event minimum: request.started, response.created, reasoning.delta, text.delta, tool_call events, usage.updated, response.completed, response.failed, request.cancelled.
+- [x] Unknown event dicatat sebagai safe diagnostic dan diabaikan.
+- [x] Fragmented tool argument disimpan tetapi belum dieksekusi.
+- [x] Batch UI delta sekitar 50 ms.
+- [x] Catat requestStart, firstEvent, firstVisibleToken, dan completed dengan performance.now.
+- [x] Stop memanggil AbortController.abort.
+- [x] Partial output tetap tampil setelah stop atau disconnect.
+- [x] Retry otomatis hanya sebelum event model pertama.
+- [x] Setelah event pertama, error menjadi partial response, bukan auto-retry.
+- [x] Pastikan hanya satu active request per conversation.
 
 ### Native transport decision gate
 
@@ -559,19 +561,21 @@ Jika semua lulus, jangan membuat Kotlin module. Jika salah satu gagal secara kon
 
 ### Tests
 
-- [ ] Chunk membelah UTF-8 multibyte.
-- [ ] Chunk membelah JSON.
-- [ ] Heartbeat.
-- [ ] Unknown event.
-- [ ] Abrupt EOF.
-- [ ] Error body non-SSE.
-- [ ] Cancel sebelum first token.
-- [ ] Cancel setelah partial text.
-- [ ] Usage hanya muncul pada event akhir.
+- [x] Chunk membelah UTF-8 multibyte.
+- [x] Chunk membelah JSON.
+- [x] Heartbeat.
+- [x] Unknown event.
+- [x] Abrupt EOF.
+- [x] Error body non-SSE.
+- [x] Cancel sebelum first token.
+- [x] Cancel setelah partial text.
+- [x] Usage hanya muncul pada event akhir.
 
 ### Exit gate
 
 Streaming, stop, partial state, dan error dapat didemonstrasikan pada Android. Native module tidak ada kecuali gate membuktikannya perlu.
+
+Menunggu laporan verifikasi manual Android. Test contract Node dan smoke AmanAI membuktikan streaming incremental, cancellation, partial state, error, timing, dan chaining, tetapi tidak menggantikan gate emulator dan device fisik.
 
 ## 13. Phase 6: SQLite conversation, history, dan recovery
 

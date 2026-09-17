@@ -171,7 +171,7 @@ export function fromNetworkError(error: unknown, safeDetails: Record<string, str
     httpStatus: null,
     providerCode: null,
     requestId: null,
-    retryable: isTimeout,
+    retryable: !isTls,
     safeDetails,
   });
 }

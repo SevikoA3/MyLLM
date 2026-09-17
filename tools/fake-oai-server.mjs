@@ -7,6 +7,7 @@ const PORT = Number(process.env.FAKE_PORT ?? 3999);
 const HOST = process.env.FAKE_HOST ?? '127.0.0.1';
 const EXPECTED_KEY = process.env.FAKE_API_KEY ?? 'fake-key';
 const SLOW_MS = Number(process.env.FAKE_SLOW_MS ?? 3000);
+let retryBeforeEventCalls = 0;
 
 const STANDARD_MODELS = {
   object: 'list',
@@ -87,11 +88,25 @@ const SCENARIOS = {
   }),
   'responses-ok': ({ body }) => {
     const turn = typeof body?.previous_response_id === 'string' ? 2 : 1;
-    return json(200, nonStreamResponse(`fake call ${turn}`, `resp_fake_000${turn}`));
+    const text = `fake call ${turn}`;
+    const id = `resp_fake_000${turn}`;
+    return body?.stream === true ? streamResponse(text, id) : json(200, nonStreamResponse(text, id));
   },
-  'responses-echo': ({ body }) => json(200, nonStreamResponse(JSON.stringify(body))),
-  'responses-multiple': () =>
-    json(200, {
+  'responses-echo': ({ body }) =>
+    body?.stream === true
+      ? streamResponse(JSON.stringify(body), 'resp_fake_echo')
+      : json(200, nonStreamResponse(JSON.stringify(body))),
+  'responses-multiple': ({ body }) =>
+    body?.stream === true
+      ? sse([
+          event('response.created', { response: { id: 'resp_fake_multiple' } }),
+          event('response.output_text.delta', { delta: 'Bagian satu.' }),
+          event('response.reasoning_summary_text.delta', { delta: 'Ringkasan.' }),
+          event('response.output_text.delta', { delta: '\n\nBagian dua.' }),
+          completed('resp_fake_multiple'),
+          'data: [DONE]\n\n',
+        ])
+      : json(200, {
       id: 'resp_fake_multiple',
       object: 'response',
       status: 'completed',
@@ -102,13 +117,82 @@ const SCENARIOS = {
         { type: 'message', content: [{ type: 'output_text', text: 'Bagian dua.' }] },
       ],
     }),
-  'responses-no-text': () =>
-    json(200, {
+  'responses-no-text': ({ body }) =>
+    body?.stream === true
+      ? sse([
+          event('response.created', { response: { id: 'resp_fake_no_text' } }),
+          completed('resp_fake_no_text'),
+          'data: [DONE]\n\n',
+        ])
+      : json(200, {
       id: 'resp_fake_no_text',
       object: 'response',
       status: 'completed',
       output: [{ type: 'function_call', call_id: 'call_1', name: 'ignored' }],
     }),
+  'responses-unknown-event': () =>
+    sse([
+      ': heartbeat\r\n\r\n',
+      event('response.created', { response: { id: 'resp_fake_unknown' } }, '\r\n'),
+      event('response.future.delta', { opaque: true }),
+      event('response.output_text.delta', { delta: 'tetap berhasil' }),
+      completed('resp_fake_unknown'),
+      'data: [DONE]\n\n',
+    ]),
+  'responses-tool-fragments': () =>
+    sse([
+      event('response.created', { response: { id: 'resp_fake_tool' } }),
+      event('response.output_item.added', {
+        output_index: 0,
+        item: { id: 'item_1', type: 'function_call', call_id: 'call_1', name: 'weather' },
+      }),
+      event('response.function_call_arguments.delta', {
+        output_index: 0,
+        item_id: 'item_1',
+        delta: '{"city":',
+      }),
+      event('response.function_call_arguments.delta', {
+        output_index: 0,
+        item_id: 'item_1',
+        delta: '"Jakarta"}',
+      }),
+      event('response.function_call_arguments.done', {
+        output_index: 0,
+        item_id: 'item_1',
+      }),
+      completed('resp_fake_tool'),
+      'data: [DONE]\n\n',
+    ]),
+  'responses-abrupt-eof': () =>
+    sse([
+      event('response.created', { response: { id: 'resp_fake_partial' } }),
+      event('response.output_text.delta', { delta: 'partial' }),
+    ]),
+  'responses-slow-before-token': () =>
+    sse([
+      { data: event('response.created', { response: { id: 'resp_fake_slow_before' } }), delay: SLOW_MS },
+      event('response.output_text.delta', { delta: 'late' }),
+      completed('resp_fake_slow_before'),
+    ]),
+  'responses-slow-after-partial': () =>
+    sse([
+      event('response.created', { response: { id: 'resp_fake_slow_after' } }),
+      event('response.output_text.delta', { delta: 'partial' }),
+      { data: completed('resp_fake_slow_after'), delay: SLOW_MS },
+    ]),
+  'responses-failed-event': () =>
+    sse([
+      event('response.created', { response: { id: 'resp_fake_failed' } }),
+      event('response.failed', {
+        response: { error: { message: 'Upstream stream failed', code: 'upstream_error' } },
+      }),
+    ]),
+  'responses-retry-before-event': () => {
+    retryBeforeEventCalls += 1;
+    return retryBeforeEventCalls === 1
+      ? json(503, { error: { message: 'Overloaded', code: 'overloaded_error' } })
+      : streamResponse('berhasil setelah retry', 'resp_fake_retry');
+  },
   'responses-401': () => json(401, { error: { message: 'Invalid API key', code: 'invalid_api_key' } }),
   'responses-402': () => json(402, { error: { message: 'Insufficient credits', code: 'insufficient_credits' } }),
   'responses-403': () => json(403, { error: { message: 'Model forbidden', code: 'model_forbidden' } }),
@@ -126,23 +210,23 @@ const server = createServer(async (req, res) => {
 
   const authError = checkAuth(req.headers, body);
   if (authError !== null && !scenario.startsWith('models-401')) {
-    send(res, json(401, authError));
+    await send(res, json(401, authError));
     return;
   }
 
   if (scenario === '') {
-    send(res, json(404, { error: { message: `Unknown path ${url.pathname}`, code: 'not_found' } }));
+    await send(res, json(404, { error: { message: `Unknown path ${url.pathname}`, code: 'not_found' } }));
     return;
   }
 
   const handler = SCENARIOS[scenario];
   if (handler === undefined) {
-    send(res, json(404, { error: { message: `Unknown scenario ${scenario}`, code: 'not_found' } }));
+    await send(res, json(404, { error: { message: `Unknown scenario ${scenario}`, code: 'not_found' } }));
     return;
   }
 
   console.log(`${req.method} ${url.pathname} scenario=${scenario} auth=${authMode(req.headers)}`);
-  send(res, await handler({ body, headers: req.headers }));
+  await send(res, await handler({ body, headers: req.headers }));
 });
 
 server.listen(PORT, HOST, () => {
@@ -224,13 +308,63 @@ function raw(status, body, contentType) {
   return { status, headers: { 'content-type': contentType }, body };
 }
 
+function streamResponse(text, id) {
+  const split = Math.max(1, Math.floor(text.length / 2));
+  return sse([
+    ': heartbeat\n\n',
+    event('response.created', { response: { id, status: 'in_progress' } }),
+    { data: event('response.output_text.delta', { delta: text.slice(0, split) }), delay: 15 },
+    { data: event('response.output_text.delta', { delta: text.slice(split) }), delay: 15 },
+    completed(id),
+    'data: [DONE]\n\n',
+  ]);
+}
+
+function completed(id) {
+  return event('response.completed', {
+    response: {
+      id,
+      status: 'completed',
+      usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 },
+    },
+  });
+}
+
+function event(type, payload, newline = '\n') {
+  return `event: ${type}${newline}data: ${JSON.stringify({ type, ...payload })}${newline}${newline}`;
+}
+
+function sse(chunks) {
+  return {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+    chunks: chunks.map((chunk) =>
+      typeof chunk === 'string' ? { data: chunk, delay: 0 } : chunk,
+    ),
+  };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function send(res, response) {
+async function send(res, response) {
   res.writeHead(response.status, response.headers);
-  res.end(response.body);
+  if (response.chunks === undefined) {
+    res.end(response.body);
+    return;
+  }
+  res.flushHeaders();
+  for (const chunk of response.chunks) {
+    if (chunk.delay > 0) {
+      await sleep(chunk.delay);
+    }
+    if (res.destroyed || res.writableEnded) {
+      return;
+    }
+    res.write(chunk.data);
+  }
+  res.end();
 }
 
 async function readBody(req) {

@@ -40,6 +40,8 @@ export default function ChatScreen() {
     setDraft('');
     void chat.send(prompt);
   }, [chat, draft]);
+  const sendDisabled =
+    !chat.pending && (chat.activeModelId === null || draft.trim().length === 0);
 
   if (status === 'loading') {
     return (
@@ -196,25 +198,27 @@ export default function ChatScreen() {
           />
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Kirim"
-            disabled={chat.pending || chat.activeModelId === null || draft.trim().length === 0}
-            onPress={submit}
+            accessibilityLabel={chat.pending ? 'Stop' : 'Kirim'}
+            accessibilityHint={
+              chat.pending ? 'Menghentikan jawaban yang sedang berjalan' : 'Mengirim pesan'
+            }
+            disabled={sendDisabled}
+            onPress={chat.pending ? chat.stop : submit}
             style={({ pressed }) => ({
               width: 48,
               height: 48,
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 24,
-              backgroundColor: theme.colors.accent,
-              opacity:
-                chat.pending || chat.activeModelId === null || draft.trim().length === 0
-                  ? 0.45
-                  : pressed
-                    ? 0.75
-                    : 1,
+              backgroundColor: chat.pending ? theme.colors.danger : theme.colors.accent,
+              opacity: sendDisabled ? 0.45 : pressed ? 0.75 : 1,
             })}>
             {chat.pending ? (
-              <ActivityIndicator size="small" color={theme.colors.accentText} />
+              <SymbolView
+                name={{ ios: 'stop.fill', android: 'stop' }}
+                size={21}
+                tintColor={theme.colors.accentText}
+              />
             ) : (
               <SymbolView
                 name={{ ios: 'paperplane.fill', android: 'send' }}

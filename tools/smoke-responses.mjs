@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Smoke test billable: dua turn Responses API non-stream terhadap endpoint di .env.
+// Smoke test billable: dua turn Responses API streaming terhadap endpoint di .env.
 // Prompt dan response tidak dicetak.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -36,6 +36,7 @@ const first = await responsesClient.send(profile, apiKey, {
 if (!first.ok) {
   fail('turn 1', first.error);
 }
+verifyStream('turn 1', first);
 
 const second = await responsesClient.send(profile, apiKey, {
   modelId,
@@ -46,16 +47,34 @@ const second = await responsesClient.send(profile, apiKey, {
 if (!second.ok) {
   fail('turn 2', second.error);
 }
+verifyStream('turn 2', second);
 
-console.log('Responses non-stream: 2/2 turn berhasil');
+console.log('Responses streaming: 2/2 turn berhasil');
 console.log('previous_response_id: berhasil');
 console.log('output text: tersedia pada kedua turn');
+console.log('timing stream: tersedia pada kedua turn');
 
 function fail(turn, error) {
   console.error(
     `${turn} gagal: category=${error.category} status=${error.httpStatus ?? '-'} code=${error.providerCode ?? '-'}`,
   );
   process.exit(1);
+}
+
+function verifyStream(turn, result) {
+  const timing = result.timing;
+  if (
+    result.response.text === null ||
+    timing.firstEvent === null ||
+    timing.firstVisibleToken === null ||
+    timing.completed === null ||
+    timing.requestStart > timing.firstEvent ||
+    timing.firstEvent > timing.firstVisibleToken ||
+    timing.firstVisibleToken > timing.completed
+  ) {
+    console.error(`${turn} tidak memiliki output dan timing stream yang valid`);
+    process.exit(1);
+  }
 }
 
 function readEnvFile(path) {

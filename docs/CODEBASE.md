@@ -1,0 +1,233 @@
+# Peta Codebase MyLLM
+
+Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
+
+Status: implementasi fase 5 selesai. Gate manual Android untuk streaming dan cancellation masih menunggu; database percakapan belum ada.
+
+Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
+
+## 1. Aturan baca
+
+- Layer: `app` (routing) -> `src/features` (UI dan orkestrasi) -> `src/domain` (tipe dan pure logic), `src/services` (I/O), `src/ui` (token visual).
+- Arah dependency hanya ke bawah: `app` boleh mengimpor `features`, `domain`, `services`, `ui`. `domain` tidak mengimpor layer lain. `services` boleh mengimpor `domain`. `features` boleh mengimpor semuanya kecuali `app`.
+- Tidak ada barrel `index.ts`. Impor selalu menunjuk berkas konkret.
+- Tidak ada folder `utils`. Helper tinggal di domain yang memakainya.
+- Setiap berkas di `src` berpasangan dengan `*.test.ts` hanya jika perilakunya perlu dikunci. Berkas yang belum punya test ditandai `belum ada test`.
+
+## 2. Struktur folder saat ini
+
+~~~text
+myllm/
+  app/                              Expo Router, route saja, tanpa logic domain
+    _layout.tsx                     stack root dan import global.css
+    index.tsx                       gerbang redirect ke /setup atau /(tabs)
+    setup.tsx                       form onboarding endpoint dan discover model
+    history.tsx                     placeholder daftar conversation (Phase 6)
+    (tabs)/
+      _layout.tsx                   tab Beranda dan Model dengan ikon native
+      index.tsx                     re-export layar chat utama
+      models.tsx                    re-export src/features/models/models-screen
+    settings/
+      index.tsx                     placeholder settings (Phase 2, 3, 10)
+      models.tsx                    re-export src/features/models/models-screen
+    chat/
+      [conversationId].tsx          re-export layar chat, persistence menyusul Phase 6
+  src/
+    app-info.ts                     konstanta nama app dan application ID
+    app-info.test.ts
+    domain/                         tipe dan pure logic, tanpa I/O
+      endpoint.ts                   EndpointProfile, normalisasi base URL, join path, header auth
+      endpoint.test.ts
+      error.ts                      AppError, kategori error, redaksi secret
+      error.test.ts
+      model.ts                      ModelRecord, kemampuan model, state unknown
+      model-list.ts                 parse GET /models dan normalizer per record
+      model-list.test.ts
+      catalog.ts                    schema katalog tiga lapis, pricing, override
+      catalog-merge.ts              merge bundled, live, override, history
+      catalog-merge.test.ts
+      conversation.ts               tipe pesan chat memory
+      sse.ts                        parser frame SSE incremental dan UTF-8 streaming
+      sse.test.ts
+    features/                       UI dan orkestrasi per layar
+      chat/
+        chat-screen.tsx             FlatList pesan, composer, streaming, Stop, retry, New chat
+        use-chat.ts                 state chat memory, batching delta, cancellation, request orchestration
+        use-chat.test.tsx
+      setup/
+        onboarding.ts               alur connect, discover, simpan profile dan credential
+        onboarding.test.ts
+        use-active-endpoint.ts      hook endpoint aktif dari kv-store
+        error-copy.ts               teks error untuk pengguna
+      models/
+        models-screen.tsx           layar picker model
+        models-screen.test.tsx
+        use-model-catalog.ts        hook runtime katalog
+        use-model-catalog.test.tsx
+        catalog-seed.ts             tulis snapshot hasil discover pertama
+        model-badges.ts             badge metadata dan ringkasan refresh
+    services/                       I/O ke luar proses
+      credentials/
+        store.ts                    API key di Keystore
+        store.test.ts
+      transport/
+        models.ts                   GET /models dengan timeout dan tanpa redirect
+        responses.ts                POST /responses streaming, event mapping, timing, cancellation
+      persistence/
+        endpoint-store.ts           profile endpoint dan activeModelId di kv-store
+        endpoint-store.test.ts
+        settings-store.ts           activeModelId untuk endpoint aktif
+        catalog-store.ts            baca, tulis, backup snapshot katalog
+        catalog-store.test.ts
+        catalog-files.ts            implementasi CatalogStorage lewat expo-file-system
+        catalog-files.test.ts
+    ui/
+      tokens.ts                     spacing dan radius
+      theme.ts                      warna light/dark dan token visual aktif
+      components.tsx                komponen layar, tombol, kartu, dan info bersama
+      components.test.tsx
+  assets/
+    model-defaults.json             katalog bundled, saat ini kosong
+    images/                         ikon, splash, favicon
+    fonts/                          SpaceMono-Regular
+  tools/                            skrip Node di luar bundle aplikasi
+    fake-oai-server.mjs             fake OpenAI-compatible endpoint
+    fake-server.test.mjs
+    build-tests.mjs                 kompilasi modul produksi ke .tests-build sebagai ESM
+    transport.test.mjs              contract test transport discovery
+    onboarding.test.mjs             smoke test connect dan discover
+    responses.test.mjs              contract Responses API terhadap fake endpoint
+    model-fields.test.mjs           contract bentuk field model AmanAI
+    dump-endpoint-fields.mjs        inspeksi field GET /models tanpa mencetak secret
+    smoke-models.mjs                refresh katalog nyata terhadap endpoint di .env
+    smoke-responses.mjs             dua turn Responses API nyata tanpa mencetak isi pesan
+    exit-gate.mjs                   bukti exit gate Phase 2
+  docs/
+    CODEBASE.md                     dokumen ini
+  PLAN.md                           rencana fase dan kontrak executor
+  RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md
+  README.md
+~~~
+
+Folder yang muncul di struktur target tetapi belum ada: `modules/`, dan berkas `domain` untuk usage, context, dan tool. Buat hanya saat fase pertama yang membutuhkannya.
+
+## 3. Tanggung jawab berkas
+
+### 3.1 app
+
+| File | Tanggung jawab | Bergantung pada |
+|---|---|---|
+| `app/_layout.tsx` | Stack root, StatusBar, import `global.css` | expo-router |
+| `app/index.tsx` | Redirect ke setup atau tabs berdasarkan endpoint aktif | `features/setup/use-active-endpoint` |
+| `app/setup.tsx` | Form base URL, auth mode, dan API key; preview URL; panggil connect; tampilkan error | `domain/endpoint`, `features/setup/*`, `features/models/catalog-seed`, `services/transport/models`, `services/persistence/catalog-files` |
+| `app/(tabs)/_layout.tsx` | Dua tab: Beranda dan Model, warna theme, dan ikon native lintas platform | expo-router, expo-symbols, `ui/theme` |
+| `app/(tabs)/index.tsx` | Re-export layar chat utama | `features/chat/chat-screen` |
+| `app/(tabs)/models.tsx` | Re-export layar picker | `features/models/models-screen` |
+| `app/settings/models.tsx` | Re-export layar picker | `features/models/models-screen` |
+| `app/settings/index.tsx` | Placeholder settings | react-native |
+| `app/history.tsx` | Placeholder history, Phase 6 | react-native |
+| `app/chat/[conversationId].tsx` | Re-export layar chat; ID route baru dipersist pada Phase 6 | `features/chat/chat-screen` |
+
+Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
+
+### 3.2 src/domain
+
+| File | Isi | Catatan kontrak |
+|---|---|---|
+| `endpoint.ts` | `EndpointProfileSchema`, `createEndpointProfile`, `normalizeBaseUrl`, `joinEndpointPath`, `buildAuthHeaders`, `buildCustomHeaders`, `validateBaseUrl` | Cleartext HTTP hanya untuk host loopback pada build development. Profile tidak pernah menyimpan API key. |
+| `error.ts` | `AppError`, `createAppError`, `redactText`, `categorizeHttpStatus`, `parseProviderErrorBody`, `fromHttpResponse`, `fromNetworkError`, `appErrorToDiagnostic` | Setiap pesan yang mungkin memuat secret melewati redaksi. |
+| `model.ts` | `ModelRecord`, `ModelCapabilities`, `CapabilityState`, `UNKNOWN_CAPABILITIES` | Field hilang bernilai null atau unknown, bukan false atau nol. |
+| `model-list.ts` | `parseModelList`, `normalizeModelRecord`, `OpenAiModelListSchema`, `EnrichedModelFieldsSchema` | Envelope divalidasi, elemen data loose, record rusak ditolak per record. |
+| `catalog.ts` | Schema katalog bundled, snapshot live, override pengguna, riwayat model, dan pricing | Field yang tidak ada berarti inherit, null berarti hapus override. |
+| `catalog-merge.ts` | `mergeCatalog`, `MergedModel`, `ProvenanceMap`, `CATALOG_SOURCES` | Urutan menang: user-override, live, bundled. `orphaned` dan `enabled` dihitung di sini. |
+| `conversation.ts` | `ChatMessage` untuk pesan user dan assistant di memory | Belum dipersist karena SQLite conversation baru masuk Phase 6. |
+| `sse.ts` | `createSseParser`, `SseFrame`, parser incremental `Uint8Array` dengan `TextDecoder` stream mode | Menangani LF, CRLF, comment, multiline data, event field, `[DONE]`, dan EOF. |
+
+`domain` belum punya berkas untuk usage, context, dan tool. Tambahkan pada fase yang memerlukannya.
+
+### 3.3 src/features
+
+| File | Isi | Bergantung pada |
+|---|---|---|
+| `setup/onboarding.ts` | `connectAndDiscover`, `profileFromInput`, `suggestName`, `newCredentialId`, `loadCredentialFor` | `domain/endpoint`, `domain/error`, `services/credentials/store`, `services/transport/models`, `services/persistence/endpoint-store` |
+| `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
+| `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
+| `chat/chat-screen.tsx` | FlatList pesan, composer, Send atau Stop, partial output, error, retry, dan New chat | `domain/conversation`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
+| `chat/use-chat.ts` | State conversation memory, batching delta 50 ms, AbortController, partial output, duplicate guard, retry boundary, dan response chaining | `domain/*`, `services/credentials`, `services/persistence/settings-store`, `services/transport/responses` |
+| `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
+| `models/use-model-catalog.ts` | `useModelCatalog` menyatukan repository katalog, storage berkas, defaults, transport, dan status refresh manual | `services/persistence/catalog-store`, `services/persistence/catalog-files`, `services/credentials/store`, `services/transport/models` |
+| `models/catalog-seed.ts` | `seedCatalogCache` menulis snapshot setelah discover pertama | `services/persistence/catalog-store` |
+| `models/model-badges.ts` | `modelBadges`, `formatTokens`, `describeRefresh` | `domain/catalog-merge` |
+
+`models-screen.test.tsx` mengunci badge metadata dan state model. `use-model-catalog.test.tsx` mengunci refresh manual, metadata hasil normalisasi, dan last-known-good saat endpoint gagal.
+
+### 3.4 src/services
+
+| File | Isi | Bergantung pada |
+|---|---|---|
+| `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.` | modul native dimuat lazy |
+| `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
+| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, POST streaming lewat `expo/fetch`, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `expo/fetch` |
+| `persistence/endpoint-store.ts` | Profile endpoint dan activeModelId di `expo-sqlite/kv-store` | `domain/endpoint` |
+| `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
+| `persistence/catalog-store.ts` | `createCatalogRepository`, `readSnapshot`, `writeSnapshot`, `defaultSnapshot`, `snapshotFromModels`, `mergedFrom`, `pickerModels`, `CatalogStorage` | `domain/catalog`, `domain/catalog-merge`, `domain/model-list`, `domain/endpoint` |
+| `persistence/catalog-files.ts` | `fileCatalogStorage` dan `readBundledDefaults` di document directory | `expo-file-system`, `assets/model-defaults.json` |
+
+`CatalogStorage` sengaja sempit supaya test memakai `Map`, bukan berkas nyata. Ikuti pola ini untuk service baru.
+
+### 3.5 src/ui dan src/app-info.ts
+
+| File | Isi |
+|---|---|
+| `ui/tokens.ts` | Token spacing, radius, dan ukuran teks. |
+| `ui/theme.ts` | Palet light/dark dengan warna teks eksplisit agar kontras konsisten. |
+| `ui/components.tsx` | `Screen`, tombol utama, kartu link, blok informasi, dan placeholder bersama. |
+| `ui/components.test.tsx` | Mengunci `Screen` agar selalu memenuhi tinggi route tanpa bergantung pada class runtime. |
+| `app-info.ts` | `APP_NAME`, `EXPECTED_ANDROID_PACKAGE`. Dipakai test agar app.json tidak menyimpang. |
+
+### 3.6 tools
+
+| File | Isi |
+|---|---|
+| `fake-oai-server.mjs` | Fake endpoint dengan scenario lewat path atau header `X-Scenario`. Hanya memakai API key palsu. |
+| `build-tests.mjs` | Kompilasi transport model, Responses client, onboarding, dan domain terkait ke `.tests-build/` sebagai ESM, mengganti penanda `__DEV__`, dan memakai fetch Node sebagai stub `expo/fetch`. |
+| `transport.test.mjs` | Contract test transport discovery terhadap fake endpoint. |
+| `onboarding.test.mjs` | Smoke test connect dan discover. |
+| `responses.test.mjs` | Contract test stream, SSE event, cancellation, partial output, retry boundary, timing, tool argument, usage, chaining, dan error terhadap fake endpoint. |
+| `model-fields.test.mjs` | Contract test normalizer terhadap bentuk payload GET /models AmanAI yang sudah diverifikasi. |
+| `dump-endpoint-fields.mjs` | Fetch langsung endpoint dari `.env` dan mencetak nama field, tipe, serta kelengkapan tanpa mencetak credential. |
+| `smoke-models.mjs` | Menjalankan alur refresh repository produksi terhadap endpoint nyata dari `.env` lalu melaporkan metadata katalog. |
+| `smoke-responses.mjs` | Menjalankan dua turn streaming terhadap endpoint nyata dan memverifikasi chaining serta timing tanpa mencetak prompt atau response. |
+| `fake-server.test.mjs` | Contract test fake endpoint sendiri. |
+| `exit-gate.mjs` | Bukti exit gate Phase 2 lewat kode produksi hasil kompilasi. |
+
+Menambah modul yang dipakai contract test berarti menambah entry di `ENTRIES` pada `build-tests.mjs`.
+
+## 4. Alur yang sudah berjalan
+
+Onboarding: `app/setup.tsx` menormalkan base URL, menampilkan preview URL final, lalu memanggil `connectAndDiscover` di `features/setup/onboarding.ts`. Fungsi itu membuat profile tanpa secret, memanggil `discoverModels` di `services/transport/models.ts`, menulis API key ke Keystore lewat `credentialStore`, dan menulis profile ke kv-store lewat `endpointStore`. Setelah berhasil, `seedCatalogCache` menulis snapshot live ke berkas katalog.
+
+Katalog: `useModelCatalog` merakit repository dari `createCatalogRepository` dengan `fileCatalogStorage` dan `readBundledDefaults`. `discoverModels` menormalisasi payload provider satu kali, lalu repository menyimpan `ModelRecord` itu tanpa normalisasi ulang. `mergeCatalog` menggabungkan bundled, live, override, dan riwayat menjadi `MergedModel`. `pickerModels` menyaring daftar untuk picker, lalu `models-screen.tsx` merender badge dari `model-badges.ts`.
+
+Gerbang masuk: `app/index.tsx` memakai `useActiveEndpoint`, yang membaca profile dari kv-store. Fresh install mengembalikan null dan diarahkan ke `app/setup.tsx`.
+
+Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` membaca model aktif saat layar mendapat fokus. Saat Send, pesan user masuk ke memory lebih dulu, credential dibaca dari Keystore, lalu `responsesClient` membaca SSE dari `expo/fetch`. Delta text dan reasoning dibatch sekitar 50 ms. Tombol Send berubah menjadi Stop selama request dan memanggil AbortController; partial output tetap ada setelah cancellation atau disconnect. Response ID yang selesai disimpan untuk turn berikutnya dan dibersihkan oleh New chat.
+
+## 5. Yang belum ada
+
+| Area | Fase | Keterangan |
+|---|---|---|
+| Gate Android streaming | 5 | Implementasi selesai; verifikasi emulator dan device fisik menunggu laporan manual. |
+| Conversation SQLite, history, recovery | 6 | `app/history.tsx` masih placeholder dan route chat belum memakai conversationId untuk persistence. |
+| Model controls dan editable JSON | 7 | Override sudah ada di domain, UI kontrol belum. |
+| Usage, context meter, auto-compact | 8 sampai 10 | Belum ada. |
+| MVP hardening | 11 | Belum ada. |
+
+## 6. Aturan saat menambah berkas
+
+1. Tentukan layer lebih dulu. Tipe dan pure logic ke `domain`, I/O ke `services`, UI dan orkestrasi ke `features`, route tipis ke `app`.
+2. Jangan membuat interface dengan satu implementasi. Tambahkan saat implementasi kedua benar-benar ada.
+3. Jangan membuat folder `utils` atau barrel `index.ts`.
+4. Perbarui bagian 2 dan 3 dokumen ini pada commit yang sama dengan perubahan struktur.
+5. Jangan mencatat versi dependency di sini. Versi tinggal di `package.json` dan bagian Generated toolchain README.md.
+6. Jangan menyalin isi PLAN.md. Cukup catat fase dan tautan ke bagiannya.
