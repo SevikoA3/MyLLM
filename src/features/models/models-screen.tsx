@@ -83,6 +83,7 @@ export default function ModelsScreen() {
       </View>
 
       <FlatList
+        style={{ flex: 1 }}
         data={models}
         keyExtractor={(model) => model.id}
         contentContainerStyle={{ gap: theme.spacing.gap, padding: theme.spacing.screen, paddingTop: 0 }}
@@ -113,7 +114,13 @@ export default function ModelsScreen() {
       />
 
       <View
-        style={{ paddingHorizontal: theme.spacing.screen, paddingVertical: 12, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+        style={{
+          flexShrink: 0,
+          paddingHorizontal: theme.spacing.screen,
+          paddingVertical: 12,
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.border,
+        }}>
         <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
           {String(enabledIds.length) + ' dari ' + String(models.length) + ' model dapat dipilih.'}
         </Text>
