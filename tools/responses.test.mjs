@@ -8,6 +8,7 @@ const BASE = `http://127.0.0.1:${PORT}/v1`;
 const KEY = 'fake-key';
 
 const { createEndpointProfile } = await import('../.tests-build/domain/endpoint.js');
+const { buildSystemPrompt } = await import('../.tests-build/domain/system-prompt.js');
 const { responsesClient, responsesUrl } = await import(
   '../.tests-build/services/transport/responses.js'
 );
@@ -47,11 +48,24 @@ test('request body minimal memakai model exact dan stream true', async () => {
   const body = JSON.parse(result.response.text);
   assert.deepEqual(body, {
     model: 'amanai/glm-5.3',
+    instructions: buildSystemPrompt('amanai/glm-5.3'),
     input: [{ role: 'user', content: 'halo' }],
     stream: true,
     max_output_tokens: 1024,
   });
   assert.equal('reasoning' in body, false);
+});
+
+test('instructions dikirim ulang pada turn dengan previous_response_id', async () => {
+  const result = await responsesClient.send(scenario('responses-echo'), KEY, {
+    ...input,
+    prompt: 'lanjut',
+    previousResponseId: 'resp_previous',
+  });
+  assert.equal(result.ok, true);
+  const body = JSON.parse(result.response.text);
+  assert.equal(body.instructions, buildSystemPrompt(input.modelId));
+  assert.equal(body.previous_response_id, 'resp_previous');
 });
 
 test('delta datang incremental dan dua turn memakai response id sebelumnya', async () => {

@@ -45,7 +45,7 @@ Model picker menyimpan model ID exact sebagai model aktif. Chat membaca nilai it
 
 ## Chat streaming
 
-Tab Chat mengirim model exact, input user, `stream: true`, dan `max_output_tokens` 1024 ke Responses API. Delta text dan reasoning muncul incremental dengan pembaruan UI yang dibatch sekitar 50 ms. Send berubah menjadi Stop selama request; output parsial tetap terlihat setelah Stop atau disconnect. Retry otomatis hanya dilakukan sebelum event model pertama. Response ID yang selesai disimpan di memory untuk `previous_response_id` pada turn berikutnya. New chat membersihkan state tersebut. Transcript belum disimpan ke SQLite.
+Tab Chat mengirim model exact, system instructions v1, input user, `stream: true`, dan `max_output_tokens` 1024 ke Responses API. Instructions dikirim pada setiap turn, termasuk saat memakai `previous_response_id`. Delta text dan reasoning muncul incremental dengan pembaruan UI yang dibatch sekitar 50 ms. Send berubah menjadi Stop selama request; output parsial tetap terlihat setelah Stop atau disconnect. Retry otomatis hanya dilakukan sebelum event model pertama. Response ID yang selesai disimpan di memory untuk turn berikutnya. New chat membersihkan state tersebut. Transcript belum disimpan ke SQLite.
 
 ## Contract test Node
 

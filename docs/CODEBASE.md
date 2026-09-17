@@ -49,6 +49,8 @@ myllm/
       conversation.ts               tipe pesan chat memory
       sse.ts                        parser frame SSE incremental dan UTF-8 streaming
       sse.test.ts
+      system-prompt.ts              system prompt v1 berdasarkan model ID exact
+      system-prompt.test.ts
     features/                       UI dan orkestrasi per layar
       chat/
         chat-screen.tsx             FlatList pesan, composer, streaming, Stop, retry, New chat
@@ -142,6 +144,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `catalog-merge.ts` | `mergeCatalog`, `MergedModel`, `ProvenanceMap`, `CATALOG_SOURCES` | Urutan menang: user-override, live, bundled. `orphaned` dan `enabled` dihitung di sini. |
 | `conversation.ts` | `ChatMessage` untuk pesan user dan assistant di memory | Belum dipersist karena SQLite conversation baru masuk Phase 6. |
 | `sse.ts` | `createSseParser`, `SseFrame`, parser incremental `Uint8Array` dengan `TextDecoder` stream mode | Menangani LF, CRLF, comment, multiline data, event field, `[DONE]`, dan EOF. |
+| `system-prompt.ts` | `buildSystemPrompt`, `SYSTEM_PROMPT_VERSION`, instruksi asisten MyLLM dan model ID exact | Hanya menyebut capability yang tersedia; model ID di-escape sebagai JSON string. |
 
 `domain` belum punya berkas untuk usage, context, dan tool. Tambahkan pada fase yang memerlukannya.
 
@@ -167,7 +170,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 |---|---|---|
 | `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.` | modul native dimuat lazy |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
-| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, POST streaming lewat `expo/fetch`, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `expo/fetch` |
+| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, POST streaming lewat `expo/fetch`, system instructions tiap turn, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
 | `persistence/endpoint-store.ts` | Profile endpoint dan activeModelId di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
 | `persistence/catalog-store.ts` | `createCatalogRepository`, `readSnapshot`, `writeSnapshot`, `defaultSnapshot`, `snapshotFromModels`, `mergedFrom`, `pickerModels`, `CatalogStorage` | `domain/catalog`, `domain/catalog-merge`, `domain/model-list`, `domain/endpoint` |
@@ -211,7 +214,7 @@ Katalog: `useModelCatalog` merakit repository dari `createCatalogRepository` den
 
 Gerbang masuk: `app/index.tsx` memakai `useActiveEndpoint`, yang membaca profile dari kv-store. Fresh install mengembalikan null dan diarahkan ke `app/setup.tsx`.
 
-Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` membaca model aktif saat layar mendapat fokus. Saat Send, pesan user masuk ke memory lebih dulu, credential dibaca dari Keystore, lalu `responsesClient` membaca SSE dari `expo/fetch`. Delta text dan reasoning dibatch sekitar 50 ms. Tombol Send berubah menjadi Stop selama request dan memanggil AbortController; partial output tetap ada setelah cancellation atau disconnect. Response ID yang selesai disimpan untuk turn berikutnya dan dibersihkan oleh New chat.
+Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` membaca model aktif saat layar mendapat fokus. Saat Send, pesan user masuk ke memory lebih dulu, credential dibaca dari Keystore, lalu `responsesClient` mengirim system instructions v1 dan membaca SSE dari `expo/fetch`. Instructions dikirim ulang saat memakai `previous_response_id`. Delta text dan reasoning dibatch sekitar 50 ms. Tombol Send berubah menjadi Stop selama request dan memanggil AbortController; partial output tetap ada setelah cancellation atau disconnect. Response ID yang selesai disimpan untuk turn berikutnya dan dibersihkan oleh New chat.
 
 ## 5. Yang belum ada
 

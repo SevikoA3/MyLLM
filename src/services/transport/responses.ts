@@ -15,6 +15,7 @@ import {
   type AppError,
 } from '../../domain/error';
 import { createSseParser, type SseFrame } from '../../domain/sse';
+import { buildSystemPrompt } from '../../domain/system-prompt';
 
 export const RESPONSE_TIMEOUT_MS = 60_000;
 const RETRY_DELAY_MS = 250;
@@ -126,6 +127,7 @@ export function buildResponsesBody(
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: input.modelId,
+    instructions: buildSystemPrompt(input.modelId),
     input: [{ role: 'user', content: input.prompt }],
     stream: true,
     [profile.compat.responsesMaxTokensField]: input.maxOutputTokens,
