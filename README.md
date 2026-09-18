@@ -115,6 +115,7 @@ npx expo start --clear
 | React | 19.2.3 |
 | Expo Router | 57.0.21 |
 | Reanimated | 4.5.1 dengan react-native-worklets 0.10.1 |
+| React Native SVG | 15.15.4 |
 | NativeWind | 5.0.0-rc.0 |
 | Tailwind CSS | 4.1.12 |
 | Jest | jest-expo 57.0.5 |

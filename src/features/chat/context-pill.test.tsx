@@ -24,10 +24,11 @@ describe('ContextPill', () => {
   it('shows a circular usage meter and hides details until opened', async () => {
     const view = await render(<ContextPill budget={result()} />);
 
-    expect(view.getByText('19%')).toBeTruthy();
+    expect(view.getByLabelText('Context usage, 19 percent')).toBeTruthy();
+    expect(view.queryByText('19%')).toBeNull();
     expect(view.queryByText('Context 32,000 · Input ~1,000 tokens · Left 80.9%')).toBeNull();
 
-    fireEvent.press(view.getByLabelText('Context usage'));
+    fireEvent.press(view.getByLabelText('Context usage, 19 percent'));
 
     await waitFor(() =>
       expect(view.getByText('Context 32,000 · Input ~1,000 tokens · Left 80.9%')).toBeTruthy(),
@@ -49,7 +50,8 @@ describe('ContextPill', () => {
       />,
     );
 
-    expect(view.getByText('?')).toBeTruthy();
+    expect(view.getByLabelText('Context usage unavailable')).toBeTruthy();
+    expect(view.queryByText('?')).toBeNull();
     expect(view.queryByText(/Input ~1,000 tokens/)).toBeNull();
   });
 });

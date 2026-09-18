@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { Modal, Pressable, Switch, Text, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 
 import { DEFAULT_CONTEXT_POLICY, type ContextBudgetResult, type ContextPolicy } from '../../domain/context';
 import { formatCount } from '../../domain/usage';
 import { useTheme } from '../../ui/theme';
 
-const RING_SIZE = 48;
+const TOUCH_SIZE = 48;
+const RING_SIZE = 28;
 const RING_CENTER = RING_SIZE / 2;
-const RING_RADIUS = 19;
-const RING_SEGMENTS = 24;
-const SEGMENT_WIDTH = 4;
-const SEGMENT_HEIGHT = 9;
+const RING_STROKE = 3;
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 export function ContextPill({
   budget,
@@ -38,46 +39,48 @@ export function ContextPill({
         ? theme.colors.warningText
         : theme.colors.accent;
   const progress = budget.usedPercent === null ? null : Math.min(100, Math.max(0, budget.usedPercent)) / 100;
-  const percentLabel = budget.usedPercent === null ? '?' : `${Math.round(budget.usedPercent)}%`;
+  const accessibilityLabel =
+    progress === null ? 'Context usage unavailable' : `Context usage, ${Math.round(progress * 100)} percent`;
 
   return (
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Context usage"
+        accessibilityLabel={accessibilityLabel}
         accessibilityHint="Show context usage and auto-compact controls"
         accessibilityState={{ expanded }}
         onPress={() => setExpanded(true)}
         style={{
-          width: RING_SIZE,
-          height: RING_SIZE,
+          width: TOUCH_SIZE,
+          height: TOUCH_SIZE,
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: RING_SIZE / 2,
-          backgroundColor: theme.colors.surface,
+          borderRadius: TOUCH_SIZE / 2,
         }}>
-        {Array.from({ length: RING_SEGMENTS }, (_, index) => {
-          const angle = (index / RING_SEGMENTS) * Math.PI * 2;
-          const degrees = (index / RING_SEGMENTS) * 360;
-          const active = progress !== null && progress > index / RING_SEGMENTS;
-          return (
-            <View
-              key={index}
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: RING_CENTER + Math.sin(angle) * RING_RADIUS - SEGMENT_WIDTH / 2,
-                top: RING_CENTER - Math.cos(angle) * RING_RADIUS - SEGMENT_HEIGHT / 2,
-                width: SEGMENT_WIDTH,
-                height: SEGMENT_HEIGHT,
-                borderRadius: SEGMENT_WIDTH / 2,
-                backgroundColor: active ? fillColor : theme.colors.border,
-                transform: [{ rotate: `${degrees}deg` }],
-              }}
+        <Svg width={RING_SIZE} height={RING_SIZE} pointerEvents="none">
+          <Circle
+            cx={RING_CENTER}
+            cy={RING_CENTER}
+            r={RING_RADIUS}
+            fill="none"
+            stroke={theme.colors.border}
+            strokeWidth={RING_STROKE}
+          />
+          {progress !== null && (
+            <Circle
+              cx={RING_CENTER}
+              cy={RING_CENTER}
+              r={RING_RADIUS}
+              fill="none"
+              stroke={fillColor}
+              strokeWidth={RING_STROKE}
+              strokeLinecap="round"
+              strokeDasharray={[RING_CIRCUMFERENCE, RING_CIRCUMFERENCE]}
+              strokeDashoffset={RING_CIRCUMFERENCE * (1 - progress)}
+              transform={`rotate(-90 ${RING_CENTER} ${RING_CENTER})`}
             />
-          );
-        })}
-        <Text style={{ color: theme.colors.text, fontSize: 11, fontWeight: '800' }}>{percentLabel}</Text>
+          )}
+        </Svg>
       </Pressable>
 
       <Modal

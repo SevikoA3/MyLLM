@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   Text,
@@ -16,13 +17,7 @@ import {
 import type { ChatMessage } from '../../domain/conversation';
 import type { AppError } from '../../domain/error';
 import type { TurnMetrics } from '../../domain/usage';
-import {
-  formatCount,
-  formatDuration,
-  formatPercent,
-  formatRate,
-  summarizeMetrics,
-} from '../../domain/usage';
+import { formatDuration, formatRate } from '../../domain/usage';
 import { InfoBlock, Screen } from '../../ui/components';
 import { useTheme } from '../../ui/theme';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
@@ -300,7 +295,7 @@ export default function ChatScreen() {
               )}
             </Pressable>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             {chat.reasoningOptions.length > 0 && (
               <View style={{ flex: 1, maxWidth: 140 }}>
                 <ReasoningSelector
@@ -311,21 +306,19 @@ export default function ChatScreen() {
                 />
               </View>
             )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {chat.contextBudget !== null && (
-                <ContextPill
-                  budget={chat.contextBudget}
-                  policy={chat.contextPolicy}
-                  autoCompact={chat.autoCompact}
-                  compacting={chat.compacting}
-                  canCompact={chat.conversationId !== null && !chat.pending}
-                  onCompact={() => void chat.compactNow()}
-                  onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
-                />
-              )}
-              {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
-            </View>
+            {chat.contextBudget !== null && (
+              <ContextPill
+                budget={chat.contextBudget}
+                policy={chat.contextPolicy}
+                autoCompact={chat.autoCompact}
+                compacting={chat.compacting}
+                canCompact={chat.conversationId !== null && !chat.pending}
+                onCompact={() => void chat.compactNow()}
+                onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
+              />
+            )}
           </View>
+          {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -350,56 +343,16 @@ function CompactionSeparator() {
 
 function MetricsFooter({ metrics }: { metrics: TurnMetrics[] }) {
   const theme = useTheme();
-  const [expanded, setExpanded] = useState(false);
   const latest = metrics[metrics.length - 1];
-  const session = summarizeMetrics(metrics);
   if (latest === undefined) {
     return null;
   }
   return (
-    <View style={{ width: 120, height: 48, position: 'relative', zIndex: expanded ? 2 : 0 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Request stats"
-        accessibilityHint="Show request timing details"
-        accessibilityState={{ expanded }}
-        onPress={() => setExpanded((value) => !value)}
-        style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 4 }}>
-        <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontSize: 11 }}>
-          {formatDuration(latest.ttftMs)} · {formatRate(latest.tokensPerSecond)}
-        </Text>
-      </Pressable>
-      {expanded && (
-        <View
-          style={{
-            position: 'absolute',
-            right: 0,
-            bottom: 56,
-            width: 280,
-            gap: 4,
-            padding: 12,
-            borderRadius: theme.radius.control,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.surface,
-            elevation: 8,
-          }}>
-          <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
-            Request stats
-          </Text>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            TTFT {formatDuration(latest.ttftMs)} · TPS {formatRate(latest.tokensPerSecond)} · Cache{' '}
-            {formatPercent(latest.cacheHitPercent)}
-          </Text>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Input {formatCount(latest.usage.inputTokens)} · Output {formatCount(latest.usage.outputTokens)}
-          </Text>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Session {session.turnCount} turns · Average TTFT {formatDuration(session.averageTtftMs)}
-          </Text>
-        </View>
-      )}
-    </View>
+    <Text
+      accessibilityLabel={`Request stats, ${formatDuration(latest.ttftMs)}, ${formatRate(latest.tokensPerSecond)}`}
+      style={{ alignSelf: 'flex-end', color: theme.colors.textMuted, fontSize: 10 }}>
+      {formatDuration(latest.ttftMs)} · {formatRate(latest.tokensPerSecond)}
+    </Text>
   );
 }
 
@@ -454,51 +407,77 @@ export function ReasoningSelector({
           {open ? '⌃' : '⌄'}
         </Text>
       </Pressable>
-      {open && (
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View
           style={{
-            gap: 4,
-            padding: 4,
-            borderRadius: theme.radius.control,
-            borderWidth: 1,
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.background,
+            flex: 1,
+            justifyContent: 'flex-end',
+            padding: 16,
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
           }}>
-        {options.map((effort) => {
-          const active = effort === selected;
-          return (
-            <Pressable
-              key={effort}
-              accessibilityRole="radio"
-              accessibilityLabel={'Thinking ' + effort}
-              accessibilityState={{ checked: active, disabled }}
-              disabled={disabled}
-              onPress={() => choose(effort)}
-              style={({ pressed }) => ({
-                minHeight: 48,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close thinking menu"
+            onPress={() => setOpen(false)}
+            style={{ position: 'absolute', inset: 0 }}
+          />
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              alignSelf: 'center',
+              gap: 4,
+              padding: 8,
+              borderRadius: theme.radius.card,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+            }}>
+            <Text
+              style={{
                 paddingHorizontal: 12,
-                borderRadius: theme.radius.pill,
-                borderWidth: 1,
-                borderColor: active ? theme.colors.borderStrong : theme.colors.border,
-                backgroundColor: active ? theme.colors.accent : theme.colors.surface,
-                opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
-              })}>
-              <Text
-                style={{
-                  color: active ? theme.colors.accentText : theme.colors.text,
-                  fontSize: theme.typography.meta,
-                  fontWeight: active ? '700' : '500',
-                }}>
-                {effort}
-              </Text>
-            </Pressable>
-          );
-        })}
+                paddingVertical: 8,
+                color: theme.colors.textMuted,
+                fontSize: theme.typography.meta,
+                fontWeight: '700',
+              }}>
+              Thinking level
+            </Text>
+            {options.map((effort) => {
+              const active = effort === selected;
+              return (
+                <Pressable
+                  key={effort}
+                  accessibilityRole="radio"
+                  accessibilityLabel={'Thinking ' + effort}
+                  accessibilityState={{ checked: active, disabled }}
+                  disabled={disabled}
+                  onPress={() => choose(effort)}
+                  style={({ pressed }) => ({
+                    minHeight: 48,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 12,
+                    borderRadius: theme.radius.control,
+                    backgroundColor: active ? theme.colors.background : 'transparent',
+                    opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+                  })}>
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      fontSize: theme.typography.body,
+                      fontWeight: active ? '700' : '500',
+                    }}>
+                    {effort}
+                  </Text>
+                  {active && <Text style={{ color: theme.colors.accent, fontWeight: '800' }}>✓</Text>}
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
