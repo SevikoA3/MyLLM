@@ -60,6 +60,8 @@
     "test:transport": "node tools/build-tests.mjs && node --test tools/transport.test.mjs",
     "test:onboarding": "node tools/build-tests.mjs && node --test tools/onboarding.test.mjs",
     "test:responses": "node tools/build-tests.mjs && node --test tools/responses.test.mjs",
+    "test:chat": "node tools/build-tests.mjs && node --test tools/chat-completions.test.mjs",
+    "test:protocol": "node tools/build-tests.mjs && node --test tools/protocol.test.mjs",
     "test:conversations": "node tools/build-tests.mjs && node --test tools/conversations.test.mjs",
     "test:fields": "node tools/build-tests.mjs && node --test tools/model-fields.test.mjs",
     "smoke:models": "node tools/build-tests.mjs && node tools/smoke-models.mjs",

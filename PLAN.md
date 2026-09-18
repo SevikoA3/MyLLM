@@ -1,6 +1,6 @@
 # Implementation Plan Aplikasi Chat LLM Android
 
-Status: rencana eksekusi bertahap dari repository kosong sampai aplikasi Android siap dipakai.
+Status: Phase 12 completed on 18 September 2026. TypeScript, ESLint, Jest, contract tests, and fake endpoint exit gate passed.
 
 Tanggal: 16 September 2026.
 
@@ -892,35 +892,37 @@ Mendukung endpoint OpenAI-compatible yang tidak memiliki Responses API.
 
 ### Steps
 
-- [ ] Baru sekarang extract transport contract karena implementasi kedua benar-benar ada.
-- [ ] Contract menerima canonical request dan menghasilkan internal events yang sama.
-- [ ] Refactor ResponsesClient menjadi ResponsesTransport tanpa mengubah behavior.
-- [ ] Implementasikan ChatCompletionsTransport.
-- [ ] Map instructions ke system message.
-- [ ] Map user/assistant history ke messages.
-- [ ] Map max output ke field endpoint profile.
-- [ ] Kirim reasoning_effort hanya jika profile menyatakan support.
-- [ ] Parse data chunks dan DONE.
-- [ ] Parse tool_calls delta tetapi belum mengubah policy tool.
-- [ ] Normalisasi prompt/completion usage.
-- [ ] Aktifkan protocol option Responses, Chat Completions, dan Auto.
-- [ ] Auto mencoba Responses pada first chat request.
-- [ ] Fallback hanya pada 404, 405, atau 501 sebelum output.
-- [ ] Jangan fallback pada 400, auth, billing, rate limit, atau setelah partial output.
-- [ ] Cache protocol yang berhasil per endpoint, dengan Reset compatibility action.
-- [ ] Jangan melakukan probe billable saat setup.
+- [x] Baru sekarang extract transport contract karena implementasi kedua benar-benar ada.
+- [x] Contract menerima canonical request dan menghasilkan internal events yang sama.
+- [x] Refactor ResponsesClient menjadi ResponsesTransport tanpa mengubah behavior.
+- [x] Implementasikan ChatCompletionsTransport.
+- [x] Map instructions ke system message.
+- [x] Map user/assistant history ke messages.
+- [x] Map max output ke field endpoint profile.
+- [x] Kirim reasoning_effort hanya jika profile menyatakan support.
+- [x] Parse data chunks dan DONE.
+- [x] Parse tool_calls delta tetapi belum mengubah policy tool.
+- [x] Normalisasi prompt/completion usage.
+- [x] Aktifkan protocol option Responses, Chat Completions, dan Auto.
+- [x] Auto mencoba Responses pada first chat request.
+- [x] Fallback hanya pada 404, 405, atau 501 sebelum output.
+- [x] Jangan fallback pada 400, auth, billing, rate limit, atau setelah partial output.
+- [x] Cache protocol yang berhasil per endpoint, dengan Reset compatibility action.
+- [x] Jangan melakukan probe billable saat setup.
 
 ### Tests
 
-- [ ] Kedua adapter menghasilkan internal event sequence ekuivalen.
-- [ ] Auto fallback only allowed statuses.
-- [ ] No duplicate request after partial output.
-- [ ] Endpoint-specific max token field.
-- [ ] Chat cached token variants.
+- [x] Kedua adapter menghasilkan internal event sequence ekuivalen.
+- [x] Auto fallback only allowed statuses.
+- [x] No duplicate request after partial output.
+- [x] Endpoint-specific max token field.
+- [x] Chat cached token variants.
 
 ### Exit gate
 
 Fake endpoint Responses-only, Chat-only, dan dual-protocol semuanya berhasil dengan protocol behavior yang dapat didiagnosis.
+
+Status: Phase 12 completed on 18 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, all relevant contract tests, and the fake endpoint exit gate passed.
 
 ## 20. Phase 13: Function tool loop
 

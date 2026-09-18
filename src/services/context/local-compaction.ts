@@ -10,11 +10,12 @@ import { APP_AUTO_OUTPUT_BUDGET, buildContextBudget } from '../../domain/context
 import type { EndpointProfile } from '../../domain/endpoint';
 import { buildSystemPrompt } from '../../domain/system-prompt';
 import { conversationRepository } from '../persistence/conversation-store';
-import {
-  responsesClient,
-  type SendResponseInput,
-  type SendResponseOptions,
-} from '../transport/responses';
+import { protocolClient } from '../transport/protocol';
+import type {
+  SendResponseInput,
+  SendResponseOptions,
+  Transport,
+} from '../transport/contract';
 
 const MAX_COMPACTION_ATTEMPTS = 2;
 
@@ -26,7 +27,7 @@ type CompactionRepository = Pick<
   | 'failCompaction'
 >;
 
-type CompactionClient = Pick<typeof responsesClient, 'send'>;
+type CompactionClient = Pick<Transport, 'send'>;
 
 export type LocalCompactionInput = {
   profile: EndpointProfile;
@@ -59,7 +60,7 @@ export async function runLocalCompaction(
   input: LocalCompactionInput,
 ): Promise<LocalCompactionResult> {
   const repository = input.repository ?? conversationRepository;
-  const client = input.client ?? responsesClient;
+  const client = input.client ?? protocolClient;
   const source = await repository.loadCompactionSource(input.conversationId);
   const selection = selectCompactionPrefix(source.turns, {
     minimumRecentTurns: input.minimumRecentTurns,

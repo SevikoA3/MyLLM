@@ -3,8 +3,10 @@ import { z } from 'zod';
 export const AuthModeSchema = z.enum(['bearer', 'x-api-key']);
 export type AuthMode = z.infer<typeof AuthModeSchema>;
 
-export const ProtocolModeSchema = z.enum(['responses', 'chat-completions']);
+export const ProtocolModeSchema = z.enum(['responses', 'chat-completions', 'auto']);
 export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
+export const ConcreteProtocolSchema = z.enum(['responses', 'chat-completions']);
+export type ConcreteProtocol = z.infer<typeof ConcreteProtocolSchema>;
 
 export const EndpointIdSchema = z.string().trim().min(1).max(64);
 export type EndpointId = z.infer<typeof EndpointIdSchema>;
@@ -25,6 +27,8 @@ export const EndpointProfileSchema = z.object({
     responsesMaxTokensField: z.string().trim().min(1),
     chatMaxTokensField: z.string().trim().min(1),
     chatOutputCap: z.number().int().positive().nullable(),
+    chatReasoningSupport: z.enum(['supported', 'unsupported', 'unknown']).default('unknown'),
+    chatPromptCacheField: z.string().trim().min(1).nullable().default(null),
     autoReasoningBehavior: z.enum(['omit', 'literal-auto']),
     nativeContextManagement: z.enum(['supported', 'unsupported', 'unknown']),
   }),
@@ -55,6 +59,8 @@ export function createEndpointProfile(input: {
       responsesMaxTokensField: 'max_output_tokens',
       chatMaxTokensField: 'max_tokens',
       chatOutputCap: 8192,
+      chatReasoningSupport: 'unknown',
+      chatPromptCacheField: null,
       autoReasoningBehavior: 'omit',
       nativeContextManagement: 'unknown',
     },

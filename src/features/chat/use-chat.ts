@@ -26,10 +26,10 @@ import { conversationRepository } from '../../services/persistence/conversation-
 import { settingsStore } from '../../services/persistence/settings-store';
 import { runLocalCompaction } from '../../services/context/local-compaction';
 import {
-  responsesClient,
+  protocolClient,
   type ResponseStreamEvent,
   type SendResponseResult,
-} from '../../services/transport/responses';
+} from '../../services/transport/protocol';
 
 const UI_BATCH_MS = 50;
 const CONTEXT_DEBOUNCE_MS = 150;
@@ -474,7 +474,7 @@ export function useChat(
         if (requestHistory.length === 0) {
           requestHistory = [{ role: 'user', content: prompt }];
         }
-        const result = await responsesClient.send(
+        const result = await protocolClient.send(
           profile,
           apiKey,
           {

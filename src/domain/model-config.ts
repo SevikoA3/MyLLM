@@ -34,7 +34,7 @@ export function reasoningChoices(efforts: string[]): string[] {
 }
 
 export function protocolOutputCap(profile: EndpointProfile): number | null {
-  return profile.protocol === 'chat-completions' ? profile.compat.chatOutputCap : null;
+  return profile.protocol === 'responses' ? null : profile.compat.chatOutputCap;
 }
 
 export function modelRequestSnapshot(

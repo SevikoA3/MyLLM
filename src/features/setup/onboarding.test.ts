@@ -43,6 +43,7 @@ function input(overrides: Partial<SetupInput> = {}): SetupInput {
     apiKey: 'sk-lokal',
     apiKeyChanged: true,
     authMode: 'bearer',
+    protocol: 'responses',
     modelListPath: '/models',
     ...overrides,
   };

@@ -7,8 +7,8 @@ import {
   type EndpointProfile,
 } from '../../domain/endpoint';
 import {
-  createAppError,
   bodyTooLargeError,
+  createAppError,
   fromHttpResponse,
   fromNetworkError,
   parseProviderErrorBody,
@@ -17,8 +17,8 @@ import {
 } from '../../domain/error';
 import { createSseParser, type SseFrame } from '../../domain/sse';
 import { buildSystemPrompt } from '../../domain/system-prompt';
-import { readResponseText } from './body';
 import { recordDiagnostic } from '../diagnostics/diagnostic-ring';
+import { readResponseText } from './body';
 import type {
   PartialStreamResponse,
   ResponseStreamEvent,
@@ -32,19 +32,7 @@ import type {
   Transport,
 } from './contract';
 
-export type {
-  PartialStreamResponse,
-  ResponseStreamEvent,
-  SendResponseInput,
-  SendResponseOptions,
-  SendResponseResult,
-  StreamDiagnostic,
-  StreamResponse,
-  StreamTiming,
-  StreamToolCall,
-} from './contract';
-
-export const RESPONSE_TIMEOUT_MS = 60_000;
+export const CHAT_COMPLETIONS_TIMEOUT_MS = 60_000;
 const RETRY_DELAY_MS = 250;
 const MAX_ATTEMPTS = 2;
 const MAX_RETRY_AFTER_MS = 60_000;
@@ -75,37 +63,36 @@ type ProviderState = {
   hadModelEvent: boolean;
 };
 
-export function responsesUrl(profile: EndpointProfile): string {
-  return joinEndpointPath(profile.baseUrl, profile.compat.responsesPath);
+export function chatCompletionsUrl(profile: EndpointProfile): string {
+  return joinEndpointPath(profile.baseUrl, profile.compat.chatCompletionsPath);
 }
 
-export function buildResponsesBody(
+export function buildChatCompletionsBody(
   profile: EndpointProfile,
   input: SendResponseInput,
 ): Record<string, unknown> {
   const history = input.history ?? [{ role: 'user' as const, content: input.prompt }];
   const body: Record<string, unknown> = {
     model: input.modelId,
-    input: [
+    messages: [
       { role: 'system', content: buildSystemPrompt(input.modelId) },
       ...history,
     ],
     stream: true,
+    stream_options: { include_usage: true },
   };
   if (input.maxOutputTokens !== null) {
-    body[profile.compat.responsesMaxTokensField] = input.maxOutputTokens;
+    body[profile.compat.chatMaxTokensField] = input.maxOutputTokens;
   }
   if (
     input.reasoningEffort !== null &&
-    (input.reasoningEffort !== 'auto' || profile.compat.autoReasoningBehavior === 'literal-auto')
+    input.reasoningEffort !== 'auto' &&
+    profile.compat.chatReasoningSupport === 'supported'
   ) {
-    body.reasoning = { effort: input.reasoningEffort };
+    body.reasoning_effort = input.reasoningEffort;
   }
-  if (input.previousResponseId !== null) {
-    body.previous_response_id = input.previousResponseId;
-  }
-  if (input.promptCacheKey !== null) {
-    body.prompt_cache_key = input.promptCacheKey;
+  if (input.promptCacheKey !== null && profile.compat.chatPromptCacheField !== null) {
+    body[profile.compat.chatPromptCacheField] = input.promptCacheKey;
   }
   return body;
 }
@@ -150,7 +137,7 @@ async function sendAttempt(
   input: SendResponseInput,
   options: SendResponseOptions,
 ): Promise<AttemptResult> {
-  const url = responsesUrl(profile);
+  const url = chatCompletionsUrl(profile);
   const safeDetails = { endpointId: profile.id, url };
   const timing: StreamTiming = {
     requestStart: performance.now(),
@@ -176,7 +163,7 @@ async function sendAttempt(
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, RESPONSE_TIMEOUT_MS);
+  }, CHAT_COMPLETIONS_TIMEOUT_MS);
   emit(options, { type: 'request.started', at: timing.requestStart });
 
   if (options.signal?.aborted) {
@@ -193,7 +180,7 @@ async function sendAttempt(
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildResponsesBody(profile, input)),
+      body: JSON.stringify(buildChatCompletionsBody(profile, input)),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -203,8 +190,14 @@ async function sendAttempt(
       }
       const parsed = fromHttpResponse({ status: response.status, body: body.text, ...safeDetails });
       const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
-      const error = retryAfterMs === null ? parsed : { ...parsed, retryAfterMs };
-      return fail(error, false, state, timing, diagnostics, options);
+      return fail(
+        retryAfterMs === null ? parsed : { ...parsed, retryAfterMs },
+        false,
+        state,
+        timing,
+        diagnostics,
+        options,
+      );
     }
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.toLowerCase().includes('text/event-stream')) {
@@ -222,14 +215,7 @@ async function sendAttempt(
       );
     }
     if (response.body === null) {
-      return fail(
-        schemaError('The response stream has no body.', safeDetails),
-        false,
-        state,
-        timing,
-        diagnostics,
-        options,
-      );
+      return fail(schemaError('The response stream has no body.', safeDetails), false, state, timing, diagnostics, options);
     }
 
     const parser = createSseParser();
@@ -260,14 +246,7 @@ async function sendAttempt(
       return fail(state.failure, false, state, timing, diagnostics, options, true);
     }
     if (!state.completed || state.responseId === null) {
-      return fail(
-        streamEndedError(safeDetails),
-        false,
-        state,
-        timing,
-        diagnostics,
-        options,
-      );
+      return fail(streamEndedError(safeDetails), false, state, timing, diagnostics, options);
     }
     timing.completed ??= performance.now();
     return {
@@ -287,10 +266,7 @@ async function sendAttempt(
     const error = cancelled
       ? cancelledError(safeDetails)
       : timedOut
-        ? fromNetworkError(
-            new Error(`Request timeout after ${String(RESPONSE_TIMEOUT_MS)}ms`),
-            safeDetails,
-          )
+        ? fromNetworkError(new Error(`Request timeout after ${String(CHAT_COMPLETIONS_TIMEOUT_MS)}ms`), safeDetails)
         : fromNetworkError(cause, safeDetails);
     return fail(error, cancelled, state, timing, diagnostics, options);
   } finally {
@@ -316,6 +292,9 @@ function processParsed(
     state.hadModelEvent = true;
     processFrame(frame, state, timing, diagnostics, safeDetails, options, at);
   }
+  if (parsed.done) {
+    complete(state, timing, safeDetails, options);
+  }
 }
 
 function processFrame(
@@ -332,7 +311,7 @@ function processFrame(
     payload = JSON.parse(frame.data);
   } catch {
     diagnostics.push({ kind: 'invalid-event', eventType: safeEventType(frame.event) });
-    state.failure = schemaError('The SSE event does not contain valid JSON.', safeDetails);
+    state.failure = schemaError('The chat completion chunk does not contain valid JSON.', safeDetails);
     emit(options, { type: 'response.failed', at, error: state.failure });
     return;
   }
@@ -340,115 +319,111 @@ function processFrame(
     diagnostics.push({ kind: 'invalid-event', eventType: safeEventType(frame.event) });
     return;
   }
-  const type = stringValue(payload.type) ?? frame.event;
-  switch (type) {
-    case 'response.created': {
-      const response = recordValue(payload.response);
-      state.responseId = stringValue(response?.id) ?? state.responseId;
-      emit(options, { type: 'response.created', at, responseId: state.responseId });
-      return;
-    }
-    case 'response.output_text.delta': {
-      const delta = stringValue(payload.delta);
-      if (delta !== null && delta.length > 0) {
-        state.text += delta;
-        timing.firstVisibleToken ??= at;
-        emit(options, { type: 'text.delta', at, delta });
-      }
-      return;
-    }
-    case 'response.reasoning_summary_text.delta':
-    case 'response.reasoning_text.delta': {
-      const delta = stringValue(payload.delta);
-      if (delta !== null && delta.length > 0) {
-        state.reasoning += delta;
-        timing.firstVisibleToken ??= at;
-        emit(options, { type: 'reasoning.delta', at, delta });
-      }
-      return;
-    }
-    case 'response.output_item.added': {
-      const item = recordValue(payload.item);
-      if (item?.type !== 'function_call') {
-        return;
-      }
-      const key = toolKey(payload, item, state.toolCalls.size);
-      const toolCall: StreamToolCall = {
-        itemId: stringValue(item.id),
-        callId: stringValue(item.call_id),
-        name: stringValue(item.name),
-        arguments: stringValue(item.arguments) ?? '',
-      };
-      state.toolCalls.set(key, toolCall);
-      emit(options, { type: 'tool_call.started', at, toolCall: { ...toolCall } });
-      return;
-    }
-    case 'response.function_call_arguments.delta': {
-      const delta = stringValue(payload.delta);
-      if (delta === null) {
-        return;
-      }
-      const key = toolKey(payload, null, state.toolCalls.size);
-      const current = state.toolCalls.get(key) ?? emptyToolCall(payload);
-      current.arguments += delta;
-      state.toolCalls.set(key, current);
-      emit(options, {
-        type: 'tool_call.arguments.delta',
-        at,
-        callId: current.callId,
-        delta,
-      });
-      return;
-    }
-    case 'response.function_call_arguments.done': {
-      const key = toolKey(payload, null, state.toolCalls.size);
-      const current = state.toolCalls.get(key) ?? emptyToolCall(payload);
-      current.arguments = stringValue(payload.arguments) ?? current.arguments;
-      state.toolCalls.set(key, current);
-      emit(options, { type: 'tool_call.completed', at, toolCall: { ...current } });
-      return;
-    }
-    case 'response.completed': {
-      const response = recordValue(payload.response);
-      state.responseId = stringValue(response?.id) ?? state.responseId;
-      const usage = recordValue(response?.usage);
-      if (usage !== null) {
-        state.usage = usage;
-        emit(options, { type: 'usage.updated', at, usage });
-      }
-      if (state.responseId === null) {
-        state.failure = schemaError('The completed event has no response ID.', safeDetails);
-        emit(options, { type: 'response.failed', at, error: state.failure });
-        return;
-      }
-      if (state.text.length === 0 && state.toolCalls.size === 0) {
-        state.failure = schemaError('The response completed without output text.', safeDetails);
-        emit(options, { type: 'response.failed', at, error: state.failure });
-        return;
-      }
-      state.completed = true;
-      timing.completed = at;
-      emit(options, { type: 'response.completed', at, responseId: state.responseId });
-      return;
-    }
-    case 'response.failed':
-    case 'error': {
-      state.failure = providerStreamError(payload, safeDetails);
-      emit(options, { type: 'response.failed', at, error: state.failure });
-      return;
-    }
-    case 'response.in_progress':
-    case 'response.output_item.done':
-    case 'response.content_part.added':
-    case 'response.content_part.done':
-    case 'response.output_text.done':
-    case 'response.reasoning_summary_part.added':
-    case 'response.reasoning_summary_part.done':
-    case 'response.reasoning_summary_text.done':
-      return;
-    default:
-      diagnostics.push({ kind: 'unknown-event', eventType: safeEventType(type) });
+  const id = stringValue(payload.id);
+  if (id !== null && state.responseId === null) {
+    state.responseId = id;
+    emit(options, { type: 'response.created', at, responseId: id });
   }
+  const failure = recordValue(payload.error);
+  if (failure !== null) {
+    state.failure = providerStreamError(payload, safeDetails);
+    emit(options, { type: 'response.failed', at, error: state.failure });
+    return;
+  }
+  const usage = recordValue(payload.usage);
+  if (usage !== null) {
+    state.usage = normalizeUsage(usage);
+    emit(options, { type: 'usage.updated', at, usage: state.usage });
+  }
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  for (const choice of choices) {
+    if (!isRecord(choice)) {
+      continue;
+    }
+    const delta = recordValue(choice.delta);
+    if (delta === null) {
+      continue;
+    }
+    const text = stringValue(delta.content);
+    if (text !== null && text.length > 0) {
+      state.text += text;
+      timing.firstVisibleToken ??= at;
+      emit(options, { type: 'text.delta', at, delta: text });
+    }
+    const reasoning =
+      stringValue(delta.reasoning_content) ??
+      stringValue(delta.reasoning) ??
+      stringValue(delta.reasoning_summary);
+    if (reasoning !== null && reasoning.length > 0) {
+      state.reasoning += reasoning;
+      timing.firstVisibleToken ??= at;
+      emit(options, { type: 'reasoning.delta', at, delta: reasoning });
+    }
+    const toolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
+    for (const rawToolCall of toolCalls) {
+      if (!isRecord(rawToolCall)) {
+        continue;
+      }
+      const index = numberValue(rawToolCall.index) ?? state.toolCalls.size;
+      const key = String(index);
+      const current = state.toolCalls.get(key) ?? {
+        itemId: null,
+        callId: stringValue(rawToolCall.id),
+        name: null,
+        arguments: '',
+      };
+      if (!state.toolCalls.has(key)) {
+        state.toolCalls.set(key, current);
+        emit(options, { type: 'tool_call.started', at, toolCall: { ...current } });
+      }
+      const callId = stringValue(rawToolCall.id);
+      if (callId !== null) {
+        current.callId = callId;
+      }
+      const functionValue = recordValue(rawToolCall.function);
+      const name = stringValue(functionValue?.name);
+      if (name !== null) {
+        current.name = name;
+      }
+      const argumentsDelta = stringValue(functionValue?.arguments);
+      if (argumentsDelta !== null && argumentsDelta.length > 0) {
+        current.arguments += argumentsDelta;
+        emit(options, {
+          type: 'tool_call.arguments.delta',
+          at,
+          callId: current.callId,
+          delta: argumentsDelta,
+        });
+      }
+    }
+  }
+}
+
+function complete(
+  state: ProviderState,
+  timing: StreamTiming,
+  safeDetails: Record<string, string>,
+  options: SendResponseOptions,
+): void {
+  if (state.completed || state.failure !== null) {
+    return;
+  }
+  if (state.responseId === null) {
+    state.failure = schemaError('The chat completion stream has no response ID.', safeDetails);
+    emit(options, { type: 'response.failed', at: performance.now(), error: state.failure });
+    return;
+  }
+  if (state.text.length === 0 && state.reasoning.length === 0 && state.toolCalls.size === 0) {
+    state.failure = schemaError('The chat completion completed without output.', safeDetails);
+    emit(options, { type: 'response.failed', at: performance.now(), error: state.failure });
+    return;
+  }
+  state.completed = true;
+  timing.completed = performance.now();
+  for (const toolCall of state.toolCalls.values()) {
+    emit(options, { type: 'tool_call.completed', at: timing.completed, toolCall: { ...toolCall } });
+  }
+  emit(options, { type: 'response.completed', at: timing.completed, responseId: state.responseId });
 }
 
 function fail(
@@ -463,64 +438,26 @@ function fail(
   const at = performance.now();
   timing.completed ??= at;
   if (!eventAlreadyEmitted) {
-    emit(
-      options,
-      cancelled ? { type: 'request.cancelled', at } : { type: 'response.failed', at, error },
-    );
+    emit(options, cancelled ? { type: 'request.cancelled', at } : { type: 'response.failed', at, error });
   }
   return {
     ok: false,
     error,
     cancelled,
     hadModelEvent: state.hadModelEvent,
-    partial: partialResponse(state),
+    partial: {
+      id: state.responseId,
+      text: state.text.length === 0 ? null : state.text,
+      reasoningSummary: state.reasoning.length === 0 ? null : state.reasoning,
+      toolCalls: [...state.toolCalls.values()],
+    },
     timing,
     diagnostics,
   };
 }
 
-function partialResponse(state: ProviderState): PartialStreamResponse {
-  return {
-    id: state.responseId,
-    text: state.text.length === 0 ? null : state.text,
-    reasoningSummary: state.reasoning.length === 0 ? null : state.reasoning,
-    toolCalls: [...state.toolCalls.values()],
-  };
-}
-
-function toolKey(
-  payload: Record<string, unknown>,
-  item: Record<string, unknown> | null,
-  fallback: number,
-): string {
-  const itemId = stringValue(item?.id) ?? stringValue(payload.item_id);
-  if (itemId !== null) {
-    return itemId;
-  }
-  const callId = stringValue(item?.call_id) ?? stringValue(payload.call_id);
-  if (callId !== null) {
-    return callId;
-  }
-  const outputIndex = numberValue(payload.output_index);
-  return outputIndex === null ? `tool_${String(fallback)}` : `output_${String(outputIndex)}`;
-}
-
-function emptyToolCall(payload: Record<string, unknown>): StreamToolCall {
-  return {
-    itemId: stringValue(payload.item_id),
-    callId: stringValue(payload.call_id),
-    name: null,
-    arguments: '',
-  };
-}
-
-function providerStreamError(
-  payload: Record<string, unknown>,
-  safeDetails: Record<string, string>,
-): AppError {
-  const response = recordValue(payload.response);
-  const source = response?.error ?? payload.error ?? payload;
-  const parsed = parseProviderErrorBody(JSON.stringify({ error: source }));
+function providerStreamError(payload: Record<string, unknown>, safeDetails: Record<string, string>): AppError {
+  const parsed = parseProviderErrorBody(JSON.stringify({ error: payload.error }));
   return createAppError({
     category: 'server',
     message: parsed.message,
@@ -535,7 +472,7 @@ function providerStreamError(
 function streamEndedError(safeDetails: Record<string, string>): AppError {
   return createAppError({
     category: 'network',
-    message: 'The stream ended before response.completed.',
+    message: 'The stream ended before the chat completion finished.',
     httpStatus: null,
     providerCode: null,
     requestId: null,
@@ -584,6 +521,19 @@ function numberValue(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function normalizeUsage(usage: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...usage };
+  const inputTokens = numberValue(usage.input_tokens) ?? numberValue(usage.prompt_tokens);
+  const outputTokens = numberValue(usage.output_tokens) ?? numberValue(usage.completion_tokens);
+  if (inputTokens !== null) {
+    normalized.input_tokens = inputTokens;
+  }
+  if (outputTokens !== null) {
+    normalized.output_tokens = outputTokens;
+  }
+  return normalized;
+}
+
 function safeEventType(value: string | null): string | null {
   return value === null ? null : redactText(value).slice(0, 100);
 }
@@ -611,5 +561,5 @@ export function parseRetryAfter(value: string | null, now = Date.now()): number 
   return Math.min(Math.max(timestamp - now, 0), MAX_RETRY_AFTER_MS);
 }
 
-export const responsesTransport: Transport = { send };
-export const responsesClient = responsesTransport;
+export const chatCompletionsTransport: Transport = { send };
+export const chatCompletionsClient = chatCompletionsTransport;

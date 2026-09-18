@@ -5,7 +5,7 @@ import type { ConversationInputMessage } from '../../domain/conversation';
 import type {
   SendResponseOptions,
   SendResponseResult,
-} from '../../services/transport/responses';
+} from '../../services/transport/contract';
 import { useChat } from './use-chat';
 
 const mockCredentialRead = jest.fn(async () => 'sk-test');
@@ -81,8 +81,8 @@ jest.mock('../../services/persistence/conversation-store', () => ({
   },
 }));
 
-jest.mock('../../services/transport/responses', () => ({
-  responsesClient: {
+jest.mock('../../services/transport/protocol', () => ({
+  protocolClient: {
     send: (profile: unknown, apiKey: unknown, input: unknown, options: unknown) =>
       mockSend(profile, apiKey, input, options),
   },

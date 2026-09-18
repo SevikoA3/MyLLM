@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
-import { AuthModeSchema, validateBaseUrl } from '../src/domain/endpoint';
+import { AuthModeSchema, ProtocolModeSchema, validateBaseUrl } from '../src/domain/endpoint';
 import { describe, type ErrorCopy } from '../src/features/setup/error-copy';
 import { connectAndDiscover, suggestName, type SetupInput } from '../src/features/setup/onboarding';
 import { useActiveEndpoint } from '../src/features/setup/use-active-endpoint';
@@ -37,6 +37,7 @@ export default function SetupScreen() {
   const name = edits.name ?? profile?.name ?? '';
   const baseUrl = edits.baseUrl ?? profile?.baseUrl ?? '';
   const authMode = edits.authMode ?? profile?.authMode ?? 'bearer';
+  const protocol = edits.protocol ?? profile?.protocol ?? 'responses';
   const modelListPath = edits.modelListPath ?? profile?.compat.modelListPath ?? '/models';
   // Key lama tidak pernah dibaca ke form, jadi field tetap kosong sampai pengguna mengetik.
   const canReuseKey = profile?.credentialRef != null;
@@ -70,6 +71,7 @@ export default function SetupScreen() {
       apiKey,
       apiKeyChanged: keyDraft !== null,
       authMode,
+      protocol,
       modelListPath,
     };
     const result = await connectAndDiscover(input, profile, {
@@ -129,7 +131,7 @@ export default function SetupScreen() {
             {profile === null ? 'Setup endpoint' : 'Endpoint'}
           </Text>
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
-            OpenAI-compatible endpoint. This MVP supports the Responses protocol only.
+            OpenAI-compatible endpoint. Choose Responses, Chat Completions, or Auto compatibility.
           </Text>
         </View>
 
@@ -211,6 +213,38 @@ export default function SetupScreen() {
                     color: authMode === mode ? theme.colors.accentText : theme.colors.text,
                     fontSize: theme.typography.body,
                     fontWeight: authMode === mode ? '700' : '400',
+                  }}>
+                  {mode}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </Field>
+
+        <Field label="Chat protocol">
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.gap }}>
+            {ProtocolModeSchema.options.map((mode) => (
+              <Pressable
+                key={mode}
+                onPress={() => setEdits((current) => ({ ...current, protocol: mode }))}
+                accessibilityRole="button"
+                accessibilityLabel={'Chat protocol ' + mode}
+                accessibilityHint="Choose the endpoint chat protocol"
+                accessibilityState={{ selected: protocol === mode }}
+                style={{
+                  minHeight: 48,
+                  justifyContent: 'center',
+                  paddingHorizontal: theme.spacing.screen,
+                  borderRadius: theme.radius.control,
+                  borderWidth: 1,
+                  borderColor: protocol === mode ? theme.colors.accent : theme.colors.border,
+                  backgroundColor: protocol === mode ? theme.colors.accent : theme.colors.surface,
+                }}>
+                <Text
+                  style={{
+                    color: protocol === mode ? theme.colors.accentText : theme.colors.text,
+                    fontSize: theme.typography.body,
+                    fontWeight: protocol === mode ? '700' : '400',
                   }}>
                   {mode}
                 </Text>

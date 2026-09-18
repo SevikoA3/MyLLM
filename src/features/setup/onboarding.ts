@@ -1,6 +1,7 @@
 import {
   createEndpointProfile,
   normalizeBaseUrl,
+  type ProtocolMode,
   validateBaseUrl,
   type AuthMode,
   type EndpointProfile,
@@ -25,6 +26,7 @@ export type SetupInput = {
   apiKey: string;
   apiKeyChanged: boolean;
   authMode: AuthMode;
+  protocol: ProtocolMode;
   modelListPath: string;
 };
 
@@ -50,6 +52,7 @@ export function profileFromInput(input: SetupInput, credentialId: string | null)
     name: input.name.trim().length > 0 ? input.name : new URL(baseUrl).hostname,
     baseUrl,
     authMode: input.authMode,
+    protocol: input.protocol,
     credentialRef: credentialId,
   });
   return {

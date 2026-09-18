@@ -78,6 +78,7 @@ function setupInput(overrides = {}) {
     apiKey: KEY,
     apiKeyChanged: true,
     authMode: 'bearer',
+    protocol: 'responses',
     modelListPath: '/models',
     ...overrides,
   };

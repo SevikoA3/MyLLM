@@ -1,7 +1,13 @@
-import { EndpointProfileSchema, type EndpointProfile } from '../../domain/endpoint';
+import {
+  ConcreteProtocolSchema,
+  EndpointProfileSchema,
+  type ConcreteProtocol,
+  type EndpointProfile,
+} from '../../domain/endpoint';
 
 const ACTIVE_ENDPOINT_KEY = 'myllm.activeEndpoint';
 const ACTIVE_MODEL_KEY = 'myllm.activeModelId';
+const PROTOCOL_CACHE_PREFIX = 'myllm.protocol.';
 
 export type KeyValueStore = {
   getItemAsync: (key: string) => Promise<string | null>;
@@ -42,14 +48,29 @@ export function createEndpointStore(store?: KeyValueStore) {
     },
     async clear(): Promise<void> {
       const storage = await resolve();
+      const profile = await this.load();
       await storage.removeItemAsync(ACTIVE_ENDPOINT_KEY);
       await storage.removeItemAsync(ACTIVE_MODEL_KEY);
+      if (profile !== null) {
+        await storage.removeItemAsync(PROTOCOL_CACHE_PREFIX + profile.id);
+      }
     },
     async loadActiveModelId(): Promise<string | null> {
       return (await resolve()).getItemAsync(ACTIVE_MODEL_KEY);
     },
     async saveActiveModelId(modelId: string): Promise<void> {
       await (await resolve()).setItemAsync(ACTIVE_MODEL_KEY, modelId);
+    },
+    async loadProtocol(endpointId: string): Promise<ConcreteProtocol | null> {
+      const value = await (await resolve()).getItemAsync(PROTOCOL_CACHE_PREFIX + endpointId);
+      const parsed = ConcreteProtocolSchema.safeParse(value);
+      return parsed.success ? parsed.data : null;
+    },
+    async saveProtocol(endpointId: string, protocol: ConcreteProtocol): Promise<void> {
+      await (await resolve()).setItemAsync(PROTOCOL_CACHE_PREFIX + endpointId, protocol);
+    },
+    async clearProtocol(endpointId: string): Promise<void> {
+      await (await resolve()).removeItemAsync(PROTOCOL_CACHE_PREFIX + endpointId);
     },
   };
 }

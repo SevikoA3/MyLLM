@@ -59,4 +59,13 @@ describe('endpointStore', () => {
     expect(await endpoints.load()).toBeNull();
     expect(await endpoints.loadActiveModelId()).toBeNull();
   });
+
+  it('menyimpan, membaca, dan mereset protocol compatibility', async () => {
+    const { store } = fakeKeyValueStore();
+    const endpoints = createEndpointStore(store);
+    await endpoints.saveProtocol('ep_1', 'chat-completions');
+    expect(await endpoints.loadProtocol('ep_1')).toBe('chat-completions');
+    await endpoints.clearProtocol('ep_1');
+    expect(await endpoints.loadProtocol('ep_1')).toBeNull();
+  });
 });

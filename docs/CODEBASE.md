@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: Phase 11 selesai 18 September 2026. Hardening, clear-all-data, diagnostic ring, safe diagnostic export, external-link handling, manual Android checks, E2E, smoke, dan internal build sudah dikonfirmasi lulus oleh pemilik proyek.
+Status: Phase 12 completed 18 September 2026. Phase 11 hardening and manual checks, Responses and Chat Completions transports, Auto fallback, cache reset, and fake endpoint exit gates are complete.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -38,7 +38,7 @@ myllm/
     app-info.ts                     konstanta nama app dan application ID
     app-info.test.ts
     domain/                         tipe dan pure logic, tanpa I/O
-      endpoint.ts                   EndpointProfile, normalisasi base URL, join path, header auth
+      endpoint.ts                   EndpointProfile, protocol modes, normalisasi base URL, join path, header auth
       endpoint.test.ts
       error.ts                      AppError, kategori error, redaksi secret
       error.test.ts
@@ -49,7 +49,7 @@ myllm/
       catalog.test.ts
       catalog-merge.ts              merge bundled, live, override, history
       catalog-merge.test.ts
-      model-config.ts               reasoning, output cap, dan request config snapshot
+      model-config.ts               reasoning, protocol output cap, dan request config snapshot
       model-config.test.ts
       context.ts                    estimasi context budget preflight dan safety margin
       context.test.ts
@@ -68,7 +68,7 @@ myllm/
         chat-screen.tsx             message list, single-card composer toolbar, thinking modal, streaming, compact request stats, Stop, retry, New chat, and compaction separator
         context-pill.tsx            small SVG context ring with dismissible modal details, cache hit, toggle, and Compact now
         context-pill.test.tsx
-        use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, request orchestration
+        use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, protocol request orchestration
         use-chat.test.tsx
       history/
         history-screen.tsx          pagination, buka, rename, delete, New chat
@@ -95,7 +95,10 @@ myllm/
         diagnostic-transfer.ts     export ring diagnostik aman melalui share sheet
       transport/
         models.ts                   GET /models dengan timeout dan tanpa redirect
+        contract.ts                 canonical request, transport result, dan internal stream events
         responses.ts                POST /responses streaming, event mapping, timing, cancellation, retry, dan Retry-After
+        chat-completions.ts         POST /chat/completions streaming, delta mapping, usage, tool fragments, dan retry
+        protocol.ts                 explicit protocol selection, Auto fallback, protocol cache, dan reset support
         body.ts                     pembacaan response dengan cap 256 KB
         body.test.ts                test cap body response
       context/
@@ -168,13 +171,13 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 
 | File | Isi | Catatan kontrak |
 |---|---|---|
-| `endpoint.ts` | `EndpointProfileSchema`, `createEndpointProfile`, `normalizeBaseUrl`, `joinEndpointPath`, `buildAuthHeaders`, `buildCustomHeaders`, `validateBaseUrl` | Cleartext HTTP hanya untuk host loopback pada build development. Profile tidak pernah menyimpan API key. |
+| `endpoint.ts` | `EndpointProfileSchema`, protocol modes, `createEndpointProfile`, `normalizeBaseUrl`, `joinEndpointPath`, `buildAuthHeaders`, `buildCustomHeaders`, `validateBaseUrl` | Cleartext HTTP hanya untuk host loopback pada build development. Profile tidak pernah menyimpan API key. |
 | `error.ts` | `AppError`, `createAppError`, `redactText`, `categorizeHttpStatus`, `parseProviderErrorBody`, `fromHttpResponse`, `fromNetworkError`, `appErrorToDiagnostic` | Setiap pesan yang mungkin memuat secret melewati redaksi. |
 | `model.ts` | `ModelRecord`, `ModelCapabilities`, `CapabilityState`, `UNKNOWN_CAPABILITIES` | Field hilang bernilai null atau unknown, bukan false atau nol. |
 | `model-list.ts` | `parseModelList`, `normalizeModelRecord`, `OpenAiModelListSchema`, `EnrichedModelFieldsSchema` | Envelope divalidasi, elemen data loose, record rusak ditolak per record. |
 | `catalog.ts` | Schema katalog, override, parser JSON, preview perubahan, serializer, dan pricing | Field yang tidak ada berarti inherit, null berarti hapus override. Schema future ditolak. |
 | `catalog-merge.ts` | `mergeCatalog`, `MergedModel`, `ProvenanceMap`, `CATALOG_SOURCES` | Urutan menang: user-override, live, bundled. `enabled`, request setting, dan provenance dihitung di sini. |
-| `model-config.ts` | `effectiveMaxOutput`, `reasoningChoices`, `modelRequestSnapshot`, `protocolOutputCap` | Memvalidasi effort, output limit, context policy, dan membuat config immutable sebelum request. |
+| `model-config.ts` | `effectiveMaxOutput`, `reasoningChoices`, `modelRequestSnapshot`, `protocolOutputCap` | Memvalidasi effort, output limit, context policy, dan membuat config immutable sebelum request. Auto memakai cap Chat Completions yang konservatif. |
 | `context.ts` | `ContextPolicySchema`, default policy, `buildContextBudget` | Menghitung effective input, output reserve, safety margin, occupancy, dan calibration hint tanpa I/O. |
 | `compaction.ts` | `CompactionSummarySchema`, prefix selector, prompt, parser, `buildCompactedContext` | Menjaga summary sebagai data untrusted dan memilih boundary turn lengkap tanpa menghapus transcript. |
 | `conversation.ts` | `ChatMessage`, `TurnStatus`, `ConversationSummary`, `ConversationCursor`, `titleFromPrompt` | Status mengunci sending, streaming, terminal, dan interrupted. |
@@ -192,7 +195,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
 | `chat/chat-screen.tsx` | Message list, single-card composer toolbar, reasoning modal, compact request stats, Send or Stop, partial output, error, retry, New chat, compaction separator, and context controls | `domain/conversation`, `domain/context`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
-| `chat/use-chat.ts` | Orkestrasi conversation aktif, context preflight, local compaction, hard stop, toggle, reasoning override, config snapshot model, SQLite sebelum request, metrics per turn, stateless history replay, cache key per conversation, batching UI dan DB 50 ms, recovery, cancellation, dan retry | `domain/*`, `services/context/local-compaction`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
+| `chat/use-chat.ts` | Orkestrasi conversation aktif, context preflight, local compaction, hard stop, toggle, reasoning override, config snapshot model, SQLite sebelum request, metrics per turn, stateless history replay, cache key per conversation, batching UI dan DB 50 ms, recovery, cancellation, dan retry | `domain/*`, `services/context/local-compaction`, `services/credentials`, `services/persistence/*`, `services/transport/protocol` |
 | `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
 | `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
 | `models/model-detail-screen.tsx` | Nilai efektif dan provenance, reasoning, output limit, metadata override, reset field dan model | `domain/catalog`, `domain/model-config`, `models/use-model-catalog`, `ui/*` |
@@ -209,8 +212,11 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 |---|---|---|
 | `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.`, registry untuk clear-all | modul native dimuat lazy |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
-| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, canonical append-only system and history input, request reasoning, output, and optional prompt cache key, POST streaming, internal events, timing, pre-event retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
-| `persistence/endpoint-store.ts` | Profile endpoint dan activeModelId di `expo-sqlite/kv-store` | `domain/endpoint` |
+| `transport/contract.ts` | Canonical request, internal stream events, normalized result metadata, and `Transport` contract | `domain/conversation`, `domain/endpoint`, `domain/error` |
+| `transport/responses.ts` | `responsesTransport`, `responsesUrl`, `buildResponsesBody`, canonical append-only system and history input, request reasoning, output, and optional prompt cache key, POST streaming, internal events, timing, pre-event retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/chat-completions.ts` | `chatCompletionsTransport`, canonical Chat Completions messages, configured output field, supported reasoning effort, SSE delta and tool-call mapping, usage aliases, timing, retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/protocol.ts` | Explicit protocol routing, Auto Responses-first fallback for 404/405/501 before output, successful protocol cache, and diagnostic event forwarding | `transport/contract`, `transport/responses`, `transport/chat-completions`, `persistence/endpoint-store` |
+| `persistence/endpoint-store.ts` | Profile, activeModelId, and per-endpoint protocol cache di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
 | `persistence/catalog-store.ts` | `createCatalogRepository`, atomic snapshot dan override, preview/import, custom model, `loadModelRequestSnapshot`, dan `saveModelReasoningEffort` | `domain/catalog`, `domain/catalog-merge`, `domain/model-config`, `domain/endpoint` |
 | `persistence/catalog-files.ts` | `fileCatalogStorage`, `readBundledDefaults`, dan clear cache di document directory | `expo-file-system`, `assets/model-defaults.json` |
@@ -219,7 +225,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `persistence/conversation-store.ts` | `conversationRepository`, migration v1 dan v2, WAL, foreign key, atomic turn writes, recovery, request history, compaction source and active summary, pagination, normalized metrics, rename, delete, clear database | `domain/conversation`, `domain/compaction`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
 | `diagnostics/diagnostic-ring.ts` | Ring NDJSON lokal 2 MB yang hanya menyimpan metadata request aman | `expo-file-system` |
 | `diagnostics/diagnostic-transfer.ts` | Export metadata ring ke JSON melalui share sheet | `diagnostic-ring`, `expo-file-system`, `expo-sharing` |
-| `context/local-compaction.ts` | Memilih prefix turn, meminta summary terstruktur, retry tanpa output, validasi, dan menyimpan usage compaction terpisah | `domain/compaction`, `domain/context`, `persistence/conversation-store`, `transport/responses` |
+| `context/local-compaction.ts` | Memilih prefix turn, meminta summary terstruktur, retry tanpa output, validasi, dan menyimpan usage compaction terpisah | `domain/compaction`, `domain/context`, `persistence/conversation-store`, `transport/protocol` |
 
 `CatalogStorage` sengaja sempit supaya test memakai `Map`, bukan berkas nyata. Ikuti pola ini untuk service baru.
 
@@ -238,10 +244,12 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | File | Isi |
 |---|---|
 | `fake-oai-server.mjs` | Fake endpoint dengan scenario lewat path atau header `X-Scenario`. Hanya memakai API key palsu. |
-| `build-tests.mjs` | Kompilasi transport model, Responses client, onboarding, dan domain terkait ke `.tests-build/` sebagai ESM, mengganti penanda `__DEV__`, dan memakai fetch Node sebagai stub `expo/fetch`. |
+| `build-tests.mjs` | Kompilasi transport model, Responses and Chat Completions clients, protocol router, onboarding, dan domain terkait ke `.tests-build/` sebagai ESM, mengganti penanda `__DEV__`, dan memakai fetch Node sebagai stub `expo/fetch`. |
 | `transport.test.mjs` | Contract test transport discovery terhadap fake endpoint. |
 | `onboarding.test.mjs` | Smoke test connect dan discover. |
 | `responses.test.mjs` | Contract test stream, SSE event, cancellation, partial output, retry boundary, timing, tool argument, usage, chaining, dan error terhadap fake endpoint. |
+| `chat-completions.test.mjs` | Contract test Chat Completions request mapping, stream deltas, usage, tool fragments, and endpoint-specific fields. |
+| `protocol.test.mjs` | Contract test explicit protocol selection, equivalent event sequence, Auto fallback boundary, cache, and Responses-only, Chat-only, and dual exit gates. |
 | `conversations.test.mjs` | Contract test SQLite nyata untuk migration, WAL, FK cascade, partial recovery, metadata turn, compaction, dan keyset pagination. |
 | `model-fields.test.mjs` | Contract test normalizer terhadap bentuk payload GET /models AmanAI yang sudah diverifikasi. |
 | `dump-endpoint-fields.mjs` | Fetch langsung endpoint dari `.env` dan mencetak nama field, tipe, serta kelengkapan tanpa mencetak credential. |

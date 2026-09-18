@@ -204,6 +204,25 @@ const SCENARIOS = {
   'responses-500': () => json(500, { error: { message: 'Internal error' } }),
   'responses-502': () => json(502, { error: { message: 'Upstream error', code: 'upstream_error' } }),
   'responses-503': () => json(503, { error: { message: 'Overloaded', code: 'overloaded_error' } }),
+  'chat-ok': () => chatStream('fake chat completion', 'chatcmpl_fake_0001'),
+  'chat-echo': ({ body }) => chatStream(JSON.stringify(body), 'chatcmpl_fake_echo'),
+  'chat-tool-fragments': () => chatToolStream(),
+  'chat-401': () => json(401, { error: { message: 'Invalid API key', code: 'invalid_api_key' } }),
+  'chat-404': () => json(404, { error: { message: 'Chat endpoint missing', code: 'not_found' } }),
+  'chat-405': () => json(405, { error: { message: 'Method not allowed', code: 'method_not_allowed' } }),
+  'chat-501': () => json(501, { error: { message: 'Not implemented', code: 'not_implemented' } }),
+  'chat-only': ({ pathname }) =>
+    pathname.endsWith('/chat/completions')
+      ? chatStream('chat-only completion', 'chatcmpl_chat_only')
+      : json(404, { error: { message: 'Responses unsupported', code: 'not_found' } }),
+  'responses-only': ({ pathname }) =>
+    pathname.endsWith('/responses')
+      ? streamResponse('responses-only completion', 'resp_responses_only')
+      : json(404, { error: { message: 'Chat Completions unsupported', code: 'not_found' } }),
+  dual: ({ pathname }) =>
+    pathname.endsWith('/chat/completions')
+      ? chatStream('dual chat completion', 'chatcmpl_dual')
+      : streamResponse('dual responses completion', 'resp_dual'),
 };
 
 const server = createServer(async (req, res) => {
@@ -229,7 +248,7 @@ const server = createServer(async (req, res) => {
   }
 
   console.log(`${req.method} ${url.pathname} scenario=${scenario} auth=${authMode(req.headers)}`);
-  await send(res, await handler({ body, headers: req.headers }));
+  await send(res, await handler({ body, headers: req.headers, pathname: url.pathname }));
 });
 
 server.listen(PORT, HOST, () => {
@@ -247,6 +266,9 @@ function scenarioFor(pathname, headerScenario) {
   }
   if (key === 'responses') {
     return 'responses-ok';
+  }
+  if (key === 'chat/completions') {
+    return 'chat-ok';
   }
   return key;
 }
@@ -321,6 +343,36 @@ function streamResponse(text, id) {
     completed(id),
     'data: [DONE]\n\n',
   ]);
+}
+
+function chatStream(text, id) {
+  const split = Math.max(1, Math.floor(text.length / 2));
+  return sse([
+    `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] })}\n\n`,
+    { data: `data: ${JSON.stringify({ id, choices: [{ index: 0, delta: { content: text.slice(0, split) }, finish_reason: null }] })}\n\n`, delay: 15 },
+    { data: `data: ${JSON.stringify({ id, choices: [{ index: 0, delta: { content: text.slice(split) }, finish_reason: 'stop' }] })}\n\n`, delay: 15 },
+    `data: ${JSON.stringify({ id, choices: [], usage: chatUsage() })}\n\n`,
+    'data: [DONE]\n\n',
+  ]);
+}
+
+function chatToolStream() {
+  const id = 'chatcmpl_fake_tool';
+  return sse([
+    `data: ${JSON.stringify({ id, choices: [{ index: 0, delta: { role: 'assistant', tool_calls: [{ index: 0, id: 'call_chat_1', type: 'function', function: { name: 'weather', arguments: '{"city":' } }] }, finish_reason: null }] })}\n\n`,
+    `data: ${JSON.stringify({ id, choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '"Jakarta"}' } }] }, finish_reason: 'tool_calls' }] })}\n\n`,
+    `data: ${JSON.stringify({ id, choices: [], usage: chatUsage() })}\n\n`,
+    'data: [DONE]\n\n',
+  ]);
+}
+
+function chatUsage() {
+  return {
+    prompt_tokens: 12,
+    prompt_tokens_details: { cached_tokens: 3 },
+    completion_tokens: 4,
+    total_tokens: 16,
+  };
 }
 
 function completed(id) {

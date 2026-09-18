@@ -10,11 +10,13 @@ import { clearCatalogCache } from '../../src/services/persistence/catalog-files'
 import { clearTransferCache } from '../../src/services/persistence/catalog-transfer';
 import { conversationRepository } from '../../src/services/persistence/conversation-store';
 import { endpointStore } from '../../src/services/persistence/endpoint-store';
+import { useActiveEndpoint } from '../../src/features/setup/use-active-endpoint';
 import { useTheme } from '../../src/ui/theme';
 
 export default function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { profile } = useActiveEndpoint();
 
   const confirmClearAll = () => {
     Alert.alert(
@@ -48,6 +50,18 @@ export default function SettingsScreen() {
     void shareDiagnostics().catch(() =>
       Alert.alert('Could not export diagnostics', 'The system share sheet is unavailable.'),
     );
+  };
+
+  const resetProtocol = () => {
+    if (profile === null) {
+      return;
+    }
+    void endpointStore
+      .clearProtocol(profile.id)
+      .then(() => {
+        Alert.alert('Protocol compatibility reset', 'Auto mode will try Responses again next time.');
+      })
+      .catch(() => Alert.alert('Could not reset protocol compatibility', 'Try again later.'));
   };
 
   return (
@@ -131,6 +145,26 @@ export default function SettingsScreen() {
           }}>
           <Text style={{ color: theme.colors.danger, fontSize: theme.typography.body, fontWeight: '600' }}>
             Delete all app data
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Reset protocol compatibility"
+          disabled={profile === null}
+          onPress={resetProtocol}
+          style={{
+            minHeight: 48,
+            justifyContent: 'center',
+            paddingHorizontal: theme.spacing.screen,
+            borderRadius: theme.radius.control,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            opacity: profile === null ? 0.5 : 1,
+          }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.typography.body, fontWeight: '600' }}>
+            Reset protocol compatibility
           </Text>
         </Pressable>
       </View>
