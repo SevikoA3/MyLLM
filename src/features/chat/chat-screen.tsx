@@ -227,13 +227,23 @@ export default function ChatScreen() {
 
         <View
           style={{
-            gap: 8,
-            padding: theme.spacing.screen,
+            paddingHorizontal: theme.spacing.screen,
+            paddingVertical: 8,
             borderTopWidth: 1,
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.background,
           }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+          <View
+            style={{
+              gap: 2,
+              paddingHorizontal: 8,
+              paddingTop: 8,
+              paddingBottom: 4,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.card,
+              backgroundColor: theme.colors.surface,
+            }}>
             <TextInput
               accessibilityLabel="Message"
               accessibilityHint="Write a message to send to the active model"
@@ -249,76 +259,69 @@ export default function ChatScreen() {
               }
               multiline
               style={{
-                minHeight: 48,
+                minHeight: 40,
                 maxHeight: 132,
-                flex: 1,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                borderRadius: theme.radius.card,
-                backgroundColor: theme.colors.surface,
+                paddingHorizontal: 6,
+                paddingVertical: 6,
                 color: theme.colors.text,
                 fontSize: theme.typography.body,
                 textAlignVertical: 'top',
               }}
             />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={chat.pending ? 'Stop' : 'Send'}
-              accessibilityHint={
-                chat.pending ? 'Stop the current response' : 'Send message'
-              }
-              disabled={sendDisabled}
-              onPress={chat.pending ? chat.stop : submit}
-              style={({ pressed }) => ({
-                width: 48,
-                height: 48,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 24,
-                backgroundColor: chat.pending ? theme.colors.danger : theme.colors.accent,
-                opacity: sendDisabled ? 0.45 : pressed ? 0.75 : 1,
-              })}>
-              {chat.pending ? (
-                <SymbolView
-                  name={{ ios: 'stop.fill', android: 'stop' }}
-                  size={21}
-                  tintColor={theme.colors.accentText}
-                />
-              ) : (
-                <SymbolView
-                  name={{ ios: 'paperplane.fill', android: 'send' }}
-                  size={21}
-                  tintColor={theme.colors.accentText}
-                />
-              )}
-            </Pressable>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            {chat.reasoningOptions.length > 0 && (
-              <View style={{ flex: 1, maxWidth: 140 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              {chat.reasoningOptions.length > 0 && (
                 <ReasoningSelector
                   options={chat.reasoningOptions}
                   selected={chat.reasoningEffort}
                   disabled={chat.pending}
                   onSelect={(effort) => void chat.setReasoningEffort(effort)}
                 />
+              )}
+              {chat.contextBudget !== null && (
+                <ContextPill
+                  budget={chat.contextBudget}
+                  policy={chat.contextPolicy}
+                  autoCompact={chat.autoCompact}
+                  compacting={chat.compacting}
+                  canCompact={chat.conversationId !== null && !chat.pending}
+                  onCompact={() => void chat.compactNow()}
+                  onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
+                />
+              )}
+              <View style={{ flex: 1 }}>
+                {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
               </View>
-            )}
-            {chat.contextBudget !== null && (
-              <ContextPill
-                budget={chat.contextBudget}
-                policy={chat.contextPolicy}
-                autoCompact={chat.autoCompact}
-                compacting={chat.compacting}
-                canCompact={chat.conversationId !== null && !chat.pending}
-                onCompact={() => void chat.compactNow()}
-                onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
-              />
-            )}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={chat.pending ? 'Stop' : 'Send'}
+                accessibilityHint={chat.pending ? 'Stop the current response' : 'Send message'}
+                disabled={sendDisabled}
+                onPress={chat.pending ? chat.stop : submit}
+                style={({ pressed }) => ({
+                  width: 48,
+                  height: 48,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 24,
+                  backgroundColor: chat.pending ? theme.colors.danger : theme.colors.accent,
+                  opacity: sendDisabled ? 0.45 : pressed ? 0.75 : 1,
+                })}>
+                {chat.pending ? (
+                  <SymbolView
+                    name={{ ios: 'stop.fill', android: 'stop' }}
+                    size={21}
+                    tintColor={theme.colors.accentText}
+                  />
+                ) : (
+                  <SymbolView
+                    name={{ ios: 'paperplane.fill', android: 'send' }}
+                    size={21}
+                    tintColor={theme.colors.accentText}
+                  />
+                )}
+              </Pressable>
+            </View>
           </View>
-          {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -349,8 +352,9 @@ function MetricsFooter({ metrics }: { metrics: TurnMetrics[] }) {
   }
   return (
     <Text
+      numberOfLines={1}
       accessibilityLabel={`Request stats, ${formatDuration(latest.ttftMs)}, ${formatRate(latest.tokensPerSecond)}`}
-      style={{ alignSelf: 'flex-end', color: theme.colors.textMuted, fontSize: 10 }}>
+      style={{ color: theme.colors.textMuted, fontSize: 10, textAlign: 'right' }}>
       {formatDuration(latest.ttftMs)} · {formatRate(latest.tokensPerSecond)}
     </Text>
   );
@@ -377,13 +381,10 @@ export function ReasoningSelector({
   };
 
   return (
-    <View style={{ gap: 4 }}>
-      <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>
-        Thinking
-      </Text>
+    <View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Thinking"
+        accessibilityLabel={`Thinking, ${selectedLabel}`}
         accessibilityHint="Choose the model thinking level"
         accessibilityState={{ disabled, expanded: open }}
         disabled={disabled}
@@ -392,18 +393,16 @@ export function ReasoningSelector({
           minHeight: 48,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 14,
-          borderRadius: theme.radius.control,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
-          backgroundColor: theme.colors.surface,
+          gap: 5,
+          paddingHorizontal: 10,
+          borderRadius: theme.radius.pill,
+          backgroundColor: theme.colors.background,
           opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
         })}>
-        <Text style={{ color: theme.colors.text, fontSize: theme.typography.body, fontWeight: '600' }}>
+        <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
           {selectedLabel}
         </Text>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.subtitle }}>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
           {open ? '⌃' : '⌄'}
         </Text>
       </Pressable>

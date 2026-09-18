@@ -14,8 +14,8 @@ describe('ReasoningSelector', () => {
       />,
     );
 
-    expect(view.getByText('Thinking')).toBeTruthy();
-    fireEvent.press(view.getByLabelText('Thinking'));
+    expect(view.getByText('auto')).toBeTruthy();
+    fireEvent.press(view.getByLabelText('Thinking, auto'));
     await waitFor(() => expect(view.getByText('high')).toBeTruthy());
 
     fireEvent.press(view.getByLabelText('Thinking high'));
