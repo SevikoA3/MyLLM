@@ -153,7 +153,7 @@ function Action({ label, onPress }: { label: string; onPress: () => void }) {
       accessibilityLabel={label}
       onPress={onPress}
       style={{
-        minHeight: 44,
+        minHeight: 48,
         justifyContent: 'center',
         paddingHorizontal: 12,
         borderRadius: theme.radius.control,

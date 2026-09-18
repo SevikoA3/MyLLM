@@ -97,7 +97,7 @@ export default function HistoryScreen() {
             })
           }
           style={{
-            minHeight: 44,
+            minHeight: 48,
             justifyContent: 'center',
             paddingHorizontal: 12,
             borderRadius: theme.radius.control,
@@ -150,7 +150,7 @@ export default function HistoryScreen() {
                   onChangeText={setTitle}
                   onSubmitEditing={() => void saveTitle(item.id)}
                   style={{
-                    minHeight: 44,
+                    minHeight: 48,
                     paddingHorizontal: 10,
                     borderWidth: 1,
                     borderColor: theme.colors.borderStrong,
@@ -162,6 +162,7 @@ export default function HistoryScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={'Buka ' + item.title}
+                  style={{ minHeight: 48, justifyContent: 'center' }}
                   onPress={() =>
                     router.push({
                       pathname: '/chat/[conversationId]',
@@ -187,6 +188,7 @@ export default function HistoryScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={editingId === item.id ? 'Simpan judul' : 'Ubah judul'}
+                  style={{ minHeight: 48, justifyContent: 'center' }}
                   onPress={() => {
                     if (editingId === item.id) {
                       void saveTitle(item.id);
@@ -202,6 +204,7 @@ export default function HistoryScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={'Hapus ' + item.title}
+                  style={{ minHeight: 48, justifyContent: 'center' }}
                   onPress={() => confirmDelete(item)}>
                   <Text style={{ color: theme.colors.danger, fontWeight: '700' }}>Hapus</Text>
                 </Pressable>

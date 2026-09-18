@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import type { ContextBudgetResult } from '../../domain/context';
 import { ContextPill } from './context-pill';
@@ -21,16 +21,18 @@ function result(overrides: Partial<ContextBudgetResult> = {}): ContextBudgetResu
 }
 
 describe('ContextPill', () => {
-  it('menampilkan occupancy, reserve, margin, dan quality', async () => {
+  it('menampilkan ringkasan dan menyembunyikan detail sampai dibuka', async () => {
     const view = await render(<ContextPill budget={result()} />);
 
-    expect(view.getByText('Input ~1,000 tok · Context 32,000 tok · Left 25,880 tok')).toBeTruthy();
-    expect(
-      view.getByText(
-        'Prospective 6,120 tok = input + reserve + margin · 19.1% used · 80.9% left',
-      ),
-    ).toBeTruthy();
-    expect(view.getByText('Reserve 4,096 · Margin 1,024 · estimated')).toBeTruthy();
+    expect(view.getByText('Context 32,000 · 80.9% left')).toBeTruthy();
+    expect(view.getByText('19.1% used · estimated · Auto-compact aktif')).toBeTruthy();
+    expect(view.queryByText('Input ~1,000 tok · Reserve 4,096 · Margin 1,024')).toBeNull();
+
+    fireEvent.press(view.getByLabelText('Context meter'));
+
+    await waitFor(() =>
+      expect(view.getByText('Input ~1,000 tok · Reserve 4,096 · Margin 1,024')).toBeTruthy(),
+    );
   });
 
   it('tidak menampilkan persentase saat context unknown', async () => {
@@ -48,8 +50,8 @@ describe('ContextPill', () => {
       />,
     );
 
-    expect(view.getByText('Input ~1,000 tok · Context unknown')).toBeTruthy();
-    expect(view.getByText('Reserve 4,096 · Margin unavailable · unknown')).toBeTruthy();
+    expect(view.getByText('Context unknown · Input ~1,000 tok')).toBeTruthy();
+    expect(view.getByText('unknown · Auto-compact aktif')).toBeTruthy();
     expect(view.queryByText(/% used/)).toBeNull();
   });
 });

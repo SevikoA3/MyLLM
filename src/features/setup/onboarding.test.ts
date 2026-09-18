@@ -129,7 +129,12 @@ describe('connectAndDiscover', () => {
       baseUrl: 'https://api.amanai.dev/v1',
       credentialRef: 'cred_lama',
     });
-    await connectAndDiscover(input(), existing, { secureStore: secure.store, seedCatalog });
+    await connectAndDiscover(input({ apiKey: '', apiKeyChanged: false }), existing, {
+      secureStore: secure.store,
+      keyValueStore: fakeKeyValueStore().store,
+      discover: async () => ({ ok: true, models: [model] }),
+      seedCatalog,
+    });
 
     let seenKey = '';
     const kv = fakeKeyValueStore();

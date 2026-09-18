@@ -10,7 +10,7 @@ Implementasi Phase 6 selesai. Aplikasi memiliki endpoint onboarding, model catal
 |---|---|
 | `npm start` | Menjalankan Metro dev server |
 | `npm run android` | Menjalankan app pada device atau emulator Android |
-| `npm run lint` | ESLint lewat `expo lint` |
+| `npx eslint .` | ESLint langsung tanpa menjalankan Expo |
 | `npm run typecheck` | `tsc --noEmit` dengan TypeScript strict |
 | `npm test` | Jest dalam watch mode |
 | `npm run test:ci` | Jest sekali jalan untuk CI |
@@ -21,7 +21,7 @@ Implementasi Phase 6 selesai. Aplikasi memiliki endpoint onboarding, model catal
 | `npm run test:conversations` | Contract test SQLite conversation dan recovery |
 | `npm run smoke:models` | Refresh katalog nyata memakai endpoint lokal di `.env` |
 | `npm run smoke:responses` | Dua turn Responses API nyata memakai endpoint lokal di `.env` |
-| `npm run doctor` | `npx expo-doctor` |
+| `npm run doctor` | `npx expo-doctor`, manual oleh pemilik proyek |
 
 ## Domain dan fake endpoint
 
@@ -49,6 +49,10 @@ Model picker menyimpan model ID exact sebagai model aktif. Chat membaca nilai it
 Tab Chat menyimpan user turn dan assistant placeholder ke SQLite sebelum request, lalu mengirim model exact, system instructions v1, input user, `stream: true`, dan `max_output_tokens` 1024. Delta text dan reasoning muncul incremental serta di-flush ke SQLite sekitar 50 ms. Send berubah menjadi Stop; output parsial tetap terlihat setelah Stop, disconnect, atau process restart. Completed response memakai markdown. History mendukung pagination, buka conversation, rename, delete confirmation, New chat, dan retry turn terakhir yang terputus.
 
 ## Contract test Node
+
+## Batas pemeriksaan agent
+
+Agent tidak menjalankan Expo, bundler, `expo-doctor`, prebuild, emulator, device check, Gradle, atau build APK/AAB. Agent hanya menjalankan TypeScript, ESLint langsung, Jest, dan contract test Node. Pemeriksaan Expo dan build Android dilakukan manual oleh pemilik proyek.
 
 Contract test transport, onboarding, dan Responses menjalankan kode produksi hasil kompilasi TypeScript, bukan tiruan:
 
@@ -92,7 +96,7 @@ Tailwind CSS dipakai lewat NativeWind v5 RC di atas `react-native-css`. Catatan 
 - `global.css` mengimpor lapisan theme, preflight, dan utilities secara terpisah. Jangan diganti dengan satu `@import "tailwindcss"` karena urutan cascade-nya berbeda.
 - Kelas Tailwind masuk ke bundle lewat Metro, jadi tidak perlu menjalankan Tailwind CLI secara terpisah.
 
-Setelah mengubah konfigurasi styling, jalankan Metro tanpa cache:
+Setelah mengubah konfigurasi styling, pemilik proyek dapat menjalankan Metro tanpa cache:
 
 ```sh
 npx expo start --clear

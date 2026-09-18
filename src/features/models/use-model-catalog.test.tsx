@@ -130,4 +130,32 @@ describe('useModelCatalog', () => {
     expect(result.current.runtime?.models).toHaveLength(1);
   });
 
+  it('menggabungkan refresh manual yang berjalan bersamaan', async () => {
+    const { result } = await setup();
+    await waitFor(() => expect(result.current.runtime?.models).toHaveLength(1));
+
+    let finishRefresh: (() => void) | undefined;
+    mockResponder.discover = () =>
+      new Promise((resolve) => {
+        finishRefresh = () => resolve({ ok: true, models: [MODEL] });
+      });
+
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    await act(async () => {
+      first = result.current.refresh();
+      second = result.current.refresh();
+      await Promise.resolve();
+    });
+
+    expect(second).toBeDefined();
+    expect(first).toBeDefined();
+    expect(mockCounter.fetchCalls).toBe(2);
+    await waitFor(() => expect(finishRefresh).toBeDefined());
+    await act(async () => {
+      finishRefresh?.();
+      await first;
+    });
+  });
+
 });

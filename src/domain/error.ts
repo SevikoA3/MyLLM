@@ -50,6 +50,7 @@ export type AppErrorInput = {
 export type AppError = Omit<AppErrorInput, 'message' | 'safeDetails'> & {
   message: string;
   safeDetails: Record<string, string>;
+  retryAfterMs?: number;
 };
 
 export function createAppError(input: AppErrorInput): AppError {
@@ -158,6 +159,18 @@ export function fromHttpResponse(input: {
     requestId: parsed.requestId,
     retryable,
     safeDetails: { endpointId: input.endpointId, url: input.url },
+  });
+}
+
+export function bodyTooLargeError(safeDetails: Record<string, string>): AppError {
+  return createAppError({
+    category: 'schema',
+    message: 'Response body melebihi batas keamanan 256 KB.',
+    httpStatus: null,
+    providerCode: null,
+    requestId: null,
+    retryable: false,
+    safeDetails,
   });
 }
 

@@ -10,6 +10,7 @@
     "android": {
       "package": "com.seviko.myllm",
       "versionCode": 1,
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

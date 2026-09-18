@@ -201,7 +201,7 @@ function RefreshButton({ refreshing, onPress }: { refreshing: boolean; onPress: 
       disabled={refreshing}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 44,
+        minHeight: 48,
         minWidth: 110,
         flexDirection: 'row',
         gap: 8,
@@ -295,7 +295,7 @@ export function ModelRow({
         accessibilityState={{ checked: model.enabled }}
         onPress={onToggle}
         style={({ pressed }) => ({
-          minHeight: 44,
+          minHeight: 48,
           alignSelf: 'flex-start',
           flexDirection: 'row',
           alignItems: 'center',
@@ -333,7 +333,7 @@ function SmallButton({ label, onPress }: { label: string; onPress: () => void })
       accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 44,
+        minHeight: 48,
         justifyContent: 'center',
         paddingHorizontal: 12,
         borderRadius: theme.radius.control,

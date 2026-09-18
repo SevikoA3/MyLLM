@@ -44,7 +44,21 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
   const [refreshing, setRefreshing] = useState(false);
   const [failure, setFailure] = useState<RefreshFailure | null>(null);
   const repositoryRef = useRef<CatalogRepository | null>(null);
+  const refreshInFlight = useRef<Promise<void> | null>(null);
   const alive = useRef(true);
+
+  const coalesceRefresh = useCallback((task: () => Promise<void>): Promise<void> => {
+    if (refreshInFlight.current !== null) {
+      return refreshInFlight.current;
+    }
+    const promise = task().finally(() => {
+      if (refreshInFlight.current === promise) {
+        refreshInFlight.current = null;
+      }
+    });
+    refreshInFlight.current = promise;
+    return promise;
+  }, []);
 
   useEffect(() => {
     alive.current = true;
@@ -75,18 +89,20 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
 
     let timer: ReturnType<typeof setInterval> | null = null;
     const run = async (): Promise<void> => {
-      setRefreshing(true);
-      const result = await repository.refresh({
-        endpointId: profile.id,
-        baseUrl: profile.baseUrl,
-        modelListPath: profile.compat.modelListPath,
+      await coalesceRefresh(async () => {
+        setRefreshing(true);
+        const result = await repository.refresh({
+          endpointId: profile.id,
+          baseUrl: profile.baseUrl,
+          modelListPath: profile.compat.modelListPath,
+        });
+        if (!alive.current) {
+          return;
+        }
+        setRefreshing(false);
+        setRuntime(result.catalog);
+        setFailure(result.ok ? null : result.error);
       });
-      if (!alive.current) {
-        return;
-      }
-      setRefreshing(false);
-      setRuntime(result.catalog);
-      setFailure(result.ok ? null : result.error);
     };
 
     void (async () => {
@@ -107,35 +123,38 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
 
     return () => {
       alive.current = false;
+      refreshInFlight.current = null;
       repositoryRef.current = null;
       if (timer !== null) {
         clearInterval(timer);
       }
     };
-  }, [profile]);
+  }, [coalesceRefresh, profile]);
 
   const refresh = useCallback(async () => {
     const repository = repositoryRef.current;
     if (repository === null || profile === null) {
       return;
     }
-    setRefreshing(true);
-    try {
-      const result = await repository.refresh({
-        endpointId: profile.id,
-        baseUrl: profile.baseUrl,
-        modelListPath: profile.compat.modelListPath,
-      });
-      if (alive.current) {
-        setRuntime(result.catalog);
-        setFailure(result.ok ? null : result.error);
+    await coalesceRefresh(async () => {
+      setRefreshing(true);
+      try {
+        const result = await repository.refresh({
+          endpointId: profile.id,
+          baseUrl: profile.baseUrl,
+          modelListPath: profile.compat.modelListPath,
+        });
+        if (alive.current) {
+          setRuntime(result.catalog);
+          setFailure(result.ok ? null : result.error);
+        }
+      } finally {
+        if (alive.current) {
+          setRefreshing(false);
+        }
       }
-    } finally {
-      if (alive.current) {
-        setRefreshing(false);
-      }
-    }
-  }, [profile]);
+    });
+  }, [coalesceRefresh, profile]);
 
   const reload = useCallback(async () => {
     const repository = repositoryRef.current;

@@ -9,7 +9,7 @@ const KEY = 'fake-key';
 
 const { createEndpointProfile } = await import('../.tests-build/domain/endpoint.js');
 const { buildSystemPrompt } = await import('../.tests-build/domain/system-prompt.js');
-const { responsesClient, responsesUrl } = await import(
+const { parseRetryAfter, responsesClient, responsesUrl } = await import(
   '../.tests-build/services/transport/responses.js'
 );
 
@@ -231,6 +231,12 @@ test('retry otomatis hanya terjadi sebelum event model pertama', async () => {
   const partial = await responsesClient.send(scenario('responses-abrupt-eof'), KEY, input);
   assert.equal(partial.ok, false);
   assert.equal(partial.attempts, 1);
+});
+
+test('Retry-After diparse dengan batas aman', () => {
+  assert.equal(parseRetryAfter('2'), 2000);
+  assert.equal(parseRetryAfter('invalid'), null);
+  assert.equal(parseRetryAfter('999999'), 60000);
 });
 
 test('response tanpa text atau tool menjadi schema error', async () => {

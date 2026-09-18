@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: implementasi fase 10 selesai. Gate manual Android untuk streaming, recovery, model override, context meter, dan auto-compact masih menunggu.
+Status: implementasi hardening Phase 11 berjalan selesai. Gate manual Android untuk streaming, recovery, model override, context meter, auto-compact, dan internal build masih menunggu; clear-all-data, diagnostic ring, dan E2E belum ada.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -65,8 +65,8 @@ myllm/
       system-prompt.test.ts
     features/                       UI dan orkestrasi per layar
       chat/
-        chat-screen.tsx             FlatList pesan, composer, reasoning picker, streaming, metrics footer, Stop, retry, New chat, dan separator compaction
-        context-pill.tsx            pill context estimated dengan occupancy, reserve, margin, calibration hint, toggle, dan Compact now
+        chat-screen.tsx             FlatList pesan, composer, thinking dropdown, streaming, metrics footer, Stop, retry, New chat, dan separator compaction
+        context-pill.tsx            ringkasan context compact dengan detail expandable, toggle, dan Compact now
         context-pill.test.tsx
         use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, request orchestration
         use-chat.test.tsx
@@ -82,7 +82,7 @@ myllm/
         models-screen.test.tsx
         model-detail-screen.tsx     detail provenance, request control, dan override form
         models-json-screen.tsx      editor, preview, import, dan export override JSON
-        use-model-catalog.ts        hook runtime katalog
+        use-model-catalog.ts        hook runtime katalog dan refresh coalescing
         use-model-catalog.test.tsx
         catalog-seed.ts             tulis snapshot hasil discover pertama
         model-badges.ts             badge metadata dan ringkasan refresh
@@ -92,7 +92,9 @@ myllm/
         store.test.ts
       transport/
         models.ts                   GET /models dengan timeout dan tanpa redirect
-        responses.ts                POST /responses streaming, event mapping, timing, cancellation
+        responses.ts                POST /responses streaming, event mapping, timing, cancellation, retry, dan Retry-After
+        body.ts                     pembacaan response dengan cap 256 KB
+        body.test.ts                test cap body response
       context/
         local-compaction.ts         local summary request, retry satu kali, validation, dan compaction usage
         local-compaction.test.ts
@@ -269,7 +271,7 @@ Local compaction: preflight menghitung effective context. Saat trigger tercapai,
 | Gate Android recovery | 6 | Implementasi selesai; verifikasi kill app saat stream dan recovery UI menunggu laporan manual. |
 | Context meter | 9 | Implementasi pure domain, hook debounce, dan pill selesai; verifikasi Android/manual masih menunggu. |
 | Auto-compact | 10 | Implementasi migration, local summary, preflight, replay, manual action, toggle, dan hard stop selesai; verifikasi Android/manual masih menunggu. |
-| MVP hardening | 11 | Belum ada. |
+| MVP hardening | 11 | Sebagian selesai: hardening transport, accessibility dasar, backup, dan error detail sudah ada. Clear-all-data, diagnostic ring, E2E, serta gate Android/internal build masih belum ada. |
 
 ## 6. Aturan saat menambah berkas
 

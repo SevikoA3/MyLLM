@@ -135,6 +135,8 @@ export default function SetupScreen() {
 
         <Field label="Endpoint name">
           <TextInput
+            accessibilityLabel="Nama endpoint"
+            accessibilityHint="Nama yang ditampilkan di aplikasi"
             style={inputStyle}
             value={name}
             onChangeText={(value) => setEdits((current) => ({ ...current, name: value }))}
@@ -146,6 +148,8 @@ export default function SetupScreen() {
 
         <Field label="Base URL">
           <TextInput
+            accessibilityLabel="Base URL endpoint"
+            accessibilityHint="URL HTTPS endpoint OpenAI-compatible"
             style={inputStyle}
             value={baseUrl}
             onChangeText={(value) => setEdits((current) => ({ ...current, baseUrl: value }))}
@@ -168,6 +172,8 @@ export default function SetupScreen() {
 
         <Field label="API key">
           <TextInput
+            accessibilityLabel="API key"
+            accessibilityHint="Credential disimpan di secure storage"
             style={inputStyle}
             value={apiKey}
             onChangeText={setKeyDraft}
@@ -188,6 +194,8 @@ export default function SetupScreen() {
                 key={mode}
                 onPress={() => setEdits((current) => ({ ...current, authMode: mode }))}
                 accessibilityRole="button"
+                accessibilityLabel={'Auth mode ' + mode}
+                accessibilityHint="Pilih mode autentikasi endpoint"
                 accessibilityState={{ selected: authMode === mode }}
                 style={{
                   minHeight: 48,
@@ -211,7 +219,12 @@ export default function SetupScreen() {
           </View>
         </Field>
 
-        <Pressable onPress={() => setAdvanced(!advanced)}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={advanced ? 'Sembunyikan advanced' : 'Tampilkan advanced'}
+          accessibilityState={{ expanded: advanced }}
+          style={{ minHeight: 48, justifyContent: 'center' }}
+          onPress={() => setAdvanced(!advanced)}>
           <Text style={{ color: theme.colors.accent, fontSize: theme.typography.meta }}>
             {advanced ? 'Sembunyikan advanced' : 'Advanced'}
           </Text>
@@ -219,6 +232,8 @@ export default function SetupScreen() {
         {advanced && (
           <Field label="Models path">
             <TextInput
+              accessibilityLabel="Models path"
+              accessibilityHint="Path endpoint untuk daftar model"
               style={inputStyle}
               value={modelListPath}
               onChangeText={(value) =>

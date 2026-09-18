@@ -388,7 +388,11 @@ function Field({
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{label}</Text>
-        <Pressable accessibilityRole="button" onPress={onReset}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={'Reset ' + label}
+          style={{ minHeight: 48, justifyContent: 'center' }}
+          onPress={onReset}>
           <Text style={{ color: theme.colors.accent, fontWeight: '700' }}>Reset</Text>
         </Pressable>
       </View>
@@ -402,7 +406,7 @@ function Field({
         autoCorrect={false}
         onChangeText={onChange}
         style={{
-          minHeight: 46,
+          minHeight: 48,
           color: theme.colors.text,
           backgroundColor: theme.colors.background,
           borderColor: theme.colors.border,
@@ -439,7 +443,7 @@ function Choice({
             accessibilityState={{ checked: value === entry }}
             onPress={() => onChange(entry)}
             style={{
-              minHeight: 40,
+              minHeight: 48,
               justifyContent: 'center',
               paddingHorizontal: 10,
               borderRadius: theme.radius.pill,
@@ -465,7 +469,7 @@ function Action({ label, danger = false, onPress }: { label: string; danger?: bo
       accessibilityLabel={label}
       onPress={onPress}
       style={{
-        minHeight: 44,
+        minHeight: 48,
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 12,

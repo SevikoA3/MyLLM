@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
@@ -129,7 +128,7 @@ export default function ChatScreen() {
               }
             }}
             style={({ pressed }) => ({
-              minHeight: 44,
+              minHeight: 48,
               justifyContent: 'center',
               paddingHorizontal: 12,
               borderRadius: theme.radius.control,
@@ -150,8 +149,8 @@ export default function ChatScreen() {
             accessibilityLabel="Buka history"
             onPress={() => router.push('/history')}
             style={({ pressed }) => ({
-              minWidth: 44,
-              minHeight: 44,
+              minWidth: 48,
+              minHeight: 48,
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: theme.radius.control,
@@ -218,7 +217,14 @@ export default function ChatScreen() {
         )}
 
         {chat.error !== null && (
-          <ErrorCard error={chat.error} canRetry={chat.canRetry} onRetry={() => void chat.retry()} />
+            <ErrorCard
+              error={chat.error}
+              endpointName={profile?.name ?? null}
+              modelId={chat.activeModelId}
+              protocol={profile?.protocol ?? null}
+              canRetry={chat.canRetry}
+              onRetry={() => void chat.retry()}
+            />
         )}
         {chat.error === null && chat.canRetry && (
           <RetryCard onRetry={() => void chat.retry()} />
@@ -255,6 +261,7 @@ export default function ChatScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
             <TextInput
               accessibilityLabel="Pesan"
+              accessibilityHint="Masukkan pesan untuk dikirim ke model aktif"
               value={draft}
               onChangeText={setDraft}
               placeholder="Tulis pesan..."
@@ -399,28 +406,69 @@ export function ReasoningSelector({
   onSelect: (effort: string) => void;
 }) {
   const theme = useTheme();
+  const [open, setOpen] = useState(false);
+  const selectedLabel = selected ?? (options.includes('auto') ? 'auto' : 'default');
+
+  const choose = (effort: string) => {
+    setOpen(false);
+    onSelect(effort);
+  };
+
   return (
     <View style={{ gap: 6 }}>
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-        Reasoning
+        Thinking
       </Text>
-      <ScrollView
-        horizontal
-        keyboardShouldPersistTaps="handled"
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: 6 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Thinking"
+        accessibilityHint="Pilih mode thinking model"
+        accessibilityState={{ disabled, expanded: open }}
+        disabled={disabled}
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => ({
+          minHeight: 48,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: 14,
+          borderRadius: theme.radius.control,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surface,
+          opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
+        })}>
+        <Text style={{ color: theme.colors.text, fontSize: theme.typography.body, fontWeight: '600' }}>
+          {selectedLabel}
+        </Text>
+        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.subtitle }}>
+          {open ? '⌃' : '⌄'}
+        </Text>
+      </Pressable>
+      {open && (
+        <View
+          style={{
+            gap: 4,
+            padding: 4,
+            borderRadius: theme.radius.control,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.background,
+          }}>
         {options.map((effort) => {
           const active = effort === selected;
           return (
             <Pressable
               key={effort}
               accessibilityRole="radio"
-              accessibilityLabel={'Reasoning ' + effort}
+              accessibilityLabel={'Thinking ' + effort}
               accessibilityState={{ checked: active, disabled }}
               disabled={disabled}
-              onPress={() => onSelect(effort)}
+              onPress={() => choose(effort)}
               style={({ pressed }) => ({
-                minHeight: 38,
+                minHeight: 48,
+                flexDirection: 'row',
+                alignItems: 'center',
                 justifyContent: 'center',
                 paddingHorizontal: 12,
                 borderRadius: theme.radius.pill,
@@ -440,7 +488,8 @@ export function ReasoningSelector({
             </Pressable>
           );
         })}
-      </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
@@ -569,10 +618,16 @@ function PendingMessage() {
 
 function ErrorCard({
   error,
+  endpointName,
+  modelId,
+  protocol,
   canRetry,
   onRetry,
 }: {
   error: AppError;
+  endpointName: string | null;
+  modelId: string | null;
+  protocol: string | null;
   canRetry: boolean;
   onRetry: () => void;
 }) {
@@ -593,8 +648,26 @@ function ErrorCard({
         Request gagal
       </Text>
       <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta }}>{error.message}</Text>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+        Endpoint {endpointName ?? 'unavailable'} · Model {modelId ?? 'unavailable'} · Protocol{' '}
+        {protocol ?? 'unavailable'}
+      </Text>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+        Status {error.httpStatus ?? 'unavailable'}
+        {error.providerCode === null ? '' : ` · Code ${error.providerCode}`}
+        {error.requestId === null ? '' : ` · Request ${error.requestId}`}
+      </Text>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+        Langkah aman:{' '}
+        {error.retryable ? 'coba lagi setelah memeriksa endpoint.' : 'periksa konfigurasi dan model aktif.'}
+      </Text>
       {canRetry && (
-        <Pressable accessibilityRole="button" accessibilityLabel="Coba lagi" onPress={onRetry}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Coba lagi"
+          accessibilityHint="Ulangi request yang gagal"
+          style={{ minHeight: 48, justifyContent: 'center' }}
+          onPress={onRetry}>
           <Text style={{ color: theme.colors.accent, fontSize: theme.typography.meta, fontWeight: '700' }}>
             Coba lagi
           </Text>
@@ -622,7 +695,12 @@ function RetryCard({ onRetry }: { onRetry: () => void }) {
       <Text style={{ flex: 1, color: theme.colors.warningText, fontSize: theme.typography.meta }}>
         Jawaban sebelumnya terputus.
       </Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Coba lagi" onPress={onRetry}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Coba lagi"
+        accessibilityHint="Ulangi request yang terputus"
+        style={{ minHeight: 48, justifyContent: 'center' }}
+        onPress={onRetry}>
         <Text style={{ color: theme.colors.warningText, fontWeight: '800' }}>Coba lagi</Text>
       </Pressable>
     </View>

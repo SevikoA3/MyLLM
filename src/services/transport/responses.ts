@@ -9,6 +9,7 @@ import {
 } from '../../domain/endpoint';
 import {
   createAppError,
+  bodyTooLargeError,
   fromHttpResponse,
   fromNetworkError,
   parseProviderErrorBody,
@@ -17,10 +18,12 @@ import {
 } from '../../domain/error';
 import { createSseParser, type SseFrame } from '../../domain/sse';
 import { buildSystemPrompt } from '../../domain/system-prompt';
+import { readResponseText } from './body';
 
 export const RESPONSE_TIMEOUT_MS = 60_000;
 const RETRY_DELAY_MS = 250;
 const MAX_ATTEMPTS = 2;
+const MAX_RETRY_AFTER_MS = 60_000;
 
 export type SendResponseInput = {
   modelId: string;
@@ -173,7 +176,7 @@ async function send(
     ) {
       return { ...result, attempts };
     }
-    await wait(RETRY_DELAY_MS);
+    await wait(result.error.retryAfterMs ?? RETRY_DELAY_MS);
   } while (true);
 }
 
@@ -230,16 +233,21 @@ async function sendAttempt(
       signal: controller.signal,
     });
     if (!response.ok) {
-      const error = fromHttpResponse({
-        status: response.status,
-        body: await response.text(),
-        ...safeDetails,
-      });
+      const body = await readResponseText(response);
+      if (!body.ok) {
+        return fail(bodyTooLargeError(safeDetails), false, state, timing, diagnostics, options);
+      }
+      const parsed = fromHttpResponse({ status: response.status, body: body.text, ...safeDetails });
+      const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
+      const error = retryAfterMs === null ? parsed : { ...parsed, retryAfterMs };
       return fail(error, false, state, timing, diagnostics, options);
     }
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.toLowerCase().includes('text/event-stream')) {
-      await response.text();
+      const body = await readResponseText(response);
+      if (!body.ok) {
+        return fail(bodyTooLargeError(safeDetails), false, state, timing, diagnostics, options);
+      }
       return fail(
         schemaError('Endpoint tidak mengembalikan stream SSE.', safeDetails),
         false,
@@ -622,6 +630,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export function parseRetryAfter(value: string | null, now = Date.now()): number | null {
+  if (value === null) {
+    return null;
+  }
+  const seconds = Number(value.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+  return Math.min(Math.max(timestamp - now, 0), MAX_RETRY_AFTER_MS);
 }
 
 /** Responses client konkret. Fallback protocol baru ditambahkan saat fase fallback dimulai. */

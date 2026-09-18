@@ -22,12 +22,16 @@ Membangun aplikasi Android berbasis React Native yang:
 
 ## 2. Kontrak untuk executor
 
+### Batas eksekusi agent
+
+Agent tidak boleh menjalankan Expo atau build Android karena keterbatasan RAM pemilik proyek. Jangan menjalankan `expo`, `npx expo`, `expo prebuild`, `expo run:*`, `npx expo-doctor`, `npm run doctor`, bundler, emulator, device check, Gradle, APK, atau AAB. Agent hanya membuat kode dan menjalankan TypeScript, ESLint langsung, Jest, serta contract test Node. Pemeriksaan Expo dan build Android dilakukan manual oleh pemilik proyek.
+
 Executor wajib mengikuti aturan ini:
 
 1. Kerjakan fase secara berurutan.
 2. Jangan mulai fase berikutnya sebelum exit gate fase aktif lulus.
-3. Jalankan lint, typecheck, dan test yang relevan sebelum menandai langkah selesai.
-4. Pertahankan aplikasi dalam keadaan dapat dibuild setelah setiap fase.
+3. Jalankan ESLint langsung, typecheck, dan test yang relevan sebelum menandai langkah selesai.
+4. Pertahankan kode dalam keadaan siap dibuild setelah setiap fase; build aktual diverifikasi manual oleh pemilik proyek.
 5. Tambahkan dependency hanya pada fase yang pertama kali memerlukannya.
 6. Gunakan API native atau package yang sudah dipilih sebelum menulis abstraction sendiri.
 7. Jangan menambahkan Redux, Zustand, ORM, Axios, EventSource package, dependency injection container, UI framework, monorepo, atau plugin framework tanpa bukti kebutuhan.
@@ -815,40 +819,42 @@ Fixture long conversation otomatis compact, occupancy turun di bawah target saat
 
 ## 18. Phase 11: MVP hardening dan internal release
 
+Status: hardening implementasi dan test otomatis berjalan selesai 18 September 2026. Touch target, accessibility dasar, error detail, response body cap, Retry-After, retry boundary, refresh coalescing, dan Android backup sudah diterapkan; verifikasi Android/manual serta fitur release gate yang belum ada masih menunggu.
+
 ### Goal
 
 Menutup MVP yang aman, accessible, dapat diuji ulang, dan dapat dipasang sebagai APK internal.
 
 ### UX steps
 
-- [ ] Terapkan design tokens kecil untuk color, spacing, radius, typography, dan dark mode.
-- [ ] Gunakan core components. Jangan membuat design system package.
-- [ ] Touch target minimum 48 dp.
-- [ ] Tambahkan accessibilityLabel dan accessibilityHint pada composer, model picker, stop, retry, stats, dan context.
+- [x] Terapkan design tokens kecil untuk color, spacing, radius, typography, dan dark mode.
+- [x] Gunakan core components. Jangan membuat design system package.
+- [x] Touch target minimum 48 dp pada kontrol MVP.
+- [x] Tambahkan accessibilityLabel dan accessibilityHint pada composer, model picker, stop, retry, stats, dan context.
 - [ ] Uji font scale besar.
 - [ ] Pastikan keyboard tidak menutupi composer.
 - [ ] Pastikan long markdown tidak membuat composer lag.
 - [ ] Link eksternal meminta confirmation atau membuka browser sistem.
-- [ ] Error card menampilkan endpoint name, model, protocol, status, provider code, request ID, dan safe next action.
+- [x] Error card menampilkan endpoint name, model, protocol, status, provider code, request ID, dan safe next action.
 
 ### Security steps
 
-- [ ] Release build menolak cleartext HTTP.
-- [ ] Tidak ada trust-all certificate path.
-- [ ] Redirect POST dinonaktifkan atau divalidasi.
-- [ ] Secret redaction dites.
-- [ ] Android backup mengecualikan credential dan sensitive cache.
-- [ ] Chat backup default off.
-- [ ] Debug body logging default off.
+- [x] Release build menolak cleartext HTTP.
+- [x] Tidak ada trust-all certificate path.
+- [x] Redirect POST dinonaktifkan atau divalidasi.
+- [x] Secret redaction dites.
+- [x] Android backup mengecualikan credential dan sensitive cache.
+- [x] Chat backup default off.
+- [x] Debug body logging default off.
 - [ ] Clear all data menghapus SQLite, model cache, overrides, exported temp files, dan SecureStore records.
 - [ ] Diagnostic export tidak membawa content atau credential secara default.
 
 ### Reliability steps
 
-- [ ] Implementasikan retry maksimum 2 hanya untuk pre-output network error dan 429/502/503.
-- [ ] Hormati Retry-After.
-- [ ] Model refresh concurrent di-coalesce.
-- [ ] Set error body cap 256 KB.
+- [x] Implementasikan retry maksimum 2 hanya untuk pre-output network error dan 429/502/503.
+- [x] Hormati Retry-After.
+- [x] Model refresh concurrent di-coalesce.
+- [x] Set error body cap 256 KB.
 - [ ] Set local diagnostic ring 2 MB.
 - [ ] Uji offline start, network switch, rotation, low memory restart, dan process kill.
 
@@ -856,7 +862,7 @@ Menutup MVP yang aman, accessible, dapat diuji ulang, dan dapat dipasang sebagai
 
 - [ ] Tambahkan Maestro only now.
 - [ ] E2E: first-run setup, model discover, send stream, stop, restart recovery, override, context meter.
-- [ ] Tambahkan CI untuk npm ci, lint, typecheck, test:ci, expo-doctor, dan Android debug build.
+- [ ] Tambahkan CI untuk npm ci, lint, typecheck, test:ci, expo-doctor, dan Android debug build. Ditunda sesuai keputusan pemilik proyek.
 - [ ] Jangan menambahkan snapshot tests besar.
 - [ ] Build internal APK/AAB dari clean checkout.
 

@@ -4,9 +4,10 @@ import {
   joinEndpointPath,
   type EndpointProfile,
 } from '../../domain/endpoint';
-import { fromHttpResponse, fromNetworkError, type AppError } from '../../domain/error';
+import { bodyTooLargeError, fromHttpResponse, fromNetworkError, type AppError } from '../../domain/error';
 import { parseModelList } from '../../domain/model-list';
 import type { ModelRecord } from '../../domain/model';
+import { readResponseText } from './body';
 
 export const DISCOVERY_TIMEOUT_MS = 15_000;
 
@@ -51,7 +52,11 @@ export async function discoverModels(
         }),
       };
     }
-    const body = await response.text();
+    const bodyResult = await readResponseText(response);
+    if (!bodyResult.ok) {
+      return { ok: false, error: bodyTooLargeError(safeDetails) };
+    }
+    const body = bodyResult.text;
     if (!response.ok) {
       return { ok: false, error: fromHttpResponse({ status: response.status, body, ...safeDetails }) };
     }

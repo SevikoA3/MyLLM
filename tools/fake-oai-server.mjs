@@ -190,7 +190,10 @@ const SCENARIOS = {
   'responses-retry-before-event': () => {
     retryBeforeEventCalls += 1;
     return retryBeforeEventCalls === 1
-      ? json(503, { error: { message: 'Overloaded', code: 'overloaded_error' } })
+      ? {
+          ...json(503, { error: { message: 'Overloaded', code: 'overloaded_error' } }),
+          headers: { 'content-type': 'application/json', 'retry-after': '0' },
+        }
       : streamResponse('berhasil setelah retry', 'resp_fake_retry');
   },
   'responses-401': () => json(401, { error: { message: 'Invalid API key', code: 'invalid_api_key' } }),
