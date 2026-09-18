@@ -72,11 +72,27 @@ export function buildChatCompletionsBody(
   input: SendResponseInput,
 ): Record<string, unknown> {
   const history = input.history ?? [{ role: 'user' as const, content: input.prompt }];
+  const toolExchanges = input.toolExchanges ?? [];
   const body: Record<string, unknown> = {
     model: input.modelId,
     messages: [
       { role: 'system', content: buildSystemPrompt(input.modelId) },
       ...history,
+      ...toolExchanges.flatMap((exchange) => [
+        {
+          role: 'assistant',
+          tool_calls: exchange.calls.map((call) => ({
+            id: call.callId,
+            type: 'function',
+            function: { name: call.name, arguments: call.argumentsJson },
+          })),
+        },
+        ...exchange.results.map((result) => ({
+          role: 'tool',
+          tool_call_id: result.callId,
+          content: result.output,
+        })),
+      ]),
     ],
     stream: true,
     stream_options: { include_usage: true },
@@ -93,6 +109,12 @@ export function buildChatCompletionsBody(
   }
   if (input.promptCacheKey !== null && profile.compat.chatPromptCacheField !== null) {
     body[profile.compat.chatPromptCacheField] = input.promptCacheKey;
+  }
+  if (input.tools !== undefined && input.tools.length > 0) {
+    body.tools = input.tools.map(({ name, description, parameters }) => ({
+      type: 'function',
+      function: { name, description, parameters },
+    }));
   }
   return body;
 }

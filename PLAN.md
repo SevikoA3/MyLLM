@@ -1,6 +1,6 @@
 # Implementation Plan Aplikasi Chat LLM Android
 
-Status: Phase 12 completed on 18 September 2026. TypeScript, ESLint, Jest, contract tests, and fake endpoint exit gate passed.
+Status: Phase 13 completed on 18 September 2026. TypeScript, ESLint, Jest, and relevant contract tests passed.
 
 Tanggal: 16 September 2026.
 
@@ -932,39 +932,41 @@ Model dapat memanggil function tool dengan approval dan bounded loop.
 
 ### Steps
 
-- [ ] Baru sekarang tambahkan ToolDefinition, ToolCall, ToolResult, ToolPolicy, ToolRegistry, dan AgentLoop.
-- [ ] Registry hanya berisi tool yang benar-benar diimplementasikan.
-- [ ] Validasi tool name dan JSON arguments.
-- [ ] Unknown tool menghasilkan structured error result, bukan crash.
-- [ ] Risk levels: read-only, write, dangerous.
-- [ ] Approval: never, ask, always.
-- [ ] Default deny untuk tool unknown.
-- [ ] Write dan dangerous selalu ask.
-- [ ] Approval screen menampilkan tool, arguments, target, dan side effect.
-- [ ] Approval berlaku satu call.
-- [ ] Batasi 8 tool rounds dan 3 parallel read-only calls.
-- [ ] Tambahkan timeout, cancellation, output byte cap, dan total wall-clock cap.
-- [ ] Dedupe call ID agar resume tidak mengulang side effect.
-- [ ] Persist tool call, approval, result, dan status.
-- [ ] Tambahkan satu deterministic read-only demo tool untuk test, misalnya get_current_time dengan timezone input.
-- [ ] Kirim tool result kembali ke transport sampai final answer.
-- [ ] Jangan menyediakan shell tool.
+- [x] Baru sekarang tambahkan ToolDefinition, ToolCall, ToolResult, ToolPolicy, ToolRegistry, dan AgentLoop.
+- [x] Registry hanya berisi tool yang benar-benar diimplementasikan.
+- [x] Validasi tool name dan JSON arguments.
+- [x] Unknown tool menghasilkan structured error result, bukan crash.
+- [x] Risk levels: read-only, write, dangerous.
+- [x] Approval: never, ask, always.
+- [x] Default deny untuk tool unknown.
+- [x] Write dan dangerous selalu ask.
+- [x] Approval screen menampilkan tool, arguments, target, dan side effect.
+- [x] Approval berlaku satu call.
+- [x] Batasi 8 tool rounds dan 3 parallel read-only calls.
+- [x] Tambahkan timeout, cancellation, output byte cap, dan total wall-clock cap.
+- [x] Dedupe call ID agar resume tidak mengulang side effect.
+- [x] Persist tool call, approval, result, dan status.
+- [x] Tambahkan satu deterministic read-only demo tool untuk test, misalnya get_current_time dengan timezone input.
+- [x] Kirim tool result kembali ke transport sampai final answer.
+- [x] Jangan menyediakan shell tool.
 
 ### Tests
 
-- [ ] Fragmented arguments.
-- [ ] Invalid JSON.
-- [ ] Unknown tool.
-- [ ] Approval reject.
-- [ ] Timeout.
-- [ ] Duplicate call ID.
-- [ ] Round limit.
-- [ ] Parallel read-only.
-- [ ] Cancellation propagation.
+- [x] Fragmented arguments.
+- [x] Invalid JSON.
+- [x] Unknown tool.
+- [x] Approval reject.
+- [x] Timeout.
+- [x] Duplicate call ID.
+- [x] Round limit.
+- [x] Parallel read-only.
+- [x] Cancellation propagation.
 
 ### Exit gate
 
 Model dapat memanggil demo tool, pengguna melihat progress, dan loop berhenti aman pada final answer atau limit.
+
+Status: Phase 13 completed on 18 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, and relevant Responses, Chat Completions, protocol, and SQLite contract tests passed.
 
 ## 21. Phase 14: Web search dan safe fetch
 

@@ -15,6 +15,7 @@ import type { EndpointProfile } from '../../domain/endpoint';
 import { createAppError, type AppError } from '../../domain/error';
 import type { ModelRequestSnapshot } from '../../domain/model-config';
 import { buildSystemPrompt } from '../../domain/system-prompt';
+import { DEFAULT_TOOL_POLICY, type ToolActivity } from '../../domain/tool';
 import type { TurnMetrics } from '../../domain/usage';
 import { credentialStore } from '../../services/credentials/store';
 import { fileCatalogStorage, readBundledDefaults } from '../../services/persistence/catalog-files';
@@ -30,6 +31,8 @@ import {
   type ResponseStreamEvent,
   type SendResponseResult,
 } from '../../services/transport/protocol';
+import { toolRegistry } from '../../services/tools/registry';
+import { runAgentLoop, type ToolCallPersistence } from './agent-loop';
 
 const UI_BATCH_MS = 50;
 const CONTEXT_DEBOUNCE_MS = 150;
@@ -55,10 +58,13 @@ export type ChatState = {
   reasoningOptions: string[];
   loadingModel: boolean;
   pending: boolean;
+  toolProgress: ToolActivity[];
+  toolApproval: ToolActivity | null;
   error: AppError | null;
   canRetry: boolean;
   send: (prompt: string) => Promise<boolean>;
   stop: () => void;
+  resolveToolApproval: (approved: boolean) => void;
   retry: () => Promise<boolean>;
   newChat: () => void;
   reloadModel: () => Promise<void>;
@@ -88,6 +94,8 @@ export function useChat(
   const [loadingModel, setLoadingModel] = useState(profile !== null);
   const [loadingConversation, setLoadingConversation] = useState(profile !== null && !startFresh);
   const [pending, setPending] = useState(false);
+  const [toolProgress, setToolProgress] = useState<ToolActivity[]>([]);
+  const [toolApproval, setToolApproval] = useState<ToolActivity | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [retryState, setRetryState] = useState<RetryState | null>(null);
   const previousResponseId = useRef<string | null>(null);
@@ -95,11 +103,48 @@ export function useChat(
   const pendingRef = useRef(false);
   const reasoningSavingRef = useRef(false);
   const activeController = useRef<AbortController | null>(null);
+  const approvalResolver = useRef<((approved: boolean) => void) | null>(null);
   const streamTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contextRequestId = useRef(0);
   const compactingRef = useRef(false);
   const alive = useRef(true);
+
+  const updateToolProgress = useCallback((activity: ToolActivity) => {
+    setToolProgress((current) => {
+      const index = current.findIndex((entry) => entry.callId === activity.callId);
+      return index === -1
+        ? [...current, activity]
+        : current.map((entry, entryIndex) => (entryIndex === index ? activity : entry));
+    });
+  }, []);
+
+  const requestToolApproval = useCallback(
+    (activity: ToolActivity, signal: AbortSignal) =>
+      new Promise<boolean>((resolve) => {
+        const finish = (approved: boolean) => {
+          signal.removeEventListener('abort', reject);
+          if (approvalResolver.current === finish) {
+            approvalResolver.current = null;
+          }
+          setToolApproval(null);
+          resolve(approved);
+        };
+        const reject = () => finish(false);
+        approvalResolver.current = finish;
+        setToolApproval(activity);
+        if (signal.aborted) {
+          reject();
+          return;
+        }
+        signal.addEventListener('abort', reject, { once: true });
+      }),
+    [],
+  );
+
+  const resolveToolApproval = useCallback((approved: boolean) => {
+    approvalResolver.current?.(approved);
+  }, []);
 
   const reloadModel = useCallback(async () => {
     setModelConfig(null);
@@ -198,6 +243,8 @@ export function useChat(
           setRetryState(null);
           setAutoCompactState(true);
           setCompactionActive(false);
+          setToolProgress([]);
+          setToolApproval(null);
         } else {
           setConversationId(saved.id);
           setMessages(saved.messages);
@@ -237,6 +284,8 @@ export function useChat(
       pendingRef.current = true;
       setPending(true);
       setError(null);
+      setToolProgress([]);
+      setToolApproval(null);
       let requestConfig: ModelRequestSnapshot | null;
       try {
         requestConfig = await loadModelRequestSnapshot(
@@ -474,10 +523,16 @@ export function useChat(
         if (requestHistory.length === 0) {
           requestHistory = [{ role: 'user', content: prompt }];
         }
-        const result = await protocolClient.send(
+        const persistence: ToolCallPersistence | undefined =
+          typeof conversationRepository.recordToolCall === 'function' &&
+          typeof conversationRepository.updateToolCall === 'function'
+            ? conversationRepository
+            : undefined;
+        const result = await runAgentLoop({
           profile,
           apiKey,
-          {
+          turnId,
+          request: {
             modelId: activeModelId,
             prompt,
             history: requestHistory,
@@ -486,8 +541,16 @@ export function useChat(
             maxOutputTokens: requestConfig.outputLimit,
             reasoningEffort: requestConfig.reasoningEffort,
           },
-          { signal: controller.signal, onEvent },
-        );
+          transport: protocolClient,
+          registry: toolRegistry,
+          definitions: toolRegistry.definitions(),
+          policy: DEFAULT_TOOL_POLICY,
+          persistence,
+          signal: controller.signal,
+          onEvent,
+          onProgress: updateToolProgress,
+          requestApproval: requestToolApproval,
+        });
         streamedText = result.ok ? result.response.text ?? streamedText : result.partial.text ?? streamedText;
         streamedReasoning = result.ok
           ? result.response.reasoningSummary ?? streamedReasoning
@@ -586,7 +649,16 @@ export function useChat(
         }
       }
     },
-    [activeModelId, autoCompact, conversationId, loadingConversation, metrics, profile],
+    [
+      activeModelId,
+      autoCompact,
+      conversationId,
+      loadingConversation,
+      metrics,
+      profile,
+      requestToolApproval,
+      updateToolProgress,
+    ],
   );
 
   const updateContext = useCallback(
@@ -785,6 +857,8 @@ export function useChat(
     setRetryState(null);
     setAutoCompactState(true);
     setCompactionActive(false);
+    setToolProgress([]);
+    setToolApproval(null);
   }, []);
 
   return {
@@ -801,10 +875,13 @@ export function useChat(
     reasoningOptions,
     loadingModel: loadingModel || loadingConversation,
     pending,
+    toolProgress,
+    toolApproval,
     error,
     canRetry: retryState !== null && !pending,
     send,
     stop,
+    resolveToolApproval,
     retry,
     newChat,
     reloadModel,

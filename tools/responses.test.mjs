@@ -79,6 +79,42 @@ test('request body dapat memakai seluruh history lokal', async () => {
   assert.equal('previous_response_id' in JSON.parse(result.response.text), false);
 });
 
+test('tool definition dan result memakai bentuk Responses', () => {
+  const body = buildResponsesBody(profile, {
+    ...input,
+    tools: [
+      {
+        name: 'get_current_time',
+        description: 'Read time',
+        parameters: { type: 'object' },
+        risk: 'read-only',
+        approval: 'ask',
+        target: 'Device clock',
+        sideEffect: 'Reads device time.',
+      },
+    ],
+    toolExchanges: [
+      {
+        calls: [{ callId: 'call_1', name: 'get_current_time', argumentsJson: '{"timezone":"UTC"}' }],
+        results: [{ callId: 'call_1', output: '{"time":"10:00"}', isError: false }],
+      },
+    ],
+  });
+
+  assert.deepEqual(body.tools, [
+    {
+      type: 'function',
+      name: 'get_current_time',
+      description: 'Read time',
+      parameters: { type: 'object' },
+    },
+  ]);
+  assert.deepEqual(body.input.slice(-2), [
+    { type: 'function_call', call_id: 'call_1', name: 'get_current_time', arguments: '{"timezone":"UTC"}' },
+    { type: 'function_call_output', call_id: 'call_1', output: '{"time":"10:00"}' },
+  ]);
+});
+
 test('later turns preserve the complete earlier input as an exact prefix', () => {
   const firstInput = {
     ...input,

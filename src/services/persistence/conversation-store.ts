@@ -14,6 +14,15 @@ import {
   type CompactionSummary,
   type CompactionTurn,
 } from '../../domain/compaction';
+import {
+  toolError,
+  type ToolActivity,
+  type ToolApprovalStatus,
+  type ToolCallStatus,
+  type ToolCallUpdate,
+  type ToolResult,
+  type StoredToolCall,
+} from '../../domain/tool';
 import { buildTurnMetrics, normalizeUsage, type TurnMetrics } from '../../domain/usage';
 import type { StreamTiming } from '../transport/responses';
 
@@ -122,6 +131,19 @@ type CompactionTurnRow = {
   assistant_status: TurnStatus | null;
 };
 
+type ToolCallRow = {
+  id: string;
+  turn_id: string;
+  call_id: string;
+  name: string;
+  arguments_json: string;
+  target: string;
+  side_effect: string;
+  status: ToolCallStatus;
+  approval: ToolApprovalStatus;
+  result_json: string | null;
+};
+
 async function nativeDatabase(): Promise<SQLiteDatabase> {
   const { openDatabaseAsync } = await import('expo-sqlite');
   return openDatabaseAsync(DATABASE_NAME);
@@ -163,7 +185,7 @@ export function createConversationRepository(
     const db = await database();
     await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     const version = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    if ((version?.user_version ?? 0) > 2) {
+    if ((version?.user_version ?? 0) > 3) {
       throw new Error('The conversation database was created by a newer app version.');
     }
     if ((version?.user_version ?? 0) === 0) {
@@ -176,6 +198,12 @@ export function createConversationRepository(
       await db.withExclusiveTransactionAsync(async (transaction) => {
         await transaction.execAsync(MIGRATION_V2);
         await transaction.execAsync('PRAGMA user_version = 2');
+      });
+    }
+    if ((version?.user_version ?? 0) < 3) {
+      await db.withExclusiveTransactionAsync(async (transaction) => {
+        await transaction.execAsync(MIGRATION_V3);
+        await transaction.execAsync('PRAGMA user_version = 3');
       });
     }
     await db.withExclusiveTransactionAsync(async (transaction) => {
@@ -191,6 +219,11 @@ export function createConversationRepository(
       );
       await transaction.runAsync(
         `UPDATE compactions SET status = 'interrupted' WHERE status = 'running'`,
+      );
+      await transaction.runAsync(
+        `UPDATE tool_calls SET status = 'interrupted', updated_at = ?
+         WHERE status IN ('awaiting_approval', 'executing')`,
+        [now()],
       );
     });
   }
@@ -363,6 +396,79 @@ export function createConversationRepository(
         [timestamp, input.turnId],
       );
     });
+  }
+
+  async function recordToolCall(input: StoredToolCall): Promise<ToolActivity> {
+    await initialize();
+    const db = await database();
+    let saved: ToolActivity | null = null;
+    await db.withExclusiveTransactionAsync(async (transaction) => {
+      const existing = await transaction.getFirstAsync<ToolCallRow>(
+        `SELECT id, turn_id, call_id, name, arguments_json, target, side_effect, status, approval, result_json
+         FROM tool_calls WHERE turn_id = ? AND call_id = ?`,
+        [input.turnId, input.callId],
+      );
+      if (existing !== null) {
+        saved = toolActivityFromRow(existing);
+        return;
+      }
+      const timestamp = now();
+      await transaction.runAsync(
+        `INSERT INTO tool_calls
+         (id, turn_id, call_id, name, arguments_json, target, side_effect, status, approval, result_json,
+          created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+        [
+          input.id,
+          input.turnId,
+          input.callId,
+          input.name,
+          input.argumentsJson,
+          input.target,
+          input.sideEffect,
+          input.status,
+          input.approval,
+          timestamp,
+          timestamp,
+        ],
+      );
+      saved = { ...input };
+    });
+    if (saved === null) {
+      throw new Error('Tool call was not saved.');
+    }
+    return saved;
+  }
+
+  async function updateToolCall(input: ToolCallUpdate): Promise<ToolActivity> {
+    await initialize();
+    const db = await database();
+    let saved: ToolActivity | null = null;
+    await db.withExclusiveTransactionAsync(async (transaction) => {
+      await transaction.runAsync(
+        `UPDATE tool_calls SET status = ?, approval = ?, result_json = ?, updated_at = ? WHERE id = ?`,
+        [
+          input.status,
+          input.approval,
+          input.result === null ? null : JSON.stringify(input.result),
+          now(),
+          input.id,
+        ],
+      );
+      const row = await transaction.getFirstAsync<ToolCallRow>(
+        `SELECT id, turn_id, call_id, name, arguments_json, target, side_effect, status, approval, result_json
+         FROM tool_calls WHERE id = ?`,
+        [input.id],
+      );
+      if (row === null) {
+        throw new Error('Tool call was not found.');
+      }
+      saved = toolActivityFromRow(row);
+    });
+    if (saved === null) {
+      throw new Error('Tool call was not updated.');
+    }
+    return saved;
   }
 
   async function loadConversation(id: string): Promise<{
@@ -678,6 +784,8 @@ export function createConversationRepository(
     restartTurn,
     flushAssistant,
     finishTurn,
+    recordToolCall,
+    updateToolCall,
     loadConversation,
     loadLatest,
     loadRequestHistory,
@@ -753,6 +861,41 @@ function parseRawUsage(value: string | null): unknown {
   } catch {
     return null;
   }
+}
+
+function toolActivityFromRow(row: ToolCallRow): ToolActivity {
+  return {
+    id: row.id,
+    callId: row.call_id,
+    name: row.name,
+    argumentsJson: row.arguments_json,
+    target: row.target,
+    sideEffect: row.side_effect,
+    status: row.status,
+    approval: row.approval,
+    result: parseToolResult(row.result_json, row.call_id),
+  };
+}
+
+function parseToolResult(value: string | null, callId: string): ToolResult | null {
+  if (value === null) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as Record<string, unknown>).callId === 'string' &&
+      typeof (parsed as Record<string, unknown>).output === 'string' &&
+      typeof (parsed as Record<string, unknown>).isError === 'boolean'
+    ) {
+      return parsed as ToolResult;
+    }
+  } catch {
+    // Corrupt result must not reopen a completed call with side effects.
+  }
+  return toolError(callId, 'Stored tool result is invalid and will not be repeated.');
 }
 
 function messageFromRow(row: ItemRow): ChatMessage {
@@ -852,6 +995,25 @@ CREATE TABLE compactions (
 );
 CREATE INDEX compactions_conversation ON compactions(conversation_id, source_end_ordinal);
 CREATE UNIQUE INDEX compactions_running ON compactions(conversation_id) WHERE status = 'running';
+`;
+
+const MIGRATION_V3 = `
+CREATE TABLE tool_calls (
+  id TEXT PRIMARY KEY NOT NULL,
+  turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+  call_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  arguments_json TEXT NOT NULL,
+  target TEXT NOT NULL,
+  side_effect TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('awaiting_approval','executing','completed','failed','rejected','timed_out','cancelled','interrupted')),
+  approval TEXT NOT NULL CHECK(approval IN ('pending','approved','rejected','not_required')),
+  result_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(turn_id, call_id)
+);
+CREATE INDEX tool_calls_turn ON tool_calls(turn_id, created_at);
 `;
 
 export const conversationRepository = createConversationRepository();

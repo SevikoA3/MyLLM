@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: Phase 12 completed 18 September 2026. Phase 11 hardening and manual checks, Responses and Chat Completions transports, Auto fallback, cache reset, and fake endpoint exit gates are complete.
+Status: Phase 13 completed 18 September 2026. Function tool loop, per-call approval, SQLite audit, and tool mapping for both transports are complete.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -55,6 +55,8 @@ myllm/
       context.test.ts
       compaction.ts                 policy, selection, prompt, schema summary, dan effective context
       compaction.test.ts
+      tool.ts                       tool definition, policy, validation, result, dan activity types
+      tool.test.ts
       conversation.ts               tipe message, status turn, summary, cursor, auto title
       conversation.test.ts
       usage.ts                      normalisasi usage provider, timing, cache bucket, dan metrics
@@ -65,11 +67,13 @@ myllm/
       system-prompt.test.ts
     features/                       UI dan orkestrasi per layar
       chat/
-        chat-screen.tsx             message list, single-card composer toolbar, thinking modal, streaming, compact request stats, Stop, retry, New chat, and compaction separator
+        chat-screen.tsx             message list, composer, tool progress and approval modal, streaming, retry, and context controls
         context-pill.tsx            small SVG context ring with dismissible modal details, cache hit, toggle, and Compact now
         context-pill.test.tsx
         use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, protocol request orchestration
         use-chat.test.tsx
+        agent-loop.ts               bounded request-tool-result loop, approval, caps, timeout, cancellation, and dedupe
+        agent-loop.test.ts
       history/
         history-screen.tsx          pagination, buka, rename, delete, New chat
       setup/
@@ -104,8 +108,11 @@ myllm/
       context/
         local-compaction.ts         local summary request, retry satu kali, validation, dan compaction usage
         local-compaction.test.ts
+      tools/
+        registry.ts                 app-owned get_current_time tool registry
+        registry.test.ts
       persistence/
-        conversation-store.ts       migration SQLite, repository history, metrics, recovery, dan compaction
+        conversation-store.ts       migration SQLite, history, tool audit, metrics, recovery, dan compaction
         endpoint-store.ts           profile endpoint dan activeModelId di kv-store
         endpoint-store.test.ts
         settings-store.ts           activeModelId untuk endpoint aktif
@@ -144,7 +151,7 @@ myllm/
   README.md
 ~~~
 
-Folder yang muncul di struktur target tetapi belum ada: `modules/`, dan berkas `domain` untuk tool. Buat hanya saat fase pertama yang membutuhkannya.
+Folder yang muncul di struktur target tetapi belum ada: `modules/`. Buat hanya saat fase pertama yang membutuhkannya.
 
 ## 3. Tanggung jawab berkas
 
@@ -180,12 +187,11 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `model-config.ts` | `effectiveMaxOutput`, `reasoningChoices`, `modelRequestSnapshot`, `protocolOutputCap` | Memvalidasi effort, output limit, context policy, dan membuat config immutable sebelum request. Auto memakai cap Chat Completions yang konservatif. |
 | `context.ts` | `ContextPolicySchema`, default policy, `buildContextBudget` | Menghitung effective input, output reserve, safety margin, occupancy, dan calibration hint tanpa I/O. |
 | `compaction.ts` | `CompactionSummarySchema`, prefix selector, prompt, parser, `buildCompactedContext` | Menjaga summary sebagai data untrusted dan memilih boundary turn lengkap tanpa menghapus transcript. |
+| `tool.ts` | ToolDefinition, ToolCall, ToolResult, policy, JSON validation, dan activity states | Unknown tool menghasilkan structured error; write dan dangerous selalu butuh approval. |
 | `conversation.ts` | `ChatMessage`, `TurnStatus`, `ConversationSummary`, `ConversationCursor`, `titleFromPrompt` | Status mengunci sending, streaming, terminal, dan interrupted. |
 | `usage.ts` | `NormalizedUsage`, `TurnMetrics`, normalisasi field Responses, cache bucket, TTFT, TPS, dan session summary | Field usage yang hilang tetap null; cached input tidak dijumlahkan ulang. |
 | `sse.ts` | `createSseParser`, `SseFrame`, parser incremental `Uint8Array` dengan `TextDecoder` stream mode | Menangani LF, CRLF, comment, multiline data, event field, `[DONE]`, dan EOF. |
 | `system-prompt.ts` | `buildSystemPrompt`, `SYSTEM_PROMPT_VERSION`, instruksi asisten MyLLM dan model ID exact | Hanya menyebut capability yang tersedia; model ID di-escape sebagai JSON string. |
-
-`domain` belum punya berkas untuk tool. Tambahkan pada fase yang memerlukannya.
 
 ### 3.3 src/features
 
@@ -194,8 +200,9 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/onboarding.ts` | `connectAndDiscover`, `profileFromInput`, `suggestName`, `newCredentialId`, `loadCredentialFor` | `domain/endpoint`, `domain/error`, `services/credentials/store`, `services/transport/models`, `services/persistence/endpoint-store` |
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
-| `chat/chat-screen.tsx` | Message list, single-card composer toolbar, reasoning modal, compact request stats, Send or Stop, partial output, error, retry, New chat, compaction separator, and context controls | `domain/conversation`, `domain/context`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
-| `chat/use-chat.ts` | Orkestrasi conversation aktif, context preflight, local compaction, hard stop, toggle, reasoning override, config snapshot model, SQLite sebelum request, metrics per turn, stateless history replay, cache key per conversation, batching UI dan DB 50 ms, recovery, cancellation, dan retry | `domain/*`, `services/context/local-compaction`, `services/credentials`, `services/persistence/*`, `services/transport/protocol` |
+| `chat/chat-screen.tsx` | Message list, composer, tool progress, per-call approval, streaming, retry, dan context controls | `domain/conversation`, `domain/context`, `domain/tool`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
+| `chat/use-chat.ts` | Orkestrasi conversation, compaction, model snapshot, persistence, metrics, cancellation, dan AgentLoop | `features/chat/agent-loop`, `services/*`, `ui/*` |
+| `chat/agent-loop.ts` | Bounded model-tool loop, policy, approval callback, output cap, timeout, cancellation, dan dedupe | `domain/tool`, `services/transport/*` |
 | `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
 | `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
 | `models/model-detail-screen.tsx` | Nilai efektif dan provenance, reasoning, output limit, metadata override, reset field dan model | `domain/catalog`, `domain/model-config`, `models/use-model-catalog`, `ui/*` |
@@ -212,9 +219,9 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 |---|---|---|
 | `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.`, registry untuk clear-all | modul native dimuat lazy |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
-| `transport/contract.ts` | Canonical request, internal stream events, normalized result metadata, and `Transport` contract | `domain/conversation`, `domain/endpoint`, `domain/error` |
-| `transport/responses.ts` | `responsesTransport`, `responsesUrl`, `buildResponsesBody`, canonical append-only system and history input, request reasoning, output, and optional prompt cache key, POST streaming, internal events, timing, pre-event retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
-| `transport/chat-completions.ts` | `chatCompletionsTransport`, canonical Chat Completions messages, configured output field, supported reasoning effort, SSE delta and tool-call mapping, usage aliases, timing, retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/contract.ts` | Canonical request, tool definition/exchange, internal stream events, normalized result metadata, and `Transport` contract | `domain/conversation`, `domain/endpoint`, `domain/error`, `domain/tool` |
+| `transport/responses.ts` | `responsesTransport`, canonical append-only system/history/tool input, POST streaming, events, timing, retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/chat-completions.ts` | `chatCompletionsTransport`, canonical messages/tool mapping, configured output, reasoning, SSE delta, usage, timing, retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
 | `transport/protocol.ts` | Explicit protocol routing, Auto Responses-first fallback for 404/405/501 before output, successful protocol cache, and diagnostic event forwarding | `transport/contract`, `transport/responses`, `transport/chat-completions`, `persistence/endpoint-store` |
 | `persistence/endpoint-store.ts` | Profile, activeModelId, and per-endpoint protocol cache di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
@@ -222,7 +229,8 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `persistence/catalog-files.ts` | `fileCatalogStorage`, `readBundledDefaults`, dan clear cache di document directory | `expo-file-system`, `assets/model-defaults.json` |
 | `persistence/catalog-transfer.ts` | `pickOverridesJson`, `shareOverridesJson`, dan clear export temp file | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
 | `persistence/clear-all.ts` | Orkestrasi clear-all data dengan dependency injection agar dapat diuji tanpa native module | `domain/endpoint` |
-| `persistence/conversation-store.ts` | `conversationRepository`, migration v1 dan v2, WAL, foreign key, atomic turn writes, recovery, request history, compaction source and active summary, pagination, normalized metrics, rename, delete, clear database | `domain/conversation`, `domain/compaction`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
+| `persistence/conversation-store.ts` | `conversationRepository`, migration v1-v3, turn writes, tool audit/dedupe, recovery, compaction, pagination, metrics, rename, delete, clear database | `domain/conversation`, `domain/compaction`, `domain/tool`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
+| `tools/registry.ts` | Registry untuk app-owned `get_current_time` | `domain/tool` |
 | `diagnostics/diagnostic-ring.ts` | Ring NDJSON lokal 2 MB yang hanya menyimpan metadata request aman | `expo-file-system` |
 | `diagnostics/diagnostic-transfer.ts` | Export metadata ring ke JSON melalui share sheet | `diagnostic-ring`, `expo-file-system`, `expo-sharing` |
 | `context/local-compaction.ts` | Memilih prefix turn, meminta summary terstruktur, retry tanpa output, validasi, dan menyimpan usage compaction terpisah | `domain/compaction`, `domain/context`, `persistence/conversation-store`, `transport/protocol` |
@@ -250,7 +258,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `responses.test.mjs` | Contract test stream, SSE event, cancellation, partial output, retry boundary, timing, tool argument, usage, chaining, dan error terhadap fake endpoint. |
 | `chat-completions.test.mjs` | Contract test Chat Completions request mapping, stream deltas, usage, tool fragments, and endpoint-specific fields. |
 | `protocol.test.mjs` | Contract test explicit protocol selection, equivalent event sequence, Auto fallback boundary, cache, and Responses-only, Chat-only, and dual exit gates. |
-| `conversations.test.mjs` | Contract test SQLite nyata untuk migration, WAL, FK cascade, partial recovery, metadata turn, compaction, dan keyset pagination. |
+| `conversations.test.mjs` | Contract test SQLite nyata untuk migration, WAL, FK cascade, partial recovery, tool audit/dedupe, metadata turn, compaction, dan keyset pagination. |
 | `model-fields.test.mjs` | Contract test normalizer terhadap bentuk payload GET /models AmanAI yang sudah diverifikasi. |
 | `dump-endpoint-fields.mjs` | Fetch langsung endpoint dari `.env` dan mencetak nama field, tipe, serta kelengkapan tanpa mencetak credential. |
 | `smoke-models.mjs` | Menjalankan alur refresh repository produksi terhadap endpoint nyata dari `.env` lalu melaporkan metadata katalog. |

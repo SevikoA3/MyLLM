@@ -84,11 +84,25 @@ export function buildResponsesBody(
   input: SendResponseInput,
 ): Record<string, unknown> {
   const history = input.history ?? [{ role: 'user' as const, content: input.prompt }];
+  const toolExchanges = input.toolExchanges ?? [];
   const body: Record<string, unknown> = {
     model: input.modelId,
     input: [
       { role: 'system', content: buildSystemPrompt(input.modelId) },
       ...history,
+      ...toolExchanges.flatMap((exchange) => [
+        ...exchange.calls.map((call) => ({
+          type: 'function_call',
+          call_id: call.callId,
+          name: call.name,
+          arguments: call.argumentsJson,
+        })),
+        ...exchange.results.map((result) => ({
+          type: 'function_call_output',
+          call_id: result.callId,
+          output: result.output,
+        })),
+      ]),
     ],
     stream: true,
   };
@@ -106,6 +120,14 @@ export function buildResponsesBody(
   }
   if (input.promptCacheKey !== null) {
     body.prompt_cache_key = input.promptCacheKey;
+  }
+  if (input.tools !== undefined && input.tools.length > 0) {
+    body.tools = input.tools.map(({ name, description, parameters }) => ({
+      type: 'function',
+      name,
+      description,
+      parameters,
+    }));
   }
   return body;
 }

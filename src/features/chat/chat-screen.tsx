@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -17,6 +18,7 @@ import {
 
 import type { ChatMessage } from '../../domain/conversation';
 import type { AppError } from '../../domain/error';
+import type { ToolActivity } from '../../domain/tool';
 import type { TurnMetrics } from '../../domain/usage';
 import { formatDuration, formatRate } from '../../domain/usage';
 import { InfoBlock, Screen } from '../../ui/components';
@@ -203,7 +205,12 @@ export default function ChatScreen() {
             }}
             ListEmptyComponent={<EmptyChat />}
             ListHeaderComponent={chat.compactionActive ? <CompactionSeparator /> : null}
-            ListFooterComponent={chat.pending ? <PendingMessage /> : null}
+            ListFooterComponent={
+              <>
+                {chat.toolProgress.length > 0 && <ToolProgress calls={chat.toolProgress} />}
+                {chat.pending && <PendingMessage calls={chat.toolProgress} />}
+              </>
+            }
             renderItem={({ item }) =>
               item.role === 'assistant' && item.status === 'sending' && item.text.length === 0
                 ? null
@@ -326,6 +333,7 @@ export default function ChatScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+      <ToolApprovalModal activity={chat.toolApproval} onResolve={chat.resolveToolApproval} />
     </Screen>
   );
 }
@@ -588,8 +596,39 @@ function EmptyChat() {
   );
 }
 
-function PendingMessage() {
+function ToolProgress({ calls }: { calls: ToolActivity[] }) {
   const theme = useTheme();
+  return (
+    <View style={{ gap: 6, paddingBottom: 8 }}>
+      {calls.map((call) => (
+        <View
+          key={call.callId}
+          accessibilityLabel={`Tool ${call.name}, ${toolStatusLabel(call.status)}`}
+          style={{
+            gap: 2,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.card,
+            backgroundColor: theme.colors.surface,
+          }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
+            {call.name || 'Unknown tool'}
+          </Text>
+          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+            {toolStatusLabel(call.status)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function PendingMessage({ calls }: { calls: ToolActivity[] }) {
+  const theme = useTheme();
+  const active = calls.find((call) => call.status === 'awaiting_approval' || call.status === 'executing');
+  const label = active === undefined ? 'Waiting for response...' : toolStatusLabel(active.status);
   return (
     <View
       accessibilityLabel="Waiting for response"
@@ -605,10 +644,133 @@ function PendingMessage() {
       }}>
       <ActivityIndicator size="small" color={theme.colors.accent} />
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-        Waiting for response...
+        {label}
       </Text>
     </View>
   );
+}
+
+export function ToolApprovalModal({
+  activity,
+  onResolve,
+}: {
+  activity: ToolActivity | null;
+  onResolve: (approved: boolean) => void;
+}) {
+  const theme = useTheme();
+  if (activity === null) {
+    return null;
+  }
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={() => onResolve(false)}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          padding: theme.spacing.screen,
+          backgroundColor: 'rgba(0, 0, 0, 0.45)',
+        }}>
+        <View
+          style={{
+            maxHeight: '82%',
+            gap: 12,
+            padding: theme.spacing.screen,
+            borderRadius: theme.radius.card,
+            backgroundColor: theme.colors.surface,
+          }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '800' }}>
+            Approve tool call?
+          </Text>
+          <ApprovalField label="Tool" value={activity.name || 'Unknown tool'} />
+          <ApprovalField label="Target" value={activity.target} />
+          <ApprovalField label="Side effect" value={activity.sideEffect} />
+          <View style={{ gap: 4 }}>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta, fontWeight: '700' }}>
+              Arguments
+            </Text>
+            <ScrollView
+              style={{ maxHeight: 180, borderRadius: theme.radius.control, backgroundColor: theme.colors.background }}
+              contentContainerStyle={{ padding: 10 }}>
+              <Text selectable style={{ color: theme.colors.text, fontSize: theme.typography.meta }}>
+                {activity.argumentsJson}
+              </Text>
+            </ScrollView>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reject tool call"
+              onPress={() => onResolve(false)}
+              style={({ pressed }) => ({
+                minHeight: 48,
+                justifyContent: 'center',
+                paddingHorizontal: 16,
+                borderRadius: theme.radius.control,
+                backgroundColor: theme.colors.background,
+                opacity: pressed ? 0.7 : 1,
+              })}>
+              <Text style={{ color: theme.colors.text, fontSize: theme.typography.body, fontWeight: '700' }}>
+                Reject
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Approve tool call"
+              onPress={() => onResolve(true)}
+              style={({ pressed }) => ({
+                minHeight: 48,
+                justifyContent: 'center',
+                paddingHorizontal: 16,
+                borderRadius: theme.radius.control,
+                backgroundColor: theme.colors.accent,
+                opacity: pressed ? 0.7 : 1,
+              })}>
+              <Text style={{ color: theme.colors.accentText, fontSize: theme.typography.body, fontWeight: '700' }}>
+                Approve
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ApprovalField({ label, value }: { label: string; value: string }) {
+  const theme = useTheme();
+  return (
+    <View style={{ gap: 2 }}>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta, fontWeight: '700' }}>
+        {label}
+      </Text>
+      <Text style={{ color: theme.colors.text, fontSize: theme.typography.body }}>{value}</Text>
+    </View>
+  );
+}
+
+function toolStatusLabel(status: ToolActivity['status']): string {
+  if (status === 'awaiting_approval') {
+    return 'Waiting for your approval';
+  }
+  if (status === 'executing') {
+    return 'Running tool...';
+  }
+  if (status === 'completed') {
+    return 'Tool completed';
+  }
+  if (status === 'rejected') {
+    return 'Tool rejected';
+  }
+  if (status === 'timed_out') {
+    return 'Tool timed out';
+  }
+  if (status === 'cancelled') {
+    return 'Tool cancelled';
+  }
+  if (status === 'interrupted') {
+    return 'Tool interrupted';
+  }
+  return 'Tool failed';
 }
 
 function ErrorCard({

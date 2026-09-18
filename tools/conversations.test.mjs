@@ -10,20 +10,20 @@ const { createConversationRepository } = await import(
   '../.tests-build/services/persistence/conversation-store.js'
 );
 
-test('migration v2 membuat compactions, WAL, dan foreign key aktif', async (context) => {
+test('migration v3 membuat tool_calls, WAL, dan foreign key aktif', async (context) => {
   const directory = mkdtempSync(join(tmpdir(), 'myllm-conversations-'));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
   const { raw, repository } = setup(join(directory, 'test.db'));
   await repository.initialize();
 
-  assert.equal(raw.prepare('PRAGMA user_version').get().user_version, 2);
+  assert.equal(raw.prepare('PRAGMA user_version').get().user_version, 3);
   assert.equal(raw.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
   assert.equal(raw.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
   const names = raw
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
     .map((row) => row.name);
-  assert.deepEqual(names, ['compactions', 'conversations', 'items', 'timing', 'turns', 'usage']);
+  assert.deepEqual(names, ['compactions', 'conversations', 'items', 'timing', 'tool_calls', 'turns', 'usage']);
   assert.equal(raw.prepare('SELECT auto_compact FROM conversations').get(), undefined);
 });
 
@@ -69,7 +69,7 @@ test('delete conversation membersihkan turn, item, usage, dan timing lewat casca
   const { conversationId } = await start(state.repository, 'turn_1', null, 'hapus saya');
   await state.repository.remove(conversationId);
 
-  for (const table of ['conversations', 'turns', 'items', 'usage', 'timing']) {
+  for (const table of ['conversations', 'turns', 'items', 'tool_calls', 'usage', 'timing']) {
     assert.equal(state.raw.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0);
   }
 });
@@ -134,6 +134,61 @@ test('turn menyimpan request snapshot, response ID, usage, dan timing', async ()
     { ...state.raw.prepare('SELECT * FROM timing WHERE turn_id = ?').get('turn_meta') },
     { turn_id: 'turn_meta', request_start: 1, first_event: 2, first_visible_token: 3, completed: 4 },
   );
+});
+
+test('tool call menyimpan approval dan result, lalu dedupe call ID', async () => {
+  const state = setup();
+  await start(state.repository, 'turn_tool', null, 'time?');
+  const created = await state.repository.recordToolCall({
+    id: 'tool_1',
+    turnId: 'turn_tool',
+    callId: 'call_1',
+    name: 'get_current_time',
+    argumentsJson: '{"timezone":"Asia/Jakarta"}',
+    target: 'Device clock',
+    sideEffect: 'Reads device time.',
+    status: 'awaiting_approval',
+    approval: 'pending',
+    result: null,
+  });
+  assert.equal(created.status, 'awaiting_approval');
+  const completed = await state.repository.updateToolCall({
+    id: 'tool_1',
+    status: 'completed',
+    approval: 'approved',
+    result: { callId: 'call_1', output: '{"time":"10:00"}', isError: false },
+  });
+  const duplicate = await state.repository.recordToolCall({
+    ...created,
+    id: 'tool_2',
+    turnId: 'turn_tool',
+  });
+
+  assert.deepEqual(completed.result, { callId: 'call_1', output: '{"time":"10:00"}', isError: false });
+  assert.equal(duplicate.id, 'tool_1');
+  assert.deepEqual(duplicate.result, completed.result);
+});
+
+test('in-flight tool call becomes interrupted after restart', async () => {
+  const state = setup();
+  await start(state.repository, 'turn_tool', null, 'time?');
+  await state.repository.recordToolCall({
+    id: 'tool_1',
+    turnId: 'turn_tool',
+    callId: 'call_1',
+    name: 'get_current_time',
+    argumentsJson: '{"timezone":"UTC"}',
+    target: 'Device clock',
+    sideEffect: 'Reads device time.',
+    status: 'executing',
+    approval: 'approved',
+    result: null,
+  });
+
+  const restarted = createConversationRepository(async () => state.database, () => 200);
+  await restarted.initialize();
+
+  assert.equal(state.raw.prepare('SELECT status FROM tool_calls WHERE id = ?').get('tool_1').status, 'interrupted');
 });
 
 test('compaction memakai summary untuk request tetapi transcript asli tetap lengkap', async () => {

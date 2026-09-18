@@ -89,6 +89,49 @@ test('field max token dapat dikonfigurasi per endpoint', () => {
   assert.equal('max_tokens' in body, false);
 });
 
+test('tool definition dan result memakai bentuk Chat Completions', () => {
+  const body = buildChatCompletionsBody(profile('/scenario/chat-echo'), {
+    ...input,
+    tools: [
+      {
+        name: 'get_current_time',
+        description: 'Read time',
+        parameters: { type: 'object' },
+        risk: 'read-only',
+        approval: 'ask',
+        target: 'Device clock',
+        sideEffect: 'Reads device time.',
+      },
+    ],
+    toolExchanges: [
+      {
+        calls: [{ callId: 'call_1', name: 'get_current_time', argumentsJson: '{"timezone":"UTC"}' }],
+        results: [{ callId: 'call_1', output: '{"time":"10:00"}', isError: false }],
+      },
+    ],
+  });
+
+  assert.deepEqual(body.tools, [
+    {
+      type: 'function',
+      function: { name: 'get_current_time', description: 'Read time', parameters: { type: 'object' } },
+    },
+  ]);
+  assert.deepEqual(body.messages.slice(-2), [
+    {
+      role: 'assistant',
+      tool_calls: [
+        {
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'get_current_time', arguments: '{"timezone":"UTC"}' },
+        },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'call_1', content: '{"time":"10:00"}' },
+  ]);
+});
+
 test('stream delta dan usage dinormalisasi ke event internal', async () => {
   const events = [];
   const result = await chatCompletionsClient.send(profile('/scenario/chat-ok'), KEY, input, {

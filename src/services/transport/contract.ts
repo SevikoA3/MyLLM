@@ -1,6 +1,7 @@
 import type { ConversationInputMessage } from '../../domain/conversation';
 import type { EndpointProfile } from '../../domain/endpoint';
 import type { AppError } from '../../domain/error';
+import type { ToolDefinition, ToolExchange } from '../../domain/tool';
 
 export type SendResponseInput = {
   modelId: string;
@@ -10,6 +11,8 @@ export type SendResponseInput = {
   promptCacheKey: string | null;
   maxOutputTokens: number | null;
   reasoningEffort: string | null;
+  tools?: ToolDefinition[];
+  toolExchanges?: ToolExchange[];
 };
 
 export type StreamTiming = {
