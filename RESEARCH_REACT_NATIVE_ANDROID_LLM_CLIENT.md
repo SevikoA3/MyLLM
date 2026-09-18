@@ -773,6 +773,10 @@ Mode advanced:
   "model": "amanai/gpt-5.6-terra",
   "input": [
     {
+      "role": "system",
+      "content": "You are the assistant inside MyLLM."
+    },
+    {
       "role": "user",
       "content": "Hello"
     }
@@ -790,7 +794,7 @@ Aturan:
 
 - Omit reasoning jika auto dan behavior adalah omit.
 - Omit max_output_tokens jika user memilih Auto dan metadata tidak memberi safe ceiling.
-- instructions dikirim setiap turn jika memakai previous_response_id karena OpenAI tidak otomatis membawa instructions lama.
+- Keep the stable system prompt as the first input message and preserve the complete model-visible history as an append-only sequence. This makes exact-prefix cache behavior inspectable across compatible gateways.
 - Batasi parallel tool calls sesuai executor.
 - store false dapat menjadi privacy setting, tetapi stateless replay harus lengkap.
 - Jangan mengirim context_management atau memanggil /responses/compact kecuali endpoint/model capability dinyatakan supported.

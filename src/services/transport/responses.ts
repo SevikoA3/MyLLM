@@ -132,10 +132,13 @@ export function buildResponsesBody(
   profile: EndpointProfile,
   input: SendResponseInput,
 ): Record<string, unknown> {
+  const history = input.history ?? [{ role: 'user' as const, content: input.prompt }];
   const body: Record<string, unknown> = {
     model: input.modelId,
-    instructions: buildSystemPrompt(input.modelId),
-    input: input.history ?? [{ role: 'user', content: input.prompt }],
+    input: [
+      { role: 'system', content: buildSystemPrompt(input.modelId) },
+      ...history,
+    ],
     stream: true,
   };
   if (input.maxOutputTokens !== null) {

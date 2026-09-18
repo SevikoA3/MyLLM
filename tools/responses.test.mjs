@@ -9,7 +9,7 @@ const KEY = 'fake-key';
 
 const { createEndpointProfile } = await import('../.tests-build/domain/endpoint.js');
 const { buildSystemPrompt } = await import('../.tests-build/domain/system-prompt.js');
-const { parseRetryAfter, responsesClient, responsesUrl } = await import(
+const { buildResponsesBody, parseRetryAfter, responsesClient, responsesUrl } = await import(
   '../.tests-build/services/transport/responses.js'
 );
 
@@ -50,8 +50,10 @@ test('request body minimal memakai model exact dan stream true', async () => {
   const body = JSON.parse(result.response.text);
   assert.deepEqual(body, {
     model: 'amanai/glm-5.3',
-    instructions: buildSystemPrompt('amanai/glm-5.3'),
-    input: [{ role: 'user', content: 'halo' }],
+    input: [
+      { role: 'system', content: buildSystemPrompt('amanai/glm-5.3') },
+      { role: 'user', content: 'halo' },
+    ],
     stream: true,
     max_output_tokens: 1024,
   });
@@ -70,8 +72,34 @@ test('request body dapat memakai seluruh history lokal', async () => {
     history,
   });
   assert.equal(result.ok, true);
-  assert.deepEqual(JSON.parse(result.response.text).input, history);
+  assert.deepEqual(JSON.parse(result.response.text).input, [
+    { role: 'system', content: buildSystemPrompt(input.modelId) },
+    ...history,
+  ]);
   assert.equal('previous_response_id' in JSON.parse(result.response.text), false);
+});
+
+test('later turns preserve the complete earlier input as an exact prefix', () => {
+  const firstInput = {
+    ...input,
+    prompt: 'First question',
+    history: [{ role: 'user', content: 'First question' }],
+  };
+  const secondInput = {
+    ...input,
+    prompt: 'Second question',
+    history: [
+      { role: 'user', content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+      { role: 'user', content: 'Second question' },
+    ],
+  };
+  const firstBody = buildResponsesBody(profile, firstInput);
+  const secondBody = buildResponsesBody(profile, secondInput);
+  assert.deepEqual(
+    secondBody.input.slice(0, firstBody.input.length),
+    firstBody.input,
+  );
 });
 
 test('request body memakai prompt cache key stabil bila tersedia', async () => {
@@ -83,7 +111,7 @@ test('request body memakai prompt cache key stabil bila tersedia', async () => {
   assert.equal(JSON.parse(result.response.text).prompt_cache_key, 'conv_1');
 });
 
-test('instructions dikirim ulang pada turn dengan previous_response_id', async () => {
+test('system message is sent again with previous_response_id', async () => {
   const result = await responsesClient.send(scenario('responses-echo'), KEY, {
     ...input,
     prompt: 'lanjut',
@@ -91,7 +119,10 @@ test('instructions dikirim ulang pada turn dengan previous_response_id', async (
   });
   assert.equal(result.ok, true);
   const body = JSON.parse(result.response.text);
-  assert.equal(body.instructions, buildSystemPrompt(input.modelId));
+  assert.deepEqual(body.input[0], {
+    role: 'system',
+    content: buildSystemPrompt(input.modelId),
+  });
   assert.equal(body.previous_response_id, 'resp_previous');
 });
 
@@ -243,7 +274,7 @@ test('response tanpa text atau tool menjadi schema error', async () => {
   const result = await responsesClient.send(scenario('responses-no-text'), KEY, input);
   assert.equal(result.ok, false);
   assert.equal(result.error.category, 'schema');
-  assert.match(result.error.message, /tanpa output text/);
+  assert.match(result.error.message, /without output text/);
 });
 
 test('response.failed membawa provider code tanpa auto retry', async () => {

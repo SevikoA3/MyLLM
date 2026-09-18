@@ -205,7 +205,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 |---|---|---|
 | `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.` | modul native dimuat lazy |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
-| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, request reasoning, output, dan prompt cache key optional, POST streaming, event internal, timing, retry pra-event, dan cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, canonical append-only system and history input, request reasoning, output, and optional prompt cache key, POST streaming, internal events, timing, pre-event retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
 | `persistence/endpoint-store.ts` | Profile endpoint dan activeModelId di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
 | `persistence/catalog-store.ts` | `createCatalogRepository`, atomic snapshot dan override, preview/import, custom model, `loadModelRequestSnapshot`, dan `saveModelReasoningEffort` | `domain/catalog`, `domain/catalog-merge`, `domain/model-config`, `domain/endpoint` |
