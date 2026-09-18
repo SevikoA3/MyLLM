@@ -22,7 +22,7 @@ function result(overrides: Partial<ContextBudgetResult> = {}): ContextBudgetResu
 
 describe('ContextPill', () => {
   it('shows a circular usage meter and hides details until opened', async () => {
-    const view = await render(<ContextPill budget={result()} />);
+    const view = await render(<ContextPill budget={result()} cacheHitPercent={42.5} />);
 
     expect(view.getByLabelText('Context usage, 19 percent')).toBeTruthy();
     expect(view.queryByText('19%')).toBeNull();
@@ -33,6 +33,11 @@ describe('ContextPill', () => {
     await waitFor(() =>
       expect(view.getByText('Context 32,000 · Input ~1,000 tokens · Left 80.9%')).toBeTruthy(),
     );
+    expect(view.getByText('Cache hit 42.5%')).toBeTruthy();
+
+    fireEvent.press(view.getByLabelText('Dismiss context usage'));
+
+    await waitFor(() => expect(view.queryByText('Cache hit 42.5%')).toBeNull());
   });
 
   it('shows unknown when context usage is unavailable', async () => {

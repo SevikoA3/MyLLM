@@ -66,7 +66,7 @@ myllm/
     features/                       UI dan orkestrasi per layar
       chat/
         chat-screen.tsx             message list, single-card composer toolbar, thinking modal, streaming, compact request stats, Stop, retry, New chat, and compaction separator
-        context-pill.tsx            small SVG context ring with modal details, toggle, and Compact now
+        context-pill.tsx            small SVG context ring with dismissible modal details, cache hit, toggle, and Compact now
         context-pill.test.tsx
         use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, request orchestration
         use-chat.test.tsx

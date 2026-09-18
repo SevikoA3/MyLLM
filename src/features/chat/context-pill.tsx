@@ -3,7 +3,7 @@ import { Modal, Pressable, Switch, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 import { DEFAULT_CONTEXT_POLICY, type ContextBudgetResult, type ContextPolicy } from '../../domain/context';
-import { formatCount } from '../../domain/usage';
+import { formatCount, formatPercent } from '../../domain/usage';
 import { useTheme } from '../../ui/theme';
 
 const TOUCH_SIZE = 48;
@@ -15,6 +15,7 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 export function ContextPill({
   budget,
+  cacheHitPercent = null,
   policy = DEFAULT_CONTEXT_POLICY,
   autoCompact = true,
   compacting = false,
@@ -23,6 +24,7 @@ export function ContextPill({
   onToggleAutoCompact = () => undefined,
 }: {
   budget: ContextBudgetResult;
+  cacheHitPercent?: number | null;
   policy?: ContextPolicy;
   autoCompact?: boolean;
   compacting?: boolean;
@@ -96,6 +98,12 @@ export function ContextPill({
             padding: 20,
             backgroundColor: 'rgba(0, 0, 0, 0.45)',
           }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss context usage"
+            onPress={() => setExpanded(false)}
+            style={{ position: 'absolute', inset: 0 }}
+          />
           <View
             style={{
               width: '100%',
@@ -127,6 +135,9 @@ export function ContextPill({
             <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
               Reserve {formatCount(budget.requestedOutputReserve)} · Margin {formatCount(budget.safetyMargin)} ·{' '}
               {budget.quality}
+            </Text>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+              Cache hit {formatPercent(cacheHitPercent)}
             </Text>
             {budget.calibrationInputTokens !== null && budget.calibrationDeltaTokens !== null && (
               <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>

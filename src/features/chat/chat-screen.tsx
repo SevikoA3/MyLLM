@@ -280,6 +280,7 @@ export default function ChatScreen() {
               {chat.contextBudget !== null && (
                 <ContextPill
                   budget={chat.contextBudget}
+                  cacheHitPercent={chat.metrics.at(-1)?.cacheHitPercent ?? null}
                   policy={chat.contextPolicy}
                   autoCompact={chat.autoCompact}
                   compacting={chat.compacting}
