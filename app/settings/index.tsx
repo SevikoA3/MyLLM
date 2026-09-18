@@ -1,6 +1,5 @@
 import { Link, useRouter } from 'expo-router';
-import { Alert, Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, Pressable, ScrollView, Text } from 'react-native';
 
 import { credentialStore } from '../../src/services/credentials/store';
 import { clearDiagnosticRing } from '../../src/services/diagnostics/diagnostic-ring';
@@ -11,6 +10,7 @@ import { clearTransferCache } from '../../src/services/persistence/catalog-trans
 import { conversationRepository } from '../../src/services/persistence/conversation-store';
 import { endpointStore } from '../../src/services/persistence/endpoint-store';
 import { useActiveEndpoint } from '../../src/features/setup/use-active-endpoint';
+import { Screen } from '../../src/ui/components';
 import { useTheme } from '../../src/ui/theme';
 
 export default function SettingsScreen() {
@@ -65,8 +65,10 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: theme.colors.background }}>
-      <View style={{ padding: theme.spacing.screen, gap: theme.spacing.screen }}>
+    <Screen>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: theme.colors.background }}
+        contentContainerStyle={{ gap: theme.spacing.screen, padding: theme.spacing.screen }}>
         <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
           Settings
         </Text>
@@ -167,7 +169,7 @@ export default function SettingsScreen() {
             Reset protocol compatibility
           </Text>
         </Pressable>
-      </View>
-    </SafeAreaView>
+      </ScrollView>
+    </Screen>
   );
 }
