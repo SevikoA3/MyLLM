@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: Phase 13 completed 18 September 2026. Function tool loop, per-call approval, SQLite audit, and tool mapping for both transports are complete.
+Status: Phase 14 completed 18 September 2026. FreeSerp web search has bounded untrusted results and source cards; `fetch_url` is intentionally absent without a trusted backend.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -57,6 +57,8 @@ myllm/
       compaction.test.ts
       tool.ts                       tool definition, policy, validation, result, dan activity types
       tool.test.ts
+      web-search.ts                 bounded FreeSerp output, source card parser, dan URL guard
+      web-search.test.ts
       conversation.ts               tipe message, status turn, summary, cursor, auto title
       conversation.test.ts
       usage.ts                      normalisasi usage provider, timing, cache bucket, dan metrics
@@ -67,7 +69,7 @@ myllm/
       system-prompt.test.ts
     features/                       UI dan orkestrasi per layar
       chat/
-        chat-screen.tsx             message list, composer, tool progress and approval modal, streaming, retry, and context controls
+        chat-screen.tsx             message list, composer, tool progress, source cards, approval modal, streaming, retry, and context controls
         context-pill.tsx            small SVG context ring with dismissible modal details, cache hit, toggle, and Compact now
         context-pill.test.tsx
         use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, protocol request orchestration
@@ -109,7 +111,7 @@ myllm/
         local-compaction.ts         local summary request, retry satu kali, validation, dan compaction usage
         local-compaction.test.ts
       tools/
-        registry.ts                 app-owned get_current_time tool registry
+        registry.ts                 app-owned get_current_time dan bounded FreeSerp web_search tool
         registry.test.ts
       persistence/
         conversation-store.ts       migration SQLite, history, tool audit, metrics, recovery, dan compaction
@@ -188,6 +190,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `context.ts` | `ContextPolicySchema`, default policy, `buildContextBudget` | Menghitung effective input, output reserve, safety margin, occupancy, dan calibration hint tanpa I/O. |
 | `compaction.ts` | `CompactionSummarySchema`, prefix selector, prompt, parser, `buildCompactedContext` | Menjaga summary sebagai data untrusted dan memilih boundary turn lengkap tanpa menghapus transcript. |
 | `tool.ts` | ToolDefinition, ToolCall, ToolResult, policy, JSON validation, dan activity states | Unknown tool menghasilkan structured error; write dan dangerous selalu butuh approval. |
+| `web-search.ts` | WebSearchOutput, URL guard, parser source card, dan cap search | Hanya URL HTTP(S) dapat masuk source card; output provider ditandai untrusted. |
 | `conversation.ts` | `ChatMessage`, `TurnStatus`, `ConversationSummary`, `ConversationCursor`, `titleFromPrompt` | Status mengunci sending, streaming, terminal, dan interrupted. |
 | `usage.ts` | `NormalizedUsage`, `TurnMetrics`, normalisasi field Responses, cache bucket, TTFT, TPS, dan session summary | Field usage yang hilang tetap null; cached input tidak dijumlahkan ulang. |
 | `sse.ts` | `createSseParser`, `SseFrame`, parser incremental `Uint8Array` dengan `TextDecoder` stream mode | Menangani LF, CRLF, comment, multiline data, event field, `[DONE]`, dan EOF. |
@@ -200,7 +203,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/onboarding.ts` | `connectAndDiscover`, `profileFromInput`, `suggestName`, `newCredentialId`, `loadCredentialFor` | `domain/endpoint`, `domain/error`, `services/credentials/store`, `services/transport/models`, `services/persistence/endpoint-store` |
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
-| `chat/chat-screen.tsx` | Message list, composer, tool progress, per-call approval, streaming, retry, dan context controls | `domain/conversation`, `domain/context`, `domain/tool`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
+| `chat/chat-screen.tsx` | Message list, composer, tool progress, source cards, per-call approval, streaming, retry, dan context controls | `domain/conversation`, `domain/context`, `domain/tool`, `domain/usage`, `domain/web-search`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
 | `chat/use-chat.ts` | Orkestrasi conversation, compaction, model snapshot, persistence, metrics, cancellation, dan AgentLoop | `features/chat/agent-loop`, `services/*`, `ui/*` |
 | `chat/agent-loop.ts` | Bounded model-tool loop, policy, approval callback, output cap, timeout, cancellation, dan dedupe | `domain/tool`, `services/transport/*` |
 | `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
@@ -230,7 +233,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `persistence/catalog-transfer.ts` | `pickOverridesJson`, `shareOverridesJson`, dan clear export temp file | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
 | `persistence/clear-all.ts` | Orkestrasi clear-all data dengan dependency injection agar dapat diuji tanpa native module | `domain/endpoint` |
 | `persistence/conversation-store.ts` | `conversationRepository`, migration v1-v3, turn writes, tool audit/dedupe, recovery, compaction, pagination, metrics, rename, delete, clear database | `domain/conversation`, `domain/compaction`, `domain/tool`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
-| `tools/registry.ts` | Registry untuk app-owned `get_current_time` | `domain/tool` |
+| `tools/registry.ts` | Registry `get_current_time` dan `web_search` FreeSerp | `domain/tool`, `domain/web-search`, `transport/body` |
 | `diagnostics/diagnostic-ring.ts` | Ring NDJSON lokal 2 MB yang hanya menyimpan metadata request aman | `expo-file-system` |
 | `diagnostics/diagnostic-transfer.ts` | Export metadata ring ke JSON melalui share sheet | `diagnostic-ring`, `expo-file-system`, `expo-sharing` |
 | `context/local-compaction.ts` | Memilih prefix turn, meminta summary terstruktur, retry tanpa output, validasi, dan menyimpan usage compaction terpisah | `domain/compaction`, `domain/context`, `persistence/conversation-store`, `transport/protocol` |
@@ -284,6 +287,8 @@ Metrics: `conversationRepository.loadTurnMetrics` membaca usage dan timing per t
 
 Request history: `conversationRepository.loadRequestHistory` mengambil user item dan assistant item completed secara berurutan. `use-chat.ts` mengirim hasilnya sebagai Responses `input`, tanpa menggantungkan recall pada `previous_response_id` remote. Conversation ID yang sama dikirim sebagai `prompt_cache_key` agar endpoint kompatibel dapat mempertahankan cache affinity.
 
+Web search: `toolRegistry` menyediakan `web_search` FreeSerp dengan query, count maksimal 10, dan `recencyDays`. Provider fixed HTTPS mengembalikan hasil `index=web`, yang dibatasi 64 KB sebelum dinormalisasi menjadi output untrusted maksimal 12 KB. `chat-screen.tsx` menampilkan kartu sumber. Tidak ada `fetch_url`, Jina Reader, atau Termux tanpa trusted backend yang memvalidasi tujuan network.
+
 Local compaction: preflight menghitung effective context. Saat trigger tercapai, `local-compaction.ts` meminta JSON summary lewat request stateless, memvalidasi schema, dan menyimpan hasil serta usage di `compactions`; transcript asli tetap utuh. Request history berikutnya memakai summary sebagai user/data context dengan label untrusted dan recent turns setelah source range. Hard stop menghentikan send sebelum turn baru dibuat.
 
 ## 5. Yang belum ada
@@ -295,6 +300,7 @@ Local compaction: preflight menghitung effective context. Saat trigger tercapai,
 | Context meter | 9 | Implementasi pure domain, hook debounce, dan pill selesai; verifikasi Android/manual masih menunggu. |
 | Auto-compact | 10 | Implementasi migration, local summary, preflight, replay, manual action, toggle, dan hard stop selesai; verifikasi Android/manual masih menunggu. |
 | MVP hardening | 11 | Sebagian selesai: hardening transport, accessibility dasar, backup, dan error detail sudah ada. Clear-all-data, diagnostic ring, E2E, serta gate Android/internal build masih belum ada. |
+| Safe page fetch | 14 | Tidak diimplementasikan karena belum ada trusted backend; native fetch dan Termux menunggu threat review Phase 18. |
 
 ## 6. Aturan saat menambah berkas
 

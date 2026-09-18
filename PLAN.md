@@ -1,6 +1,6 @@
 # Implementation Plan Aplikasi Chat LLM Android
 
-Status: Phase 13 completed on 18 September 2026. TypeScript, ESLint, Jest, and relevant contract tests passed.
+Status: Phase 14 completed on 18 September 2026. TypeScript, ESLint, and Jest passed.
 
 Tanggal: 16 September 2026.
 
@@ -986,31 +986,40 @@ Pemilik proyek harus memilih:
 
 Jika belum ada keputusan, phase berhenti di sini. Jangan membuat provider abstraction kosong.
 
+Keputusan pemilik proyek:
+
+- FreeSerp dipakai sebagai provider keyless melalui endpoint HTTPS tetap; tidak ada search key untuk disimpan.
+- Tool menerima maksimal 10 hasil, raw response dibatasi 64 KB, output normalisasi 12 KB, dan tidak melakukan retry sendiri.
+- Error HTTP, rate limit, fallback index, dan response invalid dikirim kembali sebagai structured tool error.
+- Hanya snippet search. `fetch_url`, Jina Reader, native fetch, dan Termux tidak ditambahkan karena belum ada trusted backend.
+
 ### Web search steps
 
-- [ ] Implementasikan satu provider search konkret.
-- [ ] Simpan search key di SecureStore.
-- [ ] Tool input: query, count maksimal 10, recencyDays optional.
-- [ ] Validate query length dan count.
-- [ ] Batasi response bytes.
-- [ ] Normalize title, URL, snippet, published date, dan source.
-- [ ] Tandai seluruh hasil sebagai untrusted external content.
-- [ ] Tampilkan source cards di UI.
-- [ ] Jangan membiarkan hasil web mengubah approval policy.
-- [ ] Persist query metadata dan result summary, bukan secret.
+- [x] Implementasikan provider FreeSerp konkret tanpa provider abstraction.
+- [x] FreeSerp keyless, sehingga tidak ada search key untuk SecureStore.
+- [x] Tool input: query, count maksimal 10, recencyDays optional.
+- [x] Validate query length dan count.
+- [x] Batasi raw response 64 KB dan output 12 KB tanpa truncation diam-diam.
+- [x] Normalize title, URL, snippet, published date, dan source.
+- [x] Tandai seluruh hasil sebagai untrusted external content.
+- [x] Tampilkan source cards di UI.
+- [x] Tetapkan `web_search` read-only dengan approval `ask`; hasil tidak dapat mengubah policy.
+- [x] Persist query metadata dan result summary melalui audit `tool_calls`, tanpa secret.
 
 ### fetch_url decision
 
 expo/fetch tidak memberi aplikasi kontrol penuh atas DNS resolution dan redirect IP validation. Karena itu:
 
-- [ ] Prefer fetch melalui trusted backend yang memvalidasi DNS, private ranges, redirect, MIME, timeout, dan size.
-- [ ] Jika tidak ada backend, implementasikan native fetch module hanya setelah threat review.
-- [ ] Jangan mengklaim JS-only fetch sebagai SSRF-safe.
-- [ ] Jika tidak ada jalur aman, ship web_search tanpa fetch_url.
+- [x] Tidak memakai fetch sebelum trusted backend memvalidasi DNS, private ranges, redirect, MIME, timeout, dan size.
+- [x] Native fetch module ditunda sampai threat review.
+- [x] Tidak mengklaim JS-only fetch sebagai SSRF-safe.
+- [x] Ship `web_search` tanpa `fetch_url` karena belum ada jalur aman.
 
 ### Exit gate
 
 Search bekerja dengan satu provider nyata, hasil memiliki source, output dibatasi, dan prompt injection tidak dapat melewati tool policy.
+
+Status: Phase 14 completed on 18 September 2026. `npm run typecheck`, `npx eslint .`, and `npm run test:ci` passed.
 
 ## 22. Phase 15: Image dan file attachment
 

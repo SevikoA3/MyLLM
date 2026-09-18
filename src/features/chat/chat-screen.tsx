@@ -20,6 +20,7 @@ import type { ChatMessage } from '../../domain/conversation';
 import type { AppError } from '../../domain/error';
 import type { ToolActivity } from '../../domain/tool';
 import type { TurnMetrics } from '../../domain/usage';
+import { parseWebSearchOutput } from '../../domain/web-search';
 import { formatDuration, formatRate } from '../../domain/usage';
 import { InfoBlock, Screen } from '../../ui/components';
 import { useTheme } from '../../ui/theme';
@@ -619,8 +620,58 @@ function ToolProgress({ calls }: { calls: ToolActivity[] }) {
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
             {toolStatusLabel(call.status)}
           </Text>
+          {call.name === 'web_search' && <WebSearchSourceCards output={call.result?.output ?? null} />}
         </View>
       ))}
+    </View>
+  );
+}
+
+export function WebSearchSourceCards({ output }: { output: string | null }) {
+  const theme = useTheme();
+  const search = output === null ? null : parseWebSearchOutput(output);
+  if (search === null || search.results.length === 0) {
+    return null;
+  }
+  return (
+    <View style={{ gap: 6, paddingTop: 6 }}>
+      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta, fontWeight: '700' }}>
+        Web sources
+      </Text>
+      {search.results.map((result) => {
+        const title = result.title ?? result.source;
+        return (
+          <Pressable
+            key={result.url}
+            accessibilityRole="link"
+            accessibilityLabel={`Open source ${title}`}
+            onPress={() => {
+              void Linking.openURL(result.url).catch(() => undefined);
+            }}
+            style={({ pressed }) => ({
+              gap: 3,
+              padding: 10,
+              borderRadius: theme.radius.control,
+              backgroundColor: theme.colors.background,
+              opacity: pressed ? 0.7 : 1,
+            })}>
+            <Text style={{ color: theme.colors.accent, fontSize: theme.typography.meta, fontWeight: '700' }}>
+              {title}
+            </Text>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+              {result.source}{result.publishedAt === null ? '' : ` · ${result.publishedAt}`}
+            </Text>
+            {result.snippet !== null && (
+              <Text numberOfLines={3} style={{ color: theme.colors.text, fontSize: theme.typography.meta }}>
+                {result.snippet}
+              </Text>
+            )}
+            <Text style={{ color: theme.colors.textMuted, fontSize: 10 }}>
+              Untrusted web content
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

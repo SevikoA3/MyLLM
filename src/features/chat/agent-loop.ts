@@ -1,6 +1,7 @@
 import {
   requiresApproval,
   parseToolArguments,
+  ToolExecutionError,
   toolError,
   validToolName,
   type StoredToolCall,
@@ -257,7 +258,7 @@ async function executeTool(
     return complete(activity, toolError(activity.callId, 'Tool execution timed out.'), 'timed_out', activity.approval, input);
   }
   if (outcome.kind === 'failed') {
-    return complete(activity, toolError(activity.callId, 'Tool execution failed.'), 'failed', activity.approval, input);
+    return complete(activity, toolError(activity.callId, outcome.message), 'failed', activity.approval, input);
   }
   if (new TextEncoder().encode(outcome.output).byteLength > TOOL_OUTPUT_BYTE_CAP) {
     return complete(
@@ -277,7 +278,7 @@ async function executeWithTimeout(
   signal: AbortSignal,
 ): Promise<
   | { kind: 'completed'; output: string }
-  | { kind: 'failed' }
+  | { kind: 'failed'; message: string }
   | { kind: 'timed_out' }
   | { kind: 'cancelled' }
 > {
@@ -292,7 +293,10 @@ async function executeWithTimeout(
     const execution = definition
       .execute(argumentsValue, controller.signal)
       .then((output) => ({ kind: 'completed' as const, output }))
-      .catch(() => ({ kind: 'failed' as const }));
+      .catch((error: unknown) => ({
+        kind: 'failed' as const,
+        message: error instanceof ToolExecutionError ? error.message : 'Tool execution failed.',
+      }));
     const timeout = new Promise<{ kind: 'timed_out' }>((resolve) => {
       timer = setTimeout(() => {
         controller.abort();

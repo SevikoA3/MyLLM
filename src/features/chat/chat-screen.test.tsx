@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import { ReasoningSelector, ToolApprovalModal } from './chat-screen';
+import { ReasoningSelector, ToolApprovalModal, WebSearchSourceCards } from './chat-screen';
 
 describe('ReasoningSelector', () => {
   it('memilih thinking dari dropdown', async () => {
@@ -50,5 +50,31 @@ describe('ToolApprovalModal', () => {
     fireEvent.press(view.getByLabelText('Reject tool call'));
 
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith(false));
+  });
+});
+
+describe('WebSearchSourceCards', () => {
+  it('shows normalized untrusted sources', async () => {
+    const view = await render(
+      <WebSearchSourceCards
+        output={JSON.stringify({
+          provider: 'FreeSerp',
+          query: 'example',
+          untrusted: true,
+          results: [
+            {
+              title: 'Example article',
+              url: 'https://example.com/article',
+              snippet: 'Current information.',
+              publishedAt: '2026-09-12',
+              source: 'example.com',
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(view.getByLabelText('Open source Example article')).toBeTruthy();
+    expect(view.getByText('Untrusted web content')).toBeTruthy();
   });
 });

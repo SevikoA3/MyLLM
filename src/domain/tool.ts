@@ -99,3 +99,10 @@ export function requiresApproval(definition: ToolDefinition, policy: ToolPolicy)
 export function toolError(callId: string, message: string): ToolResult {
   return { callId, output: JSON.stringify({ error: message }), isError: true };
 }
+
+export class ToolExecutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ToolExecutionError';
+  }
+}
