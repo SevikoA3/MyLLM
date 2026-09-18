@@ -54,7 +54,7 @@ export default function ModelsScreen() {
 
   const pick = useCallback(async (model: MergedModel) => {
     if (!model.enabled) {
-      setBlocked(model.displayName + ' sedang dimatikan. Aktifkan dulu untuk memakainya.');
+      setBlocked(model.displayName + ' is disabled. Enable it before using it.');
       return;
     }
     setBlocked(null);
@@ -71,7 +71,7 @@ export default function ModelsScreen() {
       setBlocked(null);
       router.push({ pathname: '/settings/model', params: { modelId: id } });
     } catch (error) {
-      setBlocked(error instanceof Error ? error.message : 'Model custom gagal ditambahkan.');
+      setBlocked(error instanceof Error ? error.message : 'Custom model could not be added.');
     }
   }, [catalog, customId]);
 
@@ -96,14 +96,14 @@ export default function ModelsScreen() {
         </View>
 
         <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-          {profile?.name ?? 'Tanpa endpoint'}
+          {profile?.name ?? 'No endpoint'}
         </Text>
         <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
           {describeRefresh(catalog.failure, catalog.runtime?.lastFetchedAt ?? null)}
         </Text>
         {!hasActive && models.length > 0 && (
           <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta }}>
-            Belum ada model aktif. Ketuk salah satu model untuk dipakai.
+            No active model. Tap a model to use it.
           </Text>
         )}
         {blocked !== null && (
@@ -112,7 +112,7 @@ export default function ModelsScreen() {
           </Text>
         )}
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <SmallButton label="Tambah model" onPress={() => setAdding((value) => !value)} />
+          <SmallButton label="Add model" onPress={() => setAdding((value) => !value)} />
           <SmallButton label="JSON" onPress={() => router.push('/settings/models-json')} />
         </View>
         {adding && (
@@ -135,7 +135,7 @@ export default function ModelsScreen() {
                 paddingHorizontal: 12,
               }}
             />
-            <SmallButton label="Tambahkan" onPress={() => void addCustomModel()} />
+            <SmallButton label="Add" onPress={() => void addCustomModel()} />
           </View>
         )}
       </View>
@@ -183,7 +183,7 @@ export default function ModelsScreen() {
           borderTopColor: theme.colors.border,
         }}>
         <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-          {String(enabledIds.length) + ' dari ' + String(models.length) + ' model dapat dipilih.'}
+          {String(enabledIds.length) + ' of ' + String(models.length) + ' models available.'}
         </Text>
       </View>
     </Screen>
@@ -195,8 +195,8 @@ function RefreshButton({ refreshing, onPress }: { refreshing: boolean; onPress: 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Refresh katalog"
-      accessibilityHint="Mengambil ulang daftar model dari endpoint"
+      accessibilityLabel="Refresh model catalog"
+      accessibilityHint="Fetch the model list from the endpoint again"
       accessibilityState={{ busy: refreshing, disabled: refreshing }}
       disabled={refreshing}
       onPress={onPress}
@@ -227,7 +227,7 @@ function RefreshButton({ refreshing, onPress }: { refreshing: boolean; onPress: 
           fontSize: theme.typography.body,
           fontWeight: '600',
         }}>
-        {refreshing ? 'Memuat...' : 'Refresh'}
+        {refreshing ? 'Loading...' : 'Refresh'}
       </Text>
     </Pressable>
   );
@@ -263,9 +263,9 @@ export function ModelRow({
     <View style={rowStyle}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={'Pilih model ' + model.id}
+        accessibilityLabel={'Select model ' + model.id}
         accessibilityHint={
-          selectable ? 'Menjadikan model ini model aktif' : 'Model sedang dimatikan'
+          selectable ? 'Make this the active model' : 'This model is disabled'
         }
         accessibilityState={{ selected: active, disabled: !selectable }}
         onPress={onPress}
@@ -283,15 +283,15 @@ export function ModelRow({
           {modelBadges(model).map((badge) => (
             <Badge key={badge} label={badge} tone="neutral" />
           ))}
-          {active && <Badge label="aktif" tone="accent" />}
-          {!model.enabled && <Badge label="dimatikan" tone="warning" />}
+          {active && <Badge label="active" tone="accent" />}
+          {!model.enabled && <Badge label="disabled" tone="warning" />}
         </View>
       </Pressable>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityLabel={'Tampilkan ' + model.id + ' di picker'}
-        accessibilityHint="Centang agar model tersedia untuk dipilih"
+        accessibilityLabel={'Show ' + model.id + ' in picker'}
+        accessibilityHint="Enable this model in the picker"
         accessibilityState={{ checked: model.enabled }}
         onPress={onToggle}
         style={({ pressed }) => ({
@@ -316,7 +316,7 @@ export function ModelRow({
             fontSize: theme.typography.body,
             fontWeight: '600',
           }}>
-          Tampilkan di picker
+          Show in picker
         </Text>
       </Pressable>
         <SmallButton label="Detail" onPress={onEdit} />
@@ -384,10 +384,10 @@ function EmptyCatalog({ refreshing, onPress }: { refreshing: boolean; onPress: (
         backgroundColor: theme.colors.surface,
       }}>
       <Text style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
-        Katalog kosong
+        Catalog is empty
       </Text>
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
-        Belum ada model tersimpan di perangkat ini. Tekan Refresh setelah perangkat online.
+        No models are stored on this device. Press Refresh when the device is online.
       </Text>
       <RefreshButton refreshing={refreshing} onPress={onPress} />
     </View>

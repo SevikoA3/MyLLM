@@ -249,7 +249,7 @@ async function sendAttempt(
         return fail(bodyTooLargeError(safeDetails), false, state, timing, diagnostics, options);
       }
       return fail(
-        schemaError('Endpoint tidak mengembalikan stream SSE.', safeDetails),
+        schemaError('The endpoint did not return an SSE stream.', safeDetails),
         false,
         state,
         timing,
@@ -259,7 +259,7 @@ async function sendAttempt(
     }
     if (response.body === null) {
       return fail(
-        schemaError('Response stream tidak memiliki body.', safeDetails),
+        schemaError('The response stream has no body.', safeDetails),
         false,
         state,
         timing,
@@ -368,7 +368,7 @@ function processFrame(
     payload = JSON.parse(frame.data);
   } catch {
     diagnostics.push({ kind: 'invalid-event', eventType: safeEventType(frame.event) });
-    state.failure = schemaError('Event SSE tidak berisi JSON yang valid.', safeDetails);
+    state.failure = schemaError('The SSE event does not contain valid JSON.', safeDetails);
     emit(options, { type: 'response.failed', at, error: state.failure });
     return;
   }
@@ -453,12 +453,12 @@ function processFrame(
         emit(options, { type: 'usage.updated', at, usage });
       }
       if (state.responseId === null) {
-        state.failure = schemaError('Event completed tidak memiliki response id.', safeDetails);
+        state.failure = schemaError('The completed event has no response ID.', safeDetails);
         emit(options, { type: 'response.failed', at, error: state.failure });
         return;
       }
       if (state.text.length === 0 && state.toolCalls.size === 0) {
-        state.failure = schemaError('Response selesai tanpa output text.', safeDetails);
+        state.failure = schemaError('The response completed without output text.', safeDetails);
         emit(options, { type: 'response.failed', at, error: state.failure });
         return;
       }
@@ -571,7 +571,7 @@ function providerStreamError(
 function streamEndedError(safeDetails: Record<string, string>): AppError {
   return createAppError({
     category: 'network',
-    message: 'Stream terputus sebelum response.completed.',
+    message: 'The stream ended before response.completed.',
     httpStatus: null,
     providerCode: null,
     requestId: null,
@@ -583,7 +583,7 @@ function streamEndedError(safeDetails: Record<string, string>): AppError {
 function cancelledError(safeDetails: Record<string, string>): AppError {
   return createAppError({
     category: 'cancelled',
-    message: 'Request dihentikan.',
+    message: 'The request was stopped.',
     httpStatus: null,
     providerCode: null,
     requestId: null,

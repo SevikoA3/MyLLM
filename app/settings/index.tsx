@@ -13,13 +13,13 @@ export default function SettingsScreen() {
           Settings
         </Text>
         <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
-          Endpoint, model, dan compaction settings. Compaction ditambahkan pada Phase 10.
+          Endpoint, model, and compaction settings.
         </Text>
 
         <Link href="/models" asChild>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Buka daftar model"
+            accessibilityLabel="Open model list"
             style={{
               minHeight: 48,
               justifyContent: 'center',
@@ -38,7 +38,7 @@ export default function SettingsScreen() {
         <Link href="/setup" asChild>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Ubah endpoint dan API key"
+            accessibilityLabel="Edit endpoint and API key"
             style={{
               minHeight: 48,
               justifyContent: 'center',
@@ -49,7 +49,7 @@ export default function SettingsScreen() {
               backgroundColor: theme.colors.surface,
             }}>
             <Text style={{ color: theme.colors.text, fontSize: theme.typography.body, fontWeight: '600' }}>
-              Endpoint dan API key
+              Endpoint and API key
             </Text>
           </Pressable>
         </Link>

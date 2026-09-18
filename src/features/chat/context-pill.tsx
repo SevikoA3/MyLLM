@@ -1,9 +1,16 @@
 import { useState } from 'react';
-import { Pressable, Switch, Text, View } from 'react-native';
+import { Modal, Pressable, Switch, Text, View } from 'react-native';
 
 import { DEFAULT_CONTEXT_POLICY, type ContextBudgetResult, type ContextPolicy } from '../../domain/context';
 import { formatCount } from '../../domain/usage';
 import { useTheme } from '../../ui/theme';
+
+const RING_SIZE = 48;
+const RING_CENTER = RING_SIZE / 2;
+const RING_RADIUS = 19;
+const RING_SEGMENTS = 24;
+const SEGMENT_WIDTH = 4;
+const SEGMENT_HEIGHT = 9;
 
 export function ContextPill({
   budget,
@@ -30,117 +37,149 @@ export function ContextPill({
       : budget.usedPercent !== null && budget.usedPercent >= 80
         ? theme.colors.warningText
         : theme.colors.accent;
-  const summary =
-    budget.contextWindow === null
-      ? `Context unknown · Input ~${formatCount(budget.inputTokensEstimate)} tok`
-      : `Context ${formatCount(budget.contextWindow)} · ${
-          budget.remainingPercent === null
-            ? 'Left unavailable'
-            : `${budget.remainingPercent.toFixed(1)}% left`
-        }`;
-  const quality =
-    budget.usedPercent === null
-      ? budget.quality
-      : `${budget.usedPercent.toFixed(1)}% used · ${budget.quality}`;
+  const progress = budget.usedPercent === null ? null : Math.min(100, Math.max(0, budget.usedPercent)) / 100;
+  const percentLabel = budget.usedPercent === null ? '?' : `${Math.round(budget.usedPercent)}%`;
 
   return (
-    <View style={{ borderRadius: theme.radius.control, backgroundColor: theme.colors.surface }}>
+    <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Context meter"
-        accessibilityHint="Buka detail context dan auto-compact"
+        accessibilityLabel="Context usage"
+        accessibilityHint="Show context usage and auto-compact controls"
         accessibilityState={{ expanded }}
-        onPress={() => setExpanded((value) => !value)}
+        onPress={() => setExpanded(true)}
         style={{
-          minHeight: 48,
-          flexDirection: 'row',
+          width: RING_SIZE,
+          height: RING_SIZE,
           alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          padding: 10,
+          justifyContent: 'center',
+          borderRadius: RING_SIZE / 2,
+          backgroundColor: theme.colors.surface,
         }}>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
-            {summary}
-          </Text>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            {quality} · Auto-compact {compacting ? 'berjalan...' : autoCompact ? 'aktif' : 'mati'}
-          </Text>
-        </View>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.subtitle }}>
-          {expanded ? '⌃' : '⌄'}
-        </Text>
+        {Array.from({ length: RING_SEGMENTS }, (_, index) => {
+          const angle = (index / RING_SEGMENTS) * Math.PI * 2;
+          const degrees = (index / RING_SEGMENTS) * 360;
+          const active = progress !== null && progress > index / RING_SEGMENTS;
+          return (
+            <View
+              key={index}
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: RING_CENTER + Math.sin(angle) * RING_RADIUS - SEGMENT_WIDTH / 2,
+                top: RING_CENTER - Math.cos(angle) * RING_RADIUS - SEGMENT_HEIGHT / 2,
+                width: SEGMENT_WIDTH,
+                height: SEGMENT_HEIGHT,
+                borderRadius: SEGMENT_WIDTH / 2,
+                backgroundColor: active ? fillColor : theme.colors.border,
+                transform: [{ rotate: `${degrees}deg` }],
+              }}
+            />
+          );
+        })}
+        <Text style={{ color: theme.colors.text, fontSize: 11, fontWeight: '800' }}>{percentLabel}</Text>
       </Pressable>
 
-      {expanded && (
-        <View style={{ gap: 8, paddingHorizontal: 10, paddingBottom: 10 }}>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Input ~{formatCount(budget.inputTokensEstimate)} tok · Reserve{' '}
-            {formatCount(budget.requestedOutputReserve)} · Margin {formatCount(budget.safetyMargin)}
-          </Text>
-          {budget.calibrationInputTokens !== null && budget.calibrationDeltaTokens !== null && (
+      <Modal
+        visible={expanded}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExpanded(false)}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+          }}>
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 360,
+              gap: 10,
+              padding: 14,
+              borderRadius: theme.radius.card,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
+                Context usage
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close context usage"
+                onPress={() => setExpanded(false)}
+                style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
+                <Text style={{ color: theme.colors.accent, fontWeight: '700' }}>Close</Text>
+              </Pressable>
+            </View>
             <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-              Calibration {formatCount(budget.calibrationInputTokens)} tok · delta{' '}
-              {budget.calibrationDeltaTokens >= 0 ? '+' : '-'}
-              {formatCount(Math.abs(budget.calibrationDeltaTokens))} tok
+              Context {budget.contextWindow === null ? 'unknown' : formatCount(budget.contextWindow)} · Input ~
+              {formatCount(budget.inputTokensEstimate)} tokens · Left{' '}
+              {budget.remainingPercent === null ? 'unavailable' : `${budget.remainingPercent.toFixed(1)}%`}
             </Text>
-          )}
-          {budget.usedPercent !== null && (
-            <View
-              accessible={false}
-              style={{
-                height: 4,
-                overflow: 'hidden',
-                borderRadius: 2,
-                backgroundColor: theme.colors.border,
-              }}>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+              Reserve {formatCount(budget.requestedOutputReserve)} · Margin {formatCount(budget.safetyMargin)} ·{' '}
+              {budget.quality}
+            </Text>
+            {budget.calibrationInputTokens !== null && budget.calibrationDeltaTokens !== null && (
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+                Calibration {formatCount(budget.calibrationInputTokens)} tokens · delta{' '}
+                {budget.calibrationDeltaTokens >= 0 ? '+' : '-'}
+                {formatCount(Math.abs(budget.calibrationDeltaTokens))} tokens
+              </Text>
+            )}
+            <View style={{ height: 4, overflow: 'hidden', borderRadius: 2, backgroundColor: theme.colors.border }}>
               <View
                 style={{
-                  width: `${budget.usedPercent}%`,
+                  width: `${budget.usedPercent === null ? 0 : Math.min(100, Math.max(0, budget.usedPercent))}%`,
                   height: 4,
                   backgroundColor: fillColor,
                 }}
               />
             </View>
-          )}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-              Auto-compact
-            </Text>
-            <Switch
-              accessibilityLabel="Auto-compact"
-              accessibilityHint="Aktifkan ringkasan otomatis saat context hampir penuh"
-              value={autoCompact}
-              disabled={compacting}
-              onValueChange={onToggleAutoCompact}
-            />
-          </View>
-          {canCompact && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Compact now"
-              disabled={compacting}
-              onPress={onCompact}
-              style={({ pressed }) => ({
-                minHeight: 48,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: theme.radius.control,
-                backgroundColor: theme.colors.accent,
-                opacity: compacting ? 0.5 : pressed ? 0.75 : 1,
-              })}>
-              <Text style={{ color: theme.colors.accentText, fontSize: theme.typography.meta, fontWeight: '700' }}>
-                {compacting ? 'Compacting...' : 'Compact now'}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+                Auto-compact {compacting ? 'running' : autoCompact ? 'on' : 'off'}
               </Text>
-            </Pressable>
-          )}
-          {budget.usedPercent !== null && budget.usedPercent >= policy.hardStopPercent && (
-            <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta }}>
-              Context hard stop. Compact now, mulai chat baru, atau kurangi output reserve.
-            </Text>
-          )}
+              <Switch
+                accessibilityLabel="Auto-compact"
+                accessibilityHint="Automatically summarize when context is nearly full"
+                value={autoCompact}
+                disabled={compacting}
+                onValueChange={onToggleAutoCompact}
+              />
+            </View>
+            {canCompact && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Compact now"
+                disabled={compacting}
+                onPress={onCompact}
+                style={({ pressed }) => ({
+                  minHeight: 44,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: theme.radius.control,
+                  backgroundColor: theme.colors.accent,
+                  opacity: compacting ? 0.5 : pressed ? 0.75 : 1,
+                })}>
+                <Text style={{ color: theme.colors.accentText, fontSize: theme.typography.meta, fontWeight: '700' }}>
+                  {compacting ? 'Compacting...' : 'Compact now'}
+                </Text>
+              </Pressable>
+            )}
+            {budget.usedPercent !== null && budget.usedPercent >= policy.hardStopPercent && (
+              <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta }}>
+                Context limit reached. Compact, start a new chat, or reduce output reserve.
+              </Text>
+            )}
+          </View>
         </View>
-      )}
-    </View>
+      </Modal>
+    </>
   );
 }

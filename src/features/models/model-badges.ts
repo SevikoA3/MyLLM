@@ -23,7 +23,7 @@ export function modelBadges(model: MergedModel): string[] {
     badges.push('pricing ' + model.pricing.version);
   }
   if (model.orphaned) {
-    badges.push('riwayat lama');
+    badges.push('old history');
   }
   return badges;
 }
@@ -40,12 +40,12 @@ export function formatTokens(value: number): string {
 
 export function describeRefresh(failure: { kind: string; message: string } | null, lastFetchedAt: string | null): string {
   if (failure !== null) {
-    return failure.message + (lastFetchedAt === null ? '' : ' Terakhir berhasil: ' + shortTime(lastFetchedAt) + '.');
+    return failure.message + (lastFetchedAt === null ? '' : ' Last success: ' + shortTime(lastFetchedAt) + '.');
   }
-  return lastFetchedAt === null ? 'Belum pernah refresh online.' : 'Terakhir diperbarui ' + shortTime(lastFetchedAt) + '.';
+  return lastFetchedAt === null ? 'Never refreshed online.' : 'Last updated ' + shortTime(lastFetchedAt) + '.';
 }
 
 function shortTime(iso: string): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? 'waktu tidak diketahui' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? 'unknown time' : date.toLocaleString();
 }

@@ -97,7 +97,7 @@ export async function connectAndDiscover(
       ok: false,
       error: createAppError({
         category: 'request',
-        message: error instanceof Error ? error.message : 'Input endpoint tidak valid.',
+        message: error instanceof Error ? error.message : 'Invalid endpoint input.',
         httpStatus: null,
         providerCode: null,
         requestId: null,
@@ -113,7 +113,7 @@ export async function connectAndDiscover(
       ok: false,
       error: createAppError({
         category: 'auth',
-        message: 'API key kosong atau tidak ada di secure storage. Masukkan key lagi.',
+        message: 'API key is empty or missing from secure storage. Enter it again.',
         httpStatus: null,
         providerCode: null,
         requestId: null,
@@ -147,7 +147,7 @@ export async function connectAndDiscover(
       ok: false,
       error: createAppError({
         category: 'unknown',
-        message: 'Gagal menyimpan profile endpoint. Credential yang baru dibuat sudah dihapus, coba lagi.',
+        message: 'Endpoint profile could not be saved. The new credential was deleted. Try again.',
         httpStatus: null,
         providerCode: null,
         requestId: null,

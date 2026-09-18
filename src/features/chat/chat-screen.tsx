@@ -109,8 +109,8 @@ export default function ChatScreen() {
               numberOfLines={1}
               style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
               {chat.loadingModel
-                ? 'Memuat model aktif...'
-                : (chat.activeModelId ?? 'Belum ada model aktif')}
+                ? 'Loading active model...'
+                : (chat.activeModelId ?? 'No active model')}
             </Text>
           </View>
           <Pressable
@@ -146,7 +146,7 @@ export default function ChatScreen() {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Buka history"
+            accessibilityLabel="Open history"
             onPress={() => router.push('/history')}
             style={({ pressed }) => ({
               minWidth: 48,
@@ -167,11 +167,11 @@ export default function ChatScreen() {
 
         {profile === null ? (
           <View style={{ flex: 1, padding: theme.spacing.screen }}>
-            <InfoBlock title="Endpoint belum tersedia" body="Hubungkan endpoint sebelum mengirim pesan." />
+            <InfoBlock title="No endpoint connected" body="Connect an endpoint before sending a message." />
           </View>
         ) : chat.activeModelId === null && !chat.loadingModel ? (
           <View style={{ flex: 1, gap: 12, padding: theme.spacing.screen }}>
-            <InfoBlock title="Pilih model" body="Chat membutuhkan satu model aktif dari katalog." />
+            <InfoBlock title="Choose a model" body="Chat needs one active model from the catalog." />
             <Link href="/models" asChild>
               <Pressable
                 accessibilityRole="button"
@@ -188,7 +188,7 @@ export default function ChatScreen() {
                     fontSize: theme.typography.body,
                     fontWeight: '700',
                   }}>
-                  Buka katalog model
+                  Open model catalog
                 </Text>
               </Pressable>
             </Link>
@@ -238,33 +238,13 @@ export default function ChatScreen() {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.background,
           }}>
-          {chat.contextBudget !== null && (
-            <ContextPill
-              budget={chat.contextBudget}
-              policy={chat.contextPolicy}
-              autoCompact={chat.autoCompact}
-              compacting={chat.compacting}
-              canCompact={chat.conversationId !== null && !chat.pending}
-              onCompact={() => void chat.compactNow()}
-              onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
-            />
-          )}
-          {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
-          {chat.reasoningOptions.length > 0 && (
-            <ReasoningSelector
-              options={chat.reasoningOptions}
-              selected={chat.reasoningEffort}
-              disabled={chat.pending}
-              onSelect={(effort) => void chat.setReasoningEffort(effort)}
-            />
-          )}
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
             <TextInput
-              accessibilityLabel="Pesan"
-              accessibilityHint="Masukkan pesan untuk dikirim ke model aktif"
+              accessibilityLabel="Message"
+              accessibilityHint="Write a message to send to the active model"
               value={draft}
               onChangeText={setDraft}
-              placeholder="Tulis pesan..."
+              placeholder="Write a message..."
               placeholderTextColor={theme.colors.textMuted}
               editable={
                 !chat.pending &&
@@ -290,9 +270,9 @@ export default function ChatScreen() {
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={chat.pending ? 'Stop' : 'Kirim'}
+              accessibilityLabel={chat.pending ? 'Stop' : 'Send'}
               accessibilityHint={
-                chat.pending ? 'Menghentikan jawaban yang sedang berjalan' : 'Mengirim pesan'
+                chat.pending ? 'Stop the current response' : 'Send message'
               }
               disabled={sendDisabled}
               onPress={chat.pending ? chat.stop : submit}
@@ -320,6 +300,32 @@ export default function ChatScreen() {
               )}
             </Pressable>
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {chat.reasoningOptions.length > 0 && (
+              <View style={{ flex: 1, maxWidth: 140 }}>
+                <ReasoningSelector
+                  options={chat.reasoningOptions}
+                  selected={chat.reasoningEffort}
+                  disabled={chat.pending}
+                  onSelect={(effort) => void chat.setReasoningEffort(effort)}
+                />
+              </View>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {chat.contextBudget !== null && (
+                <ContextPill
+                  budget={chat.contextBudget}
+                  policy={chat.contextPolicy}
+                  autoCompact={chat.autoCompact}
+                  compacting={chat.compacting}
+                  canCompact={chat.conversationId !== null && !chat.pending}
+                  onCompact={() => void chat.compactNow()}
+                  onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
+                />
+              )}
+              {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
+            </View>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -336,7 +342,7 @@ function CompactionSeparator() {
           fontSize: theme.typography.meta,
           textAlign: 'center',
         }}>
-        Ringkasan lokal aktif. Transcript asli tetap tersimpan.
+        Local summary active. The original transcript is preserved.
       </Text>
     </View>
   );
@@ -351,46 +357,49 @@ function MetricsFooter({ metrics }: { metrics: TurnMetrics[] }) {
     return null;
   }
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Statistik request"
-      accessibilityHint="Buka detail statistik per turn dan sesi"
-      onPress={() => setExpanded((value) => !value)}
-      style={{
-        gap: 5,
-        padding: 10,
-        borderRadius: theme.radius.control,
-        backgroundColor: theme.colors.surface,
-      }}>
-      <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
-        Statistik turn terakhir
-      </Text>
-      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-        TTFT {formatDuration(latest.ttftMs)} · TPS {formatRate(latest.tokensPerSecond)} · Cache response{' '}
-        {formatPercent(latest.cacheHitPercent)}
-      </Text>
+    <View style={{ width: 120, height: 48, position: 'relative', zIndex: expanded ? 2 : 0 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Request stats"
+        accessibilityHint="Show request timing details"
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((value) => !value)}
+        style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 4 }}>
+        <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontSize: 11 }}>
+          {formatDuration(latest.ttftMs)} · {formatRate(latest.tokensPerSecond)}
+        </Text>
+      </Pressable>
       {expanded && (
-        <View style={{ gap: 4, paddingTop: 4 }}>
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Turn: input {formatCount(latest.usage.inputTokens)}, cached {formatCount(latest.usage.cacheReadTokens)},
-            uncached {formatCount(latest.usage.uncachedInputTokens)}, cache write{' '}
-            {formatCount(latest.usage.cacheWriteTokens)}, output {formatCount(latest.usage.outputTokens)}
+        <View
+          style={{
+            position: 'absolute',
+            right: 0,
+            bottom: 56,
+            width: 280,
+            gap: 4,
+            padding: 12,
+            borderRadius: theme.radius.control,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+            elevation: 8,
+          }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta, fontWeight: '700' }}>
+            Request stats
           </Text>
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Sesi {session.turnCount} turn: input {formatCount(session.inputTokens)}, cached{' '}
-            {formatCount(session.cacheReadTokens)}, output {formatCount(session.outputTokens)}, cache{' '}
-            {formatPercent(session.cacheHitPercent)}
+            TTFT {formatDuration(latest.ttftMs)} · TPS {formatRate(latest.tokensPerSecond)} · Cache{' '}
+            {formatPercent(latest.cacheHitPercent)}
           </Text>
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Rata-rata TTFT {formatDuration(session.averageTtftMs)} · Sesi TPS{' '}
-            {formatRate(session.tokensPerSecond)}
+            Input {formatCount(latest.usage.inputTokens)} · Output {formatCount(latest.usage.outputTokens)}
           </Text>
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Kualitas {latest.usage.quality} · sumber {latest.usage.source}
+            Session {session.turnCount} turns · Average TTFT {formatDuration(session.averageTtftMs)}
           </Text>
         </View>
       )}
-    </Pressable>
+    </View>
   );
 }
 
@@ -415,14 +424,14 @@ export function ReasoningSelector({
   };
 
   return (
-    <View style={{ gap: 6 }}>
-      <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+    <View style={{ gap: 4 }}>
+      <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>
         Thinking
       </Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Thinking"
-        accessibilityHint="Pilih mode thinking model"
+        accessibilityHint="Choose the model thinking level"
         accessibilityState={{ disabled, expanded: open }}
         disabled={disabled}
         onPress={() => setOpen((value) => !value)}
@@ -499,7 +508,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
   const user = message.role === 'user';
   return (
     <View
-      accessibilityLabel={user ? 'Pesan kamu' : 'Jawaban asisten'}
+      accessibilityLabel={user ? 'Your message' : 'Assistant response'}
       style={{
         maxWidth: '88%',
         alignSelf: user ? 'flex-end' : 'flex-start',
@@ -519,7 +528,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
               fontSize: theme.typography.meta,
               fontWeight: '700',
             }}>
-            Ringkasan reasoning
+            Thinking summary
           </Text>
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
             {message.reasoningSummary}
@@ -549,7 +558,7 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
       )}
       {!user && message.status === 'interrupted' && (
         <Text style={{ color: theme.colors.warningText, fontSize: theme.typography.meta }}>
-          Terputus saat aplikasi ditutup
+          Interrupted when the app closed
         </Text>
       )}
     </View>
@@ -577,7 +586,7 @@ function EmptyChat() {
       </View>
       <Text
         style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
-        Mulai percakapan
+        Start a conversation
       </Text>
       <Text
         style={{
@@ -587,7 +596,7 @@ function EmptyChat() {
           textAlign: 'center',
           lineHeight: 21,
         }}>
-        Percakapan disimpan otomatis dan tersedia di History.
+        Conversations are saved automatically and appear in History.
       </Text>
     </View>
   );
@@ -597,7 +606,7 @@ function PendingMessage() {
   const theme = useTheme();
   return (
     <View
-      accessibilityLabel="Menunggu jawaban"
+      accessibilityLabel="Waiting for response"
       style={{
         alignSelf: 'flex-start',
         flexDirection: 'row',
@@ -610,7 +619,7 @@ function PendingMessage() {
       }}>
       <ActivityIndicator size="small" color={theme.colors.accent} />
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-        Menunggu jawaban...
+        Waiting for response...
       </Text>
     </View>
   );
@@ -645,7 +654,7 @@ function ErrorCard({
         backgroundColor: theme.colors.surface,
       }}>
       <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta, fontWeight: '700' }}>
-        Request gagal
+        Request failed
       </Text>
       <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta }}>{error.message}</Text>
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
@@ -658,18 +667,18 @@ function ErrorCard({
         {error.requestId === null ? '' : ` · Request ${error.requestId}`}
       </Text>
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-        Langkah aman:{' '}
-        {error.retryable ? 'coba lagi setelah memeriksa endpoint.' : 'periksa konfigurasi dan model aktif.'}
+        Safe next step:{' '}
+        {error.retryable ? 'try again after checking the endpoint.' : 'check the endpoint and active model.'}
       </Text>
       {canRetry && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Coba lagi"
-          accessibilityHint="Ulangi request yang gagal"
+          accessibilityLabel="Retry"
+          accessibilityHint="Retry the failed request"
           style={{ minHeight: 48, justifyContent: 'center' }}
           onPress={onRetry}>
           <Text style={{ color: theme.colors.accent, fontSize: theme.typography.meta, fontWeight: '700' }}>
-            Coba lagi
+            Retry
           </Text>
         </Pressable>
       )}
@@ -693,15 +702,15 @@ function RetryCard({ onRetry }: { onRetry: () => void }) {
         backgroundColor: theme.colors.warningBg,
       }}>
       <Text style={{ flex: 1, color: theme.colors.warningText, fontSize: theme.typography.meta }}>
-        Jawaban sebelumnya terputus.
+        Previous response was interrupted.
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Coba lagi"
-        accessibilityHint="Ulangi request yang terputus"
+        accessibilityLabel="Retry"
+        accessibilityHint="Retry the interrupted request"
         style={{ minHeight: 48, justifyContent: 'center' }}
         onPress={onRetry}>
-        <Text style={{ color: theme.colors.warningText, fontWeight: '800' }}>Coba lagi</Text>
+        <Text style={{ color: theme.colors.warningText, fontWeight: '800' }}>Retry</Text>
       </Pressable>
     </View>
   );

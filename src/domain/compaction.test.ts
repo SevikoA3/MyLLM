@@ -50,7 +50,7 @@ describe('compaction domain', () => {
   it('menolak summary invalid dan menjaga summary sebagai data context', () => {
     expect(parseCompactionSummary('{"userGoals":[]}')).toEqual({
       ok: false,
-      message: 'Summary compaction tidak sesuai schema.',
+      message: 'The compaction summary does not match the schema.',
     });
     const parsed = parseCompactionSummary(JSON.stringify(summary));
     expect(parsed).toEqual({ ok: true, value: summary });

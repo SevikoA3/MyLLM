@@ -11,7 +11,7 @@ export default function EntryScreen() {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-white dark:bg-black">
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator accessibilityLabel="Memeriksa endpoint" />
+          <ActivityIndicator accessibilityLabel="Checking endpoint" />
         </View>
       </SafeAreaView>
     );
@@ -19,4 +19,3 @@ export default function EntryScreen() {
 
   return profile === null ? <Redirect href="/setup" /> : <Redirect href="/(tabs)" />;
 }
-

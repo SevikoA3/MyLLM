@@ -44,7 +44,7 @@ describe('local compaction', () => {
     expect(result).toEqual({
       ok: false,
       reason: 'failed',
-      message: 'Summary compaction tidak sesuai schema.',
+      message: 'The compaction summary does not match the schema.',
     });
     expect(state.failed).toHaveLength(1);
     expect(state.completed).toHaveLength(0);

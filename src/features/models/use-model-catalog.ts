@@ -76,7 +76,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
           profile.credentialRef === null ? null : await credentialStore.read(profile.credentialRef);
         // Tanpa credential tersimpan, refresh berhenti dengan pesan yang bisa ditindaklanjuti.
         if (apiKey === null) {
-          return { ok: false, message: 'API key tidak tersedia di secure storage.' };
+          return { ok: false, message: 'API key is not available in secure storage.' };
         }
         const result = await discoverModels(
           { ...profile, baseUrl, compat: { ...profile.compat, modelListPath } },
@@ -201,7 +201,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     async (text: string): Promise<OverridesPreview> => {
       const repository = repositoryRef.current;
       if (repository === null || profile === null) {
-        return { ok: false, path: '$', message: 'Katalog belum siap.' };
+        return { ok: false, path: '$', message: 'Catalog is not ready.' };
       }
       return repository.previewOverrides(profile.id, text, profile);
     },
@@ -212,7 +212,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     async (text: string): Promise<OverridesPreview> => {
       const repository = repositoryRef.current;
       if (repository === null || profile === null) {
-        return { ok: false, path: '$', message: 'Katalog belum siap.' };
+        return { ok: false, path: '$', message: 'Catalog is not ready.' };
       }
       const result = await repository.applyOverridesText(profile.id, text, profile);
       const next = repository.current();

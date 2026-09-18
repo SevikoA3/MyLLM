@@ -20,7 +20,7 @@ const ReasoningEffortsSchema = z
         context.addIssue({
           code: 'custom',
           path: [index],
-          message: `Reasoning effort duplikat: ${value}.`,
+          message: `Duplicate reasoning effort: ${value}.`,
         });
       }
       seen.add(value);
@@ -128,13 +128,13 @@ export function parseModelOverridesText(text: string): OverrideValidationResult 
   try {
     value = JSON.parse(text);
   } catch {
-    return { ok: false, path: '$', message: 'JSON tidak valid.' };
+    return { ok: false, path: '$', message: 'JSON is invalid.' };
   }
   if (isRecord(value) && typeof value.schemaVersion === 'number' && value.schemaVersion > 1) {
     return {
       ok: false,
       path: '$.schemaVersion',
-      message: 'Schema lebih baru. Upgrade aplikasi untuk mengimpor file ini.',
+      message: 'The schema is newer. Upgrade the app to import this file.',
     };
   }
   const parsed = ModelOverridesFileSchema.safeParse(value);

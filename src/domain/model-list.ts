@@ -33,7 +33,7 @@ export function parseModelList(body: string, safeDetails: Record<string, string>
     ok: false,
     error: createAppError({
       category: 'schema',
-      message: 'Response model list bukan JSON yang valid.',
+      message: 'The model list response is not valid JSON.',
       httpStatus: null,
       providerCode: null,
       requestId: null,
@@ -46,7 +46,7 @@ export function parseModelList(body: string, safeDetails: Record<string, string>
     ok: false,
     error: createAppError({
       category: 'schema',
-      message: 'Schema model list tidak kompatibel. Endpoint tidak mengembalikan bentuk OpenAI { data: [...] }.',
+      message: 'The model list schema is incompatible. The endpoint did not return the OpenAI { data: [...] } shape.',
       httpStatus: null,
       providerCode: null,
       requestId: null,
@@ -88,7 +88,7 @@ export function parseModelList(body: string, safeDetails: Record<string, string>
       ok: false,
       error: createAppError({
         category: 'model',
-        message: 'Endpoint tidak mengembalikan model dengan id yang valid.',
+      message: 'The endpoint did not return a model with a valid ID.',
         httpStatus: null,
         providerCode: null,
         requestId: null,

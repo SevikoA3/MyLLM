@@ -25,7 +25,7 @@ export async function seedCatalogCache(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const valid = models.filter((model) => normalizeModelRecord(model) !== null);
   if (valid.length === 0) {
-    return { ok: false, message: 'Daftar model kosong, cache tidak ditulis.' };
+    return { ok: false, message: 'The model list is empty, so the cache was not written.' };
   }
   // Defaults dibaca supaya seed dan refresh memakai sumber katalog yang sama.
   await deps.readDefaults();

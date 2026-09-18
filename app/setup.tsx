@@ -100,7 +100,7 @@ export default function SetupScreen() {
       <Screen>
         <View style={{ flex: 1, justifyContent: 'center', padding: theme.spacing.screen }}>
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
-            Memuat endpoint.
+            Loading endpoint.
           </Text>
         </View>
       </Screen>
@@ -129,18 +129,18 @@ export default function SetupScreen() {
             {profile === null ? 'Setup endpoint' : 'Endpoint'}
           </Text>
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>
-            Endpoint OpenAI-compatible. Protokol fase ini hanya Responses (MVP support).
+            OpenAI-compatible endpoint. This MVP supports the Responses protocol only.
           </Text>
         </View>
 
         <Field label="Endpoint name">
           <TextInput
-            accessibilityLabel="Nama endpoint"
-            accessibilityHint="Nama yang ditampilkan di aplikasi"
+            accessibilityLabel="Endpoint name"
+            accessibilityHint="Name shown in the app"
             style={inputStyle}
             value={name}
             onChangeText={(value) => setEdits((current) => ({ ...current, name: value }))}
-            placeholder={suggestName(baseUrl) || 'Endpoint saya'}
+            placeholder={suggestName(baseUrl) || 'My endpoint'}
             placeholderTextColor={theme.colors.textMuted}
             autoCapitalize="none"
           />
@@ -148,8 +148,8 @@ export default function SetupScreen() {
 
         <Field label="Base URL">
           <TextInput
-            accessibilityLabel="Base URL endpoint"
-            accessibilityHint="URL HTTPS endpoint OpenAI-compatible"
+            accessibilityLabel="Endpoint base URL"
+            accessibilityHint="HTTPS URL for the OpenAI-compatible endpoint"
             style={inputStyle}
             value={baseUrl}
             onChangeText={(value) => setEdits((current) => ({ ...current, baseUrl: value }))}
@@ -162,7 +162,7 @@ export default function SetupScreen() {
         </Field>
         {urlError === null ? (
           <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-            Preview: GET {previewUrl ?? '(lengkapi base URL)'}
+            Preview: GET {previewUrl ?? '(enter a base URL)'}
           </Text>
         ) : (
           <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta }}>
@@ -173,12 +173,12 @@ export default function SetupScreen() {
         <Field label="API key">
           <TextInput
             accessibilityLabel="API key"
-            accessibilityHint="Credential disimpan di secure storage"
+            accessibilityHint="Credential is stored in secure storage"
             style={inputStyle}
             value={apiKey}
             onChangeText={setKeyDraft}
             placeholder={
-              canReuseKey ? 'Tersimpan di secure storage. Isi untuk mengganti.' : 'sk-...'
+              canReuseKey ? 'Saved in secure storage. Enter a new key to replace it.' : 'sk-...'
             }
             placeholderTextColor={theme.colors.textMuted}
             autoCapitalize="none"
@@ -195,7 +195,7 @@ export default function SetupScreen() {
                 onPress={() => setEdits((current) => ({ ...current, authMode: mode }))}
                 accessibilityRole="button"
                 accessibilityLabel={'Auth mode ' + mode}
-                accessibilityHint="Pilih mode autentikasi endpoint"
+                accessibilityHint="Choose the endpoint authentication mode"
                 accessibilityState={{ selected: authMode === mode }}
                 style={{
                   minHeight: 48,
@@ -221,19 +221,19 @@ export default function SetupScreen() {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={advanced ? 'Sembunyikan advanced' : 'Tampilkan advanced'}
+          accessibilityLabel={advanced ? 'Hide advanced settings' : 'Show advanced settings'}
           accessibilityState={{ expanded: advanced }}
           style={{ minHeight: 48, justifyContent: 'center' }}
           onPress={() => setAdvanced(!advanced)}>
           <Text style={{ color: theme.colors.accent, fontSize: theme.typography.meta }}>
-            {advanced ? 'Sembunyikan advanced' : 'Advanced'}
+            {advanced ? 'Hide advanced' : 'Advanced'}
           </Text>
         </Pressable>
         {advanced && (
           <Field label="Models path">
             <TextInput
               accessibilityLabel="Models path"
-              accessibilityHint="Path endpoint untuk daftar model"
+              accessibilityHint="Endpoint path used to list models"
               style={inputStyle}
               value={modelListPath}
               onChangeText={(value) =>
@@ -247,8 +247,8 @@ export default function SetupScreen() {
         )}
 
         <PrimaryButton
-          label={busy ? 'Menghubungkan...' : 'Connect & discover models'}
-          hint="Menguji endpoint, menyimpan key, dan mengambil daftar model"
+          label={busy ? 'Connecting...' : 'Connect & discover models'}
+          hint="Test the endpoint, store the key, and fetch the model list"
           busy={busy}
           disabled={!canConnect}
           onPress={() => void onConnect()}

@@ -20,7 +20,7 @@ export const ContextPolicySchema = z
       context.addIssue({
         code: 'custom',
         path: ['targetPercent'],
-        message: 'Context policy harus memenuhi target < trigger < hard stop.',
+        message: 'Context policy must satisfy target < trigger < hard stop.',
       });
     }
   });

@@ -26,6 +26,8 @@ Membangun aplikasi Android berbasis React Native yang:
 
 Agent tidak boleh menjalankan Expo atau build Android karena keterbatasan RAM pemilik proyek. Jangan menjalankan `expo`, `npx expo`, `expo prebuild`, `expo run:*`, `npx expo-doctor`, `npm run doctor`, bundler, emulator, device check, Gradle, APK, atau AAB. Agent hanya membuat kode dan menjalankan TypeScript, ESLint langsung, Jest, serta contract test Node. Pemeriksaan Expo dan build Android dilakukan manual oleh pemilik proyek.
 
+All user-facing UI copy, accessibility labels, error copy added by the agent, and new Markdown instructions must use English.
+
 Executor wajib mengikuti aturan ini:
 
 1. Kerjakan fase secara berurutan.

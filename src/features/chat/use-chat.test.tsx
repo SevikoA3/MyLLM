@@ -335,7 +335,7 @@ describe('useChat', () => {
 
     expect(mockStartTurn).not.toHaveBeenCalled();
     expect(mockSend).not.toHaveBeenCalled();
-    expect(result.current.error?.message).toContain('Context hampir penuh');
+    expect(result.current.error?.message).toContain('Context is nearly full');
   });
 
   it('melakukan auto-compact sebelum main request saat trigger tercapai', async () => {

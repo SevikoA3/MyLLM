@@ -131,7 +131,7 @@ describe('parseModelList', () => {
     if (result.ok) {
       return;
     }
-    expect(result.error.message).toMatch(/tidak kompatibel/);
+    expect(result.error.message).toMatch(/incompatible/);
   });
 
   it('menolak daftar kosong tanpa membuat model palsu', () => {

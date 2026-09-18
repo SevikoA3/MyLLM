@@ -48,7 +48,7 @@ describe('model override JSON', () => {
     expect(result).toEqual({
       ok: false,
       path: '$.schemaVersion',
-      message: 'Schema lebih baru. Upgrade aplikasi untuk mengimpor file ini.',
+      message: 'The schema is newer. Upgrade the app to import this file.',
     });
   });
 

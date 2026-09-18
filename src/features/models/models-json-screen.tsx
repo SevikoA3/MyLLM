@@ -50,7 +50,7 @@ export default function ModelsJsonScreen() {
     setPreview(result);
     if (result.ok) {
       setDraft(catalog.exportOverrides());
-      setMessage('Override tersimpan atomik. Backup satu generasi dibuat.');
+      setMessage('Override saved atomically. One backup generation was created.');
     }
   };
 
@@ -61,16 +61,16 @@ export default function ModelsJsonScreen() {
       setDraft(imported);
       await check(imported);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Import gagal dibaca.');
+      setMessage(error instanceof Error ? error.message : 'Import could not be read.');
     }
   };
 
   const exportFile = async () => {
     try {
       await shareOverridesJson(catalog.exportOverrides());
-      setMessage('File export siap dibagikan.');
+      setMessage('Export file is ready to share.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Export gagal.');
+      setMessage(error instanceof Error ? error.message : 'Export failed.');
     }
   };
 
@@ -83,13 +83,13 @@ export default function ModelsJsonScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ gap: 12, padding: theme.spacing.screen, paddingBottom: 40 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Action label="Kembali" onPress={() => router.back()} />
+            <Action label="Back" onPress={() => router.back()} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
                 Model JSON
               </Text>
               <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-                Import divalidasi di memory. Credential tidak ikut export.
+                Imports are validated in memory. Credentials are never exported.
               </Text>
             </View>
           </View>
@@ -129,8 +129,8 @@ export default function ModelsJsonScreen() {
             (preview.ok ? (
               <Text style={{ color: theme.colors.text }}>
                 {preview.affectedModelIds.length === 0
-                  ? 'Valid. Tidak ada model berubah.'
-                  : 'Valid. Model berubah: ' + preview.affectedModelIds.join(', ')}
+                  ? 'Valid. No models changed.'
+                  : 'Valid. Changed models: ' + preview.affectedModelIds.join(', ')}
               </Text>
             ) : (
               <Text selectable style={{ color: theme.colors.danger }}>
@@ -138,7 +138,7 @@ export default function ModelsJsonScreen() {
               </Text>
             ))}
           {message !== null && <Text style={{ color: theme.colors.text }}>{message}</Text>}
-          <PrimaryButton label="Validasi dan simpan" onPress={() => void save()} />
+          <PrimaryButton label="Validate and save" onPress={() => void save()} />
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>

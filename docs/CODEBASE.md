@@ -65,8 +65,8 @@ myllm/
       system-prompt.test.ts
     features/                       UI dan orkestrasi per layar
       chat/
-        chat-screen.tsx             FlatList pesan, composer, thinking dropdown, streaming, metrics footer, Stop, retry, New chat, dan separator compaction
-        context-pill.tsx            ringkasan context compact dengan detail expandable, toggle, dan Compact now
+        chat-screen.tsx             message list, composer, thinking dropdown, streaming, compact request stats, Stop, retry, New chat, and compaction separator
+        context-pill.tsx            small circular context meter with modal details, toggle, and Compact now
         context-pill.test.tsx
         use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, request orchestration
         use-chat.test.tsx
@@ -187,7 +187,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/onboarding.ts` | `connectAndDiscover`, `profileFromInput`, `suggestName`, `newCredentialId`, `loadCredentialFor` | `domain/endpoint`, `domain/error`, `services/credentials/store`, `services/transport/models`, `services/persistence/endpoint-store` |
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
-| `chat/chat-screen.tsx` | FlatList pesan, composer, reasoning picker, metrics footer, Send atau Stop, partial output, error, retry, New chat, separator compaction, dan controls context | `domain/conversation`, `domain/context`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
+| `chat/chat-screen.tsx` | Message list, composer, reasoning picker, compact request stats, Send or Stop, partial output, error, retry, New chat, compaction separator, and context controls | `domain/conversation`, `domain/context`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
 | `chat/use-chat.ts` | Orkestrasi conversation aktif, context preflight, local compaction, hard stop, toggle, reasoning override, config snapshot model, SQLite sebelum request, metrics per turn, stateless history replay, cache key per conversation, batching UI dan DB 50 ms, recovery, cancellation, dan retry | `domain/*`, `services/context/local-compaction`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
 | `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
 | `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |

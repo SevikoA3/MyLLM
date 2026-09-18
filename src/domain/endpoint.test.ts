@@ -35,14 +35,14 @@ describe('normalizeBaseUrl', () => {
   });
 
   it('menolak embedded username dan password', () => {
-    expect(() => normalizeBaseUrl('https://user:secret@api.example.com/v1')).toThrow(/username atau password/);
-    expect(validateBaseUrl('https://user:secret@api.example.com')).toMatch(/username atau password/);
+    expect(() => normalizeBaseUrl('https://user:secret@api.example.com/v1')).toThrow(/username or password/);
+    expect(validateBaseUrl('https://user:secret@api.example.com')).toMatch(/username or password/);
   });
 
   it('menolak skema selain HTTPS', () => {
-    expect(() => normalizeBaseUrl('http://api.example.com/v1')).toThrow(/Skema http/);
-    expect(() => normalizeBaseUrl('ftp://api.example.com')).toThrow(/Skema ftp/);
-    expect(() => normalizeBaseUrl('http://192.168.0.10:8080/v1')).toThrow(/Skema http/);
+    expect(() => normalizeBaseUrl('http://api.example.com/v1')).toThrow(/http scheme/);
+    expect(() => normalizeBaseUrl('ftp://api.example.com')).toThrow(/ftp scheme/);
+    expect(() => normalizeBaseUrl('http://192.168.0.10:8080/v1')).toThrow(/http scheme/);
   });
 
   it('menerima HTTP hanya untuk loopback pada build development', () => {
@@ -51,7 +51,7 @@ describe('normalizeBaseUrl', () => {
   });
 
   it('menolak hostname kosong dan input kosong', () => {
-    expect(() => normalizeBaseUrl('')).toThrow(/kosong/);
+    expect(() => normalizeBaseUrl('')).toThrow(/empty/);
     expect(() => normalizeBaseUrl('https://')).toThrow();
   });
 });
@@ -88,7 +88,7 @@ describe('buildAuthHeaders', () => {
   });
 
   it('menolak key kosong', () => {
-    expect(() => buildAuthHeaders('bearer', '   ')).toThrow(/kosong/);
+    expect(() => buildAuthHeaders('bearer', '   ')).toThrow(/empty/);
   });
 });
 

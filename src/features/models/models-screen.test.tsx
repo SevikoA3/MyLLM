@@ -46,7 +46,7 @@ describe('ModelRow', () => {
     expect(view.getByText('1M ctx')).toBeTruthy();
     expect(view.getByText('128k out')).toBeTruthy();
     expect(view.getByText('reasoning 3 level')).toBeTruthy();
-    expect(view.getByText('aktif')).toBeTruthy();
+    expect(view.getByText('active')).toBeTruthy();
   });
 
   it('menandai context window yang tidak diketahui sebagai unknown', async () => {
@@ -76,8 +76,8 @@ describe('ModelRow', () => {
       />,
     );
 
-    expect(view.getByText('dimatikan')).toBeTruthy();
-    expect(view.getByText('Tampilkan di picker')).toBeTruthy();
+    expect(view.getByText('disabled')).toBeTruthy();
+    expect(view.getByText('Show in picker')).toBeTruthy();
     expect(view.getByRole('checkbox').props.accessibilityState).toEqual({ checked: false });
   });
 });

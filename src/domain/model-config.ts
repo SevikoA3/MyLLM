@@ -44,11 +44,11 @@ export function modelRequestSnapshot(
   const ceiling = effectiveMaxOutput(model.maxOutputTokens, protocolOutputCap(profile));
   const effort = model.request.reasoningEffort ?? 'auto';
   if (effort !== null && effort !== 'auto' && !model.reasoningEfforts.includes(effort)) {
-    throw new Error(`Reasoning effort ${effort} tidak tersedia untuk ${model.id}.`);
+    throw new Error(`Reasoning effort ${effort} is not available for ${model.id}.`);
   }
   const outputLimit = model.request.outputLimit;
   if (outputLimit !== null && ceiling !== null && outputLimit > ceiling) {
-    throw new Error(`Output limit melebihi batas efektif ${String(ceiling)}.`);
+    throw new Error(`Output limit exceeds the effective limit of ${String(ceiling)}.`);
   }
   return {
     modelId: model.id,

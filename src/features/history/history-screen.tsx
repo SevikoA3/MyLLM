@@ -61,10 +61,10 @@ export default function HistoryScreen() {
   }, [loadFirst, title]);
 
   const confirmDelete = useCallback((conversation: ConversationSummary) => {
-    Alert.alert('Hapus percakapan?', conversation.title, [
-      { text: 'Batal', style: 'cancel' },
+    Alert.alert('Delete conversation?', conversation.title, [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Hapus',
+        text: 'Delete',
         style: 'destructive',
         onPress: () => {
           void conversationRepository.remove(conversation.id).then(loadFirst);
@@ -89,7 +89,7 @@ export default function HistoryScreen() {
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Buat chat baru"
+          accessibilityLabel="Start a new chat"
           onPress={() =>
             router.push({
               pathname: '/chat/[conversationId]',
@@ -126,9 +126,9 @@ export default function HistoryScreen() {
           ListEmptyComponent={
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <Text style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
-                Belum ada percakapan
+                No conversations yet
               </Text>
-              <Text style={{ color: theme.colors.textMuted }}>Chat pertama akan muncul di sini.</Text>
+              <Text style={{ color: theme.colors.textMuted }}>Your first chat will appear here.</Text>
             </View>
           }
           ListFooterComponent={loadingMore ? <ActivityIndicator color={theme.colors.accent} /> : null}
@@ -144,7 +144,7 @@ export default function HistoryScreen() {
               }}>
               {editingId === item.id ? (
                 <TextInput
-                  accessibilityLabel="Judul percakapan"
+                  accessibilityLabel="Conversation title"
                   autoFocus
                   value={title}
                   onChangeText={setTitle}
@@ -161,7 +161,7 @@ export default function HistoryScreen() {
               ) : (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={'Buka ' + item.title}
+                  accessibilityLabel={'Open ' + item.title}
                   style={{ minHeight: 48, justifyContent: 'center' }}
                   onPress={() =>
                     router.push({
@@ -179,7 +179,7 @@ export default function HistoryScreen() {
                   </Text>
                   {item.status === 'interrupted' && (
                     <Text style={{ color: theme.colors.warningText, fontSize: theme.typography.meta }}>
-                      Terputus saat aplikasi ditutup
+                      Interrupted when the app closed
                     </Text>
                   )}
                 </Pressable>
@@ -187,7 +187,7 @@ export default function HistoryScreen() {
               <View style={{ flexDirection: 'row', gap: 18 }}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={editingId === item.id ? 'Simpan judul' : 'Ubah judul'}
+                  accessibilityLabel={editingId === item.id ? 'Save title' : 'Edit title'}
                   style={{ minHeight: 48, justifyContent: 'center' }}
                   onPress={() => {
                     if (editingId === item.id) {
@@ -198,15 +198,15 @@ export default function HistoryScreen() {
                     }
                   }}>
                   <Text style={{ color: theme.colors.accent, fontWeight: '700' }}>
-                    {editingId === item.id ? 'Simpan' : 'Rename'}
+                    {editingId === item.id ? 'Save' : 'Rename'}
                   </Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={'Hapus ' + item.title}
+                  accessibilityLabel={'Delete ' + item.title}
                   style={{ minHeight: 48, justifyContent: 'center' }}
                   onPress={() => confirmDelete(item)}>
-                  <Text style={{ color: theme.colors.danger, fontWeight: '700' }}>Hapus</Text>
+                  <Text style={{ color: theme.colors.danger, fontWeight: '700' }}>Delete</Text>
                 </Pressable>
               </View>
             </View>

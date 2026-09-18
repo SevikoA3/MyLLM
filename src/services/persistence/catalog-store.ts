@@ -105,14 +105,14 @@ export async function writeSnapshot(
   const serialized = JSON.stringify(snapshot);
   const validated = CatalogSnapshotSchema.safeParse(JSON.parse(serialized));
   if (!validated.success) {
-    return { ok: false, message: 'Snapshot katalog tidak lolos validasi sebelum ditulis.' };
+    return { ok: false, message: 'The catalog snapshot failed validation before writing.' };
   }
   try {
     await storage.writeText(temp, serialized);
     const confirmed = CatalogSnapshotSchema.safeParse(parseJson(await storage.readText(temp), CatalogSnapshotSchema));
     if (!confirmed.success) {
       await storage.writeText(temp, '');
-      return { ok: false, message: 'Snapshot katalog rusak setelah ditulis. Cache lama dipertahankan.' };
+      return { ok: false, message: 'The catalog snapshot was corrupted after writing. The old cache was preserved.' };
     }
     if (await storage.exists(name)) {
       await storage.copy(name, backup);
@@ -123,7 +123,7 @@ export async function writeSnapshot(
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : 'Gagal menulis cache katalog.',
+      message: error instanceof Error ? error.message : 'Failed to write the catalog cache.',
     };
   }
 }
@@ -181,7 +181,7 @@ async function writeOverridesAtomic(
   const confirmed = await readValidated(storage, temp, ModelOverridesFileSchema);
   if (confirmed === null) {
     await storage.writeText(temp, '');
-    throw new Error('Override gagal divalidasi setelah ditulis. File aktif dipertahankan.');
+    throw new Error('The override failed validation after writing. The active file was preserved.');
   }
   if (await storage.exists(name)) {
     await storage.copy(name, `${name}.backup`);
@@ -314,7 +314,7 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
       return {
         ok: false,
         catalog: current,
-        error: { kind: 'network', message: 'Response model list kosong atau tidak valid. Cache lama dipakai.' },
+        error: { kind: 'network', message: 'The model list response is empty or invalid. The old cache was used.' },
       };
     }
     const snapshot = snapshotFromModels(
@@ -349,11 +349,11 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
     async addCustomModel(endpointId: string, modelId: string): Promise<void> {
       const id = modelId.trim();
       if (id.length === 0) {
-        throw new Error('Model ID wajib diisi.');
+        throw new Error('Model ID is required.');
       }
       const current = runtime ?? (await load(endpointId));
       if (current.models.some((model) => model.id === id)) {
-        throw new Error('Model ID sudah ada.');
+        throw new Error('Model ID already exists.');
       }
       await setOverride(endpointId, id, { displayName: id, enabled: true });
     },
@@ -412,7 +412,7 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
           return {
             ok: false,
             path: `$.endpoints.${endpointId}.models.${model.id}.request`,
-            message: error instanceof Error ? error.message : 'Konfigurasi request tidak valid.',
+            message: error instanceof Error ? error.message : 'The request configuration is invalid.',
           };
         }
       }

@@ -16,7 +16,7 @@ export async function pickOverridesJson(): Promise<string | null> {
 
 export async function shareOverridesJson(text: string): Promise<void> {
   if (!(await Sharing.isAvailableAsync())) {
-    throw new Error('Share sheet tidak tersedia di perangkat ini.');
+    throw new Error('The share sheet is not available on this device.');
   }
   const target = new File(Paths.cache, 'myllm-model-overrides.json');
   target.create({ overwrite: true });

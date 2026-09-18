@@ -234,7 +234,7 @@ describe('createCatalogRepository', () => {
     const { repo } = repository();
     await repo.load('ep_1');
     await repo.refresh({ endpointId: 'ep_1', baseUrl: profile.baseUrl, modelListPath: '/models' });
-    await expect(repo.addCustomModel('ep_1', 'model-baru')).rejects.toThrow('Model ID sudah ada');
+    await expect(repo.addCustomModel('ep_1', 'model-baru')).rejects.toThrow('Model ID already exists');
   });
 
   it('override bertahan setelah repository dibuka ulang dan katalog direfresh', async () => {

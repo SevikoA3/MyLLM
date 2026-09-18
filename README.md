@@ -54,6 +54,8 @@ Tab Chat menyimpan user turn dan assistant placeholder ke SQLite sebelum request
 
 Agent tidak menjalankan Expo, bundler, `expo-doctor`, prebuild, emulator, device check, Gradle, atau build APK/AAB. Agent hanya menjalankan TypeScript, ESLint langsung, Jest, dan contract test Node. Pemeriksaan Expo dan build Android dilakukan manual oleh pemilik proyek.
 
+All user-facing UI copy, accessibility labels, and new Markdown instructions must use English.
+
 Contract test transport, onboarding, dan Responses menjalankan kode produksi hasil kompilasi TypeScript, bukan tiruan:
 
 ```sh

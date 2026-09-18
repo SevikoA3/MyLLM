@@ -165,7 +165,7 @@ export function fromHttpResponse(input: {
 export function bodyTooLargeError(safeDetails: Record<string, string>): AppError {
   return createAppError({
     category: 'schema',
-    message: 'Response body melebihi batas keamanan 256 KB.',
+    message: 'The response body exceeds the 256 KB safety limit.',
     httpStatus: null,
     providerCode: null,
     requestId: null,

@@ -149,7 +149,7 @@ export function createConversationRepository(
     await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     const version = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
     if ((version?.user_version ?? 0) > 2) {
-      throw new Error('Database conversation dibuat oleh versi aplikasi yang lebih baru.');
+      throw new Error('The conversation database was created by a newer app version.');
     }
     if ((version?.user_version ?? 0) === 0) {
       await db.withExclusiveTransactionAsync(async (transaction) => {
@@ -695,7 +695,7 @@ function parseActiveSummary(row: CompactionRow | null): CompactionSummary | null
     return null;
   }
   if (row.summary_json === null) {
-    throw new Error('Compaction aktif tidak memiliki summary.');
+    throw new Error('The active compaction has no summary.');
   }
   const parsed = parseCompactionSummary(row.summary_json);
   if (!parsed.ok) {

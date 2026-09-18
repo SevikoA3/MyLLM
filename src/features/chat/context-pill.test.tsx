@@ -21,21 +21,20 @@ function result(overrides: Partial<ContextBudgetResult> = {}): ContextBudgetResu
 }
 
 describe('ContextPill', () => {
-  it('menampilkan ringkasan dan menyembunyikan detail sampai dibuka', async () => {
+  it('shows a circular usage meter and hides details until opened', async () => {
     const view = await render(<ContextPill budget={result()} />);
 
-    expect(view.getByText('Context 32,000 · 80.9% left')).toBeTruthy();
-    expect(view.getByText('19.1% used · estimated · Auto-compact aktif')).toBeTruthy();
-    expect(view.queryByText('Input ~1,000 tok · Reserve 4,096 · Margin 1,024')).toBeNull();
+    expect(view.getByText('19%')).toBeTruthy();
+    expect(view.queryByText('Context 32,000 · Input ~1,000 tokens · Left 80.9%')).toBeNull();
 
-    fireEvent.press(view.getByLabelText('Context meter'));
+    fireEvent.press(view.getByLabelText('Context usage'));
 
     await waitFor(() =>
-      expect(view.getByText('Input ~1,000 tok · Reserve 4,096 · Margin 1,024')).toBeTruthy(),
+      expect(view.getByText('Context 32,000 · Input ~1,000 tokens · Left 80.9%')).toBeTruthy(),
     );
   });
 
-  it('tidak menampilkan persentase saat context unknown', async () => {
+  it('shows unknown when context usage is unavailable', async () => {
     const view = await render(
       <ContextPill
         budget={result({
@@ -50,8 +49,7 @@ describe('ContextPill', () => {
       />,
     );
 
-    expect(view.getByText('Context unknown · Input ~1,000 tok')).toBeTruthy();
-    expect(view.getByText('unknown · Auto-compact aktif')).toBeTruthy();
-    expect(view.queryByText(/% used/)).toBeNull();
+    expect(view.getByText('?')).toBeTruthy();
+    expect(view.queryByText(/Input ~1,000 tokens/)).toBeNull();
   });
 });

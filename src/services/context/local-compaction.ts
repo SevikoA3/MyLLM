@@ -68,7 +68,7 @@ export async function runLocalCompaction(
     return {
       ok: false,
       reason: 'no-prefix',
-      message: 'Belum ada prefix lengkap yang aman untuk di-compact.',
+      message: 'There is no complete prefix safe to compact yet.',
     };
   }
 
@@ -88,7 +88,7 @@ export async function runLocalCompaction(
       return {
         ok: false,
         reason: 'busy',
-        message: 'Compaction lain sedang berjalan.',
+        message: 'Another compaction is already running.',
       };
     }
 
@@ -107,7 +107,7 @@ export async function runLocalCompaction(
       return {
         ok: false,
         reason: 'failed',
-        message: result.ok ? 'Summary compaction kosong.' : result.error.message,
+        message: result.ok ? 'The compaction summary is empty.' : result.error.message,
       };
     }
     const parsed = parseCompactionSummary(text);
@@ -139,7 +139,7 @@ export async function runLocalCompaction(
       afterEstimate: after.prospectiveUsed ?? after.inputTokensEstimate,
     };
   }
-  return { ok: false, reason: 'failed', message: 'Compaction gagal setelah retry.' };
+  return { ok: false, reason: 'failed', message: 'Compaction failed after retrying.' };
 }
 
 async function sendSummary(

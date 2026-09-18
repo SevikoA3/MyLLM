@@ -68,12 +68,12 @@ export function parseCompactionSummary(text: string):
   try {
     value = JSON.parse(text);
   } catch {
-    return { ok: false, message: 'Summary compaction bukan JSON valid.' };
+    return { ok: false, message: 'The compaction summary is not valid JSON.' };
   }
   const parsed = CompactionSummarySchema.safeParse(value);
   return parsed.success
     ? { ok: true, value: parsed.data }
-    : { ok: false, message: 'Summary compaction tidak sesuai schema.' };
+    : { ok: false, message: 'The compaction summary does not match the schema.' };
 }
 
 export function buildCompactedContext(

@@ -62,7 +62,7 @@ export default function ModelDetailScreen() {
       <Screen>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           {modelId === undefined || (status !== 'loading' && !catalog.loading && model === null) ? (
-            <Text style={{ color: theme.colors.danger }}>Model tidak ditemukan.</Text>
+            <Text style={{ color: theme.colors.danger }}>Model not found.</Text>
           ) : (
             <ActivityIndicator color={theme.colors.accent} />
           )}
@@ -84,22 +84,22 @@ export default function ModelDetailScreen() {
     }
     try {
       await catalog.setOverride(model.id, built.value);
-      setMessage('Tersimpan. Refresh katalog tidak akan menimpa override.');
+      setMessage('Saved. Catalog refresh will not overwrite this override.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Override gagal disimpan.');
+      setMessage(error instanceof Error ? error.message : 'Override could not be saved.');
     }
   };
 
   const resetModel = () => {
-    Alert.alert('Reset model?', 'Semua override model ini akan dihapus.', [
-      { text: 'Batal', style: 'cancel' },
+    Alert.alert('Reset model?', 'All overrides for this model will be deleted.', [
+      { text: 'Cancel', style: 'cancel' },
       {
         text: 'Reset',
         style: 'destructive',
         onPress: () => {
           void catalog.setOverride(model.id, null).then(() => {
             setForm(formFrom(undefined));
-            setMessage('Override model direset.');
+            setMessage('Model override reset.');
           });
         },
       },
@@ -115,10 +115,10 @@ export default function ModelDetailScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ gap: 14, padding: theme.spacing.screen, paddingBottom: 40 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Action label="Kembali" onPress={() => router.back()} />
+            <Action label="Back" onPress={() => router.back()} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
-                Detail model
+                Model details
               </Text>
               <Text selectable style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
                 {model.id}
@@ -126,23 +126,23 @@ export default function ModelDetailScreen() {
             </View>
           </View>
 
-          <Section title="Nilai efektif dan sumber">
-            <ProvenanceRow model={model} path="displayName" label="Nama" value={model.displayName} />
+          <Section title="Effective values and sources">
+            <ProvenanceRow model={model} path="displayName" label="Name" value={model.displayName} />
             <ProvenanceRow model={model} path="contextWindow" label="Context" value={model.contextWindow} />
             <ProvenanceRow model={model} path="maxOutputTokens" label="Max output" value={model.maxOutputTokens} />
-            <ProvenanceRow model={model} path="reasoningEfforts" label="Reasoning" value={model.reasoningEfforts} />
-            <ProvenanceRow model={model} path="inputModalities" label="Modalitas" value={model.inputModalities} />
+            <ProvenanceRow model={model} path="reasoningEfforts" label="Thinking levels" value={model.reasoningEfforts} />
+            <ProvenanceRow model={model} path="inputModalities" label="Input modalities" value={model.inputModalities} />
             <ProvenanceRow model={model} path="enabled" label="Enabled" value={model.enabled} />
             <ProvenanceRow model={model} path="capabilities.streaming" label="Streaming" value={model.capabilities.streaming} />
             <ProvenanceRow model={model} path="capabilities.tools" label="Tools" value={model.capabilities.tools} />
             <ProvenanceRow model={model} path="capabilities.structuredOutput" label="Structured output" value={model.capabilities.structuredOutput} />
             <ProvenanceRow model={model} path="capabilities.nativeCompaction" label="Native compaction" value={model.capabilities.nativeCompaction} />
             <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-              Batas output efektif: {ceiling === null ? 'Unknown' : formatTokens(ceiling)}
+              Effective output cap: {ceiling === null ? 'Unknown' : formatTokens(ceiling)}
             </Text>
           </Section>
 
-          <Section title="Override metadata">
+          <Section title="Metadata override">
             <Field
               label="Display name"
               value={form.displayName}
@@ -176,7 +176,7 @@ export default function ModelDetailScreen() {
               label="Reasoning efforts"
               value={form.reasoningEfforts}
               placeholder="auto, low, high"
-              help="Urutan dipertahankan. Kosong = inherit; [] = array kosong."
+              help="Order is preserved. Empty = inherit; [] = empty array."
               onChange={(value) => setForm({ ...form, reasoningEfforts: value })}
               onReset={() => setForm({ ...form, reasoningEfforts: '' })}
             />
@@ -184,7 +184,7 @@ export default function ModelDetailScreen() {
               label="Input modalities"
               value={form.inputModalities}
               placeholder="text, image"
-              help="Pilihan: text, image, file, video. Kosong = inherit; [] = array kosong."
+              help="Options: text, image, file, video. Empty = inherit; [] = empty array."
               onChange={(value) => setForm({ ...form, inputModalities: value })}
               onReset={() => setForm({ ...form, inputModalities: '' })}
             />
@@ -205,7 +205,7 @@ export default function ModelDetailScreen() {
           <Section title="Request">
             {choices.length > 0 && (
               <Choice
-                label="Reasoning"
+                label="Thinking"
                 value={form.reasoningEffort}
                 values={choices}
                 onChange={(value) => setForm({ ...form, reasoningEffort: value })}
@@ -215,7 +215,7 @@ export default function ModelDetailScreen() {
               label="Output limit"
               value={form.outputLimit}
               placeholder="Auto"
-              help="Kosong = Auto. Request menghapus field max_output_tokens."
+              help="Empty = Auto. The request omits max_output_tokens."
               keyboardType="number-pad"
               onChange={(value) => setForm({ ...form, outputLimit: value })}
               onReset={() => setForm({ ...form, outputLimit: '' })}
@@ -223,11 +223,11 @@ export default function ModelDetailScreen() {
           </Section>
 
           {message !== null && (
-            <Text style={{ color: message.startsWith('Tersimpan') ? theme.colors.text : theme.colors.danger }}>
+            <Text style={{ color: message.startsWith('Saved') ? theme.colors.text : theme.colors.danger }}>
               {message}
             </Text>
           )}
-          <PrimaryButton label="Simpan" onPress={() => void save()} />
+          <PrimaryButton label="Save" onPress={() => void save()} />
           <Action label="Reset model" danger onPress={resetModel} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -265,7 +265,7 @@ function buildOverride(
   const outputLimit = positiveInteger(form.outputLimit, 'Output limit');
   if (!outputLimit.ok) return outputLimit;
   if (outputLimit.value !== null && ceiling !== null && outputLimit.value > ceiling) {
-    return { ok: false, message: `Output limit maksimal ${String(ceiling)}.` };
+    return { ok: false, message: `Output limit cannot exceed ${String(ceiling)}.` };
   }
   const reasoningEfforts = stringArray(form.reasoningEfforts);
   const inputModalities = stringArray(form.inputModalities);
@@ -303,7 +303,7 @@ function positiveInteger(
   const value = Number(text);
   return Number.isSafeInteger(value) && value > 0
     ? { ok: true, value }
-    : { ok: false, message: `${label} harus bilangan bulat positif.` };
+    : { ok: false, message: `${label} must be a positive integer.` };
 }
 
 function stringArray(text: string): string[] | null {

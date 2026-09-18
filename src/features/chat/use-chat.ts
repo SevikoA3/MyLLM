@@ -144,7 +144,7 @@ export function useChat(
             setContextPolicy(DEFAULT_CONTEXT_POLICY);
             setReasoningEffortState(null);
             setReasoningOptions([]);
-            setError(modelConfigError('Konfigurasi reasoning tidak valid. Periksa detail model.'));
+            setError(modelConfigError('Thinking configuration is invalid. Check model details.'));
           }
         }
       }
@@ -249,7 +249,7 @@ export function useChat(
         pendingRef.current = false;
         if (alive.current) {
           setPending(false);
-          setError(modelConfigError('Konfigurasi model tidak valid. Periksa detail model.'));
+          setError(modelConfigError('Model configuration is invalid. Check model details.'));
         }
         return false;
       }
@@ -257,7 +257,7 @@ export function useChat(
         pendingRef.current = false;
         if (alive.current) {
           setPending(false);
-          setError(modelConfigError('Model aktif tidak ditemukan di katalog. Refresh atau pilih model lagi.'));
+          setError(modelConfigError('Active model is missing from the catalog. Refresh or select it again.'));
         }
         return false;
       }
@@ -656,7 +656,7 @@ export function useChat(
       );
       if (config === null) {
         if (alive.current) {
-          setError(modelConfigError('Model aktif tidak ditemukan di katalog.'));
+          setError(modelConfigError('Active model is missing from the catalog.'));
         }
         return false;
       }
@@ -761,7 +761,7 @@ export function useChat(
         return true;
       } catch {
         if (alive.current) {
-          setError(modelConfigError('Pilihan reasoning gagal disimpan.'));
+          setError(modelConfigError('Thinking selection could not be saved.'));
         }
         return false;
       } finally {
@@ -859,7 +859,7 @@ function newId(prefix: string): string {
 function missingCredentialError(): AppError {
   return createAppError({
     category: 'auth',
-    message: 'API key tidak tersedia. Hubungkan ulang endpoint dari Setup.',
+    message: 'API key is unavailable. Reconnect the endpoint from Setup.',
     httpStatus: null,
     providerCode: null,
     requestId: null,
@@ -871,7 +871,7 @@ function missingCredentialError(): AppError {
 function localRequestError(): AppError {
   return createAppError({
     category: 'unknown',
-    message: 'Request tidak dapat disiapkan. Coba lagi.',
+    message: 'Request could not be prepared. Try again.',
     httpStatus: null,
     providerCode: null,
     requestId: null,
@@ -883,7 +883,7 @@ function localRequestError(): AppError {
 function contextHardStopError(): AppError {
   return createAppError({
     category: 'request',
-    message: 'Context hampir penuh. Pilih Compact now, mulai chat baru, atau kurangi output reserve.',
+    message: 'Context is nearly full. Choose Compact now, start a new chat, or reduce the output reserve.',
     httpStatus: null,
     providerCode: null,
     requestId: null,

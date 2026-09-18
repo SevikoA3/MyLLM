@@ -8,8 +8,8 @@ export type ErrorCopy = {
 };
 
 const FALLBACK: ErrorCopy = {
-  title: 'Koneksi gagal',
-  body: 'Endpoint tidak dapat dihubungi. Periksa kembali base URL dan jaringan.',
+  title: 'Connection failed',
+  body: 'The endpoint could not be reached. Check the base URL and network.',
   retryable: true,
 };
 
@@ -19,56 +19,56 @@ export function describe(error: AppError, finalUrl: string): ErrorCopy {
     case 'auth':
     case 'billing':
       return {
-        title: error.category === 'billing' ? 'Credential tidak punya akses' : 'Credential ditolak',
+        title: error.category === 'billing' ? 'Credential has no access' : 'Credential rejected',
         body:
-          'Endpoint menolak API key ini (HTTP ' +
+          'The endpoint rejected this API key (HTTP ' +
           String(error.httpStatus ?? '-') +
-          '). Masukkan key baru lalu hubungkan ulang.',
+          '). Enter a new key and reconnect.',
         retryable: false,
       };
     case 'not-found':
       return {
-        title: 'URL model list tidak ditemukan',
+        title: 'Model list URL not found',
         body:
-          'URL final: ' +
+          'Final URL: ' +
           finalUrl +
-          '. Periksa apakah base URL perlu menyertakan /v1, atau ubah models path di bagian Advanced.',
+          '. Check whether the base URL needs /v1, or change the model path in Advanced.',
         retryable: true,
       };
     case 'timeout':
       return {
-        title: 'Timeout 15 detik',
-        body: 'Endpoint tidak menjawab dalam 15 detik. Periksa jaringan lalu coba lagi.',
+        title: '15-second timeout',
+        body: 'The endpoint did not respond within 15 seconds. Check the network and try again.',
         retryable: true,
       };
     case 'tls':
       return {
-        title: 'Sertifikat TLS ditolak',
-        body: 'Aplikasi tidak memakai sertifikat yang gagal diverifikasi. Perbaiki sertifikat di sisi server.',
+        title: 'TLS certificate rejected',
+        body: 'The app does not trust an unverifiable certificate. Fix the certificate on the server.',
         retryable: false,
       };
     case 'schema':
       return {
-        title: 'Schema response tidak kompatibel',
+        title: 'Incompatible response schema',
         body:
-          'Endpoint tidak mengembalikan bentuk OpenAI { data: [ ... ] }. Periksa models path di bagian Advanced.',
+          'The endpoint did not return the OpenAI { data: [ ... ] } shape. Check the model path in Advanced.',
         retryable: true,
       };
     case 'model':
       return {
-        title: 'Tidak ada model yang bisa dipakai',
+        title: 'No usable models',
         body:
-          'Endpoint menjawab tetapi tidak ada satu pun model dengan id yang valid. Periksa akses model pada key ini.',
+          'The endpoint responded, but no model had a valid ID. Check model access for this key.',
         retryable: false,
       };
     case 'rate-limit':
     case 'server':
-      return { title: 'Endpoint sedang bermasalah', body: error.message, retryable: true };
+      return { title: 'Endpoint problem', body: error.message, retryable: true };
     case 'request':
-      return { title: 'Input endpoint tidak valid', body: error.message, retryable: false };
+      return { title: 'Invalid endpoint input', body: error.message, retryable: false };
     case 'network':
       return {
-        title: 'Endpoint tidak dapat dihubungi',
+        title: 'Endpoint unreachable',
         body: error.message + ' (' + finalUrl + ')',
         retryable: true,
       };
@@ -78,5 +78,5 @@ export function describe(error: AppError, finalUrl: string): ErrorCopy {
 }
 
 export function modelSummary(models: ModelRecord[]): string {
-  return String(models.length) + ' model ditemukan';
+  return String(models.length) + ' models found';
 }

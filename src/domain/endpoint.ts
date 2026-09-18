@@ -67,7 +67,7 @@ const BLOCKED_HEADERS = new Set(['host', 'content-length', 'authorization', 'x-a
 export function normalizeBaseUrl(input: string): string {
   const trimmed = input.trim();
   if (trimmed.length === 0) {
-    throw new Error('Base URL kosong.');
+    throw new Error('Base URL is empty.');
   }
   const url = parseAbsoluteUrl(trimmed);
   const path = url.pathname.replace(/\/+$/, '');
@@ -90,7 +90,7 @@ export function joinEndpointPath(baseUrl: string, path: string): string {
 export function buildAuthHeaders(mode: AuthMode, apiKey: string): Record<string, string> {
   const value = apiKey.trim();
   if (value.length === 0) {
-    throw new Error('API key kosong.');
+    throw new Error('API key is empty.');
   }
   return mode === 'bearer' ? { Authorization: `Bearer ${value}` } : { 'x-api-key': value };
 }
@@ -117,7 +117,7 @@ export function validateBaseUrl(input: string): string | null {
     normalizeBaseUrl(input);
     return null;
   } catch (error) {
-    return error instanceof Error ? error.message : 'Base URL tidak valid.';
+    return error instanceof Error ? error.message : 'Base URL is invalid.';
   }
 }
 
@@ -126,17 +126,17 @@ function parseAbsoluteUrl(input: string): URL {
   try {
     url = new URL(input);
   } catch {
-    throw new Error('Base URL harus URL absolut, contoh https://api.example.com/v1.');
+    throw new Error('Base URL must be an absolute URL, for example https://api.example.com/v1.');
   }
   if (url.username.length > 0 || url.password.length > 0) {
-    throw new Error('Base URL tidak boleh memuat username atau password.');
+    throw new Error('Base URL must not contain a username or password.');
   }
   if (url.hostname.length === 0) {
-    throw new Error('Base URL harus memuat hostname.');
+    throw new Error('Base URL must contain a hostname.');
   }
   if (!isSecureProtocol(url)) {
     throw new Error(
-      `Skema ${url.protocol.replace(':', '')} belum didukung. Phase 1 hanya menerima HTTPS. Pengembangan lewat HTTP lokal ditambahkan pada fase transport.`,
+      `The ${url.protocol.replace(':', '')} scheme is not supported. Phase 1 only accepts HTTPS. Local HTTP development is added in the transport phase.`,
     );
   }
   return url;
