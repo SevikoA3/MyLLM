@@ -18,8 +18,8 @@ describe('credentialStore', () => {
   it('menyimpan API key dengan key berbasis credentialId', async () => {
     const { store, items } = fakeSecureStore();
     await createCredentialStore(store).save('cred_1', 'sk-rahasia');
-    expect([...items.keys()]).toEqual(['myllm.credential.cred_1']);
-    expect([...items.values()]).toEqual(['sk-rahasia']);
+    expect([...items.keys()]).toEqual(['myllm.credential.cred_1', 'myllm.credential.index']);
+    expect(items.get('myllm.credential.cred_1')).toBe('sk-rahasia');
   });
 
   it('mengembalikan null untuk credential yang belum ada', async () => {
@@ -36,5 +36,14 @@ describe('credentialStore', () => {
     expect(await credentials.read('cred_1')).toBeNull();
     expect(await credentials.read('cred_2')).toBe('b');
   });
-});
 
+  it('clearAll menghapus semua credential terdaftar', async () => {
+    const { store } = fakeSecureStore();
+    const credentials = createCredentialStore(store);
+    await credentials.save('cred_1', 'a');
+    await credentials.save('cred_2', 'b');
+    await credentials.clearAll();
+    expect(await credentials.read('cred_1')).toBeNull();
+    expect(await credentials.read('cred_2')).toBeNull();
+  });
+});

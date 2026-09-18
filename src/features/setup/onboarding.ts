@@ -88,6 +88,7 @@ export async function connectAndDiscover(
   // di Keystore ketika pengguna hanya memperbaiki URL.
   const reusesCredential = input.apiKeyChanged === false && active !== null && active.credentialRef !== null;
   const credentialId = reusesCredential ? active.credentialRef : newCredentialId();
+  const previousCredentialId = active?.credentialRef ?? null;
 
   let profile: EndpointProfile;
   try {
@@ -155,6 +156,9 @@ export async function connectAndDiscover(
         safeDetails: {},
       }),
     };
+  }
+  if (previousCredentialId !== null && previousCredentialId !== credentialId) {
+    await credentials.remove(previousCredentialId);
   }
   return { ok: true, profile };
 }

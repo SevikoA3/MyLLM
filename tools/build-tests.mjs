@@ -22,6 +22,7 @@ const ENTRIES = [
 // kompilasi dengan stub supaya orkestrasi onboarding tetap dapat diuji.
 const STUBS = {
   'expo-fetch.js': 'export const fetch = globalThis.fetch;\n',
+  'services/diagnostics/diagnostic-ring.js': 'export const recordDiagnostic = async () => {};\n',
   'services/persistence/catalog-files.js': [
     'export const fileCatalogStorage = {',
     '  readText: async () => null,',

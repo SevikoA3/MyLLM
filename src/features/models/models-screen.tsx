@@ -114,6 +114,7 @@ export default function ModelsScreen() {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <SmallButton label="Add model" onPress={() => setAdding((value) => !value)} />
           <SmallButton label="JSON" onPress={() => router.push('/settings/models-json')} />
+          <SmallButton label="Settings" onPress={() => router.push('/settings')} />
         </View>
         {adding && (
           <View style={{ gap: 8 }}>

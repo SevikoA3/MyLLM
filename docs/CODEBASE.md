@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: implementasi hardening Phase 11 berjalan selesai. Gate manual Android untuk streaming, recovery, model override, context meter, auto-compact, dan internal build masih menunggu; clear-all-data, diagnostic ring, dan E2E belum ada.
+Status: Phase 11 selesai 18 September 2026. Hardening, clear-all-data, diagnostic ring, safe diagnostic export, external-link handling, manual Android checks, E2E, smoke, dan internal build sudah dikonfirmasi lulus oleh pemilik proyek.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -28,7 +28,7 @@ myllm/
       index.tsx                     re-export layar chat utama
       models.tsx                    re-export src/features/models/models-screen
     settings/
-      index.tsx                     placeholder settings (Phase 2, 3, 10)
+      index.tsx                     settings, safe diagnostic export, and clear-all-data confirmation
       models.tsx                    re-export src/features/models/models-screen
       model.tsx                     re-export detail dan override satu model
       models-json.tsx               re-export editor JSON model override
@@ -88,8 +88,11 @@ myllm/
         model-badges.ts             badge metadata dan ringkasan refresh
     services/                       I/O ke luar proses
       credentials/
-        store.ts                    API key di Keystore
+        store.ts                    API key di Keystore dan registry credential untuk clear-all
         store.test.ts
+      diagnostics/
+        diagnostic-ring.ts         ring diagnostik lokal 2 MB tanpa content atau credential
+        diagnostic-transfer.ts     export ring diagnostik aman melalui share sheet
       transport/
         models.ts                   GET /models dengan timeout dan tanpa redirect
         responses.ts                POST /responses streaming, event mapping, timing, cancellation, retry, dan Retry-After
@@ -108,6 +111,7 @@ myllm/
         catalog-files.ts            implementasi CatalogStorage lewat expo-file-system
         catalog-files.test.ts
         catalog-transfer.ts         import document picker dan export share sheet
+        clear-all.ts                orkestrasi penghapusan SQLite, credential, cache, dan diagnostic ring
     ui/
       tokens.ts                     spacing dan radius
       theme.ts                      warna light/dark dan token visual aktif
@@ -154,7 +158,7 @@ Folder yang muncul di struktur target tetapi belum ada: `modules/`, dan berkas `
 | `app/settings/models.tsx` | Re-export layar picker | `features/models/models-screen` |
 | `app/settings/model.tsx` | Re-export detail dan override model | `features/models/model-detail-screen` |
 | `app/settings/models-json.tsx` | Re-export editor JSON override | `features/models/models-json-screen` |
-| `app/settings/index.tsx` | Placeholder settings | react-native |
+| `app/settings/index.tsx` | Settings, safe diagnostic export, and clear-all-data confirmation | `services/persistence/clear-all`, `services/diagnostics/*`, `services/persistence/*` |
 | `app/history.tsx` | Re-export layar history | `features/history/history-screen` |
 | `app/chat/[conversationId].tsx` | Re-export chat untuk membuka conversation tersimpan atau route `new` | `features/chat/chat-screen` |
 
@@ -203,15 +207,18 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 
 | File | Isi | Bergantung pada |
 |---|---|---|
-| `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.` | modul native dimuat lazy |
+| `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.`, registry untuk clear-all | modul native dimuat lazy |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
 | `transport/responses.ts` | `responsesClient`, `responsesUrl`, `buildResponsesBody`, canonical append-only system and history input, request reasoning, output, and optional prompt cache key, POST streaming, internal events, timing, pre-event retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
 | `persistence/endpoint-store.ts` | Profile endpoint dan activeModelId di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
 | `persistence/catalog-store.ts` | `createCatalogRepository`, atomic snapshot dan override, preview/import, custom model, `loadModelRequestSnapshot`, dan `saveModelReasoningEffort` | `domain/catalog`, `domain/catalog-merge`, `domain/model-config`, `domain/endpoint` |
-| `persistence/catalog-files.ts` | `fileCatalogStorage` dan `readBundledDefaults` di document directory | `expo-file-system`, `assets/model-defaults.json` |
-| `persistence/catalog-transfer.ts` | `pickOverridesJson` dan `shareOverridesJson` untuk Android document picker dan share sheet | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
-| `persistence/conversation-store.ts` | `conversationRepository`, migration v1 dan v2, WAL, foreign key, atomic turn writes, recovery, request history, compaction source and active summary, pagination, normalized metrics, rename, delete | `domain/conversation`, `domain/compaction`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
+| `persistence/catalog-files.ts` | `fileCatalogStorage`, `readBundledDefaults`, dan clear cache di document directory | `expo-file-system`, `assets/model-defaults.json` |
+| `persistence/catalog-transfer.ts` | `pickOverridesJson`, `shareOverridesJson`, dan clear export temp file | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
+| `persistence/clear-all.ts` | Orkestrasi clear-all data dengan dependency injection agar dapat diuji tanpa native module | `domain/endpoint` |
+| `persistence/conversation-store.ts` | `conversationRepository`, migration v1 dan v2, WAL, foreign key, atomic turn writes, recovery, request history, compaction source and active summary, pagination, normalized metrics, rename, delete, clear database | `domain/conversation`, `domain/compaction`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
+| `diagnostics/diagnostic-ring.ts` | Ring NDJSON lokal 2 MB yang hanya menyimpan metadata request aman | `expo-file-system` |
+| `diagnostics/diagnostic-transfer.ts` | Export metadata ring ke JSON melalui share sheet | `diagnostic-ring`, `expo-file-system`, `expo-sharing` |
 | `context/local-compaction.ts` | Memilih prefix turn, meminta summary terstruktur, retry tanpa output, validasi, dan menyimpan usage compaction terpisah | `domain/compaction`, `domain/context`, `persistence/conversation-store`, `transport/responses` |
 
 `CatalogStorage` sengaja sempit supaya test memakai `Map`, bukan berkas nyata. Ikuti pola ini untuk service baru.

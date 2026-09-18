@@ -49,5 +49,14 @@ describe('endpointStore', () => {
     await endpoints.saveActiveModelId('amanai/medium');
     expect(await endpoints.loadActiveModelId()).toBe('amanai/medium');
   });
-});
 
+  it('clear menghapus endpoint dan activeModelId', async () => {
+    const { store } = fakeKeyValueStore();
+    const endpoints = createEndpointStore(store);
+    await endpoints.save(profile);
+    await endpoints.saveActiveModelId('amanai/medium');
+    await endpoints.clear();
+    expect(await endpoints.load()).toBeNull();
+    expect(await endpoints.loadActiveModelId()).toBeNull();
+  });
+});

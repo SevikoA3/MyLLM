@@ -154,7 +154,28 @@ describe('connectAndDiscover', () => {
       expect(result.profile.credentialRef).toBe('cred_lama');
     }
     expect(seenKey).toBe('sk-lokal');
-    expect(secure.items.size).toBe(1);
+    expect(secure.items.size).toBe(2);
+  });
+
+  it('menghapus credential lama saat key diganti', async () => {
+    const secure = fakeSecureStore();
+    await secure.store.setItemAsync('myllm.credential.cred_lama', 'sk-lama');
+    const existing = createEndpointProfile({
+      id: 'ep_lama',
+      name: 'AmanAI',
+      baseUrl: 'https://api.amanai.dev/v1',
+      credentialRef: 'cred_lama',
+    });
+
+    const result = await connectAndDiscover(input({ apiKey: 'sk-baru', apiKeyChanged: true }), existing, {
+      secureStore: secure.store,
+      keyValueStore: fakeKeyValueStore().store,
+      discover: async () => ({ ok: true, models: [model] }),
+      seedCatalog,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(await secure.store.getItemAsync('myllm.credential.cred_lama')).toBeNull();
   });
 
   it('menghapus credential baru saat penyimpanan profile gagal', async () => {

@@ -48,3 +48,10 @@ export const fileCatalogStorage: CatalogStorage = {
 export async function readBundledDefaults(): Promise<CatalogDefaults> {
   return CatalogDefaultsSchema.parse(defaults);
 }
+
+export function clearCatalogCache(): void {
+  const directory = new Directory(Paths.document, CATALOG_DIR);
+  if (directory.exists) {
+    directory.delete();
+  }
+}

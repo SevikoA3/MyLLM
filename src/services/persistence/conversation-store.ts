@@ -127,9 +127,15 @@ async function nativeDatabase(): Promise<SQLiteDatabase> {
   return openDatabaseAsync(DATABASE_NAME);
 }
 
+async function nativeDeleteDatabase(): Promise<void> {
+  const { deleteDatabaseAsync } = await import('expo-sqlite');
+  await deleteDatabaseAsync(DATABASE_NAME);
+}
+
 export function createConversationRepository(
   resolveDatabase: () => Promise<SQLiteDatabase> = nativeDatabase,
   now: () => number = Date.now,
+  deleteDatabase: () => Promise<void> = nativeDeleteDatabase,
 ) {
   let databasePromise: Promise<SQLiteDatabase> | null = null;
   let initialized: Promise<void> | null = null;
@@ -142,6 +148,15 @@ export function createConversationRepository(
   async function initialize(): Promise<void> {
     initialized ??= migrateAndRecover();
     return initialized;
+  }
+
+  async function clear(): Promise<void> {
+    if (databasePromise !== null) {
+      await (await databasePromise).closeAsync();
+    }
+    await deleteDatabase();
+    databasePromise = null;
+    initialized = null;
   }
 
   async function migrateAndRecover(): Promise<void> {
@@ -658,6 +673,7 @@ export function createConversationRepository(
 
   return {
     initialize,
+    clear,
     startTurn,
     restartTurn,
     flushAssistant,

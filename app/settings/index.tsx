@@ -1,11 +1,55 @@
-import { Link } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Link, useRouter } from 'expo-router';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { credentialStore } from '../../src/services/credentials/store';
+import { clearDiagnosticRing } from '../../src/services/diagnostics/diagnostic-ring';
+import { shareDiagnostics } from '../../src/services/diagnostics/diagnostic-transfer';
+import { clearAllData } from '../../src/services/persistence/clear-all';
+import { clearCatalogCache } from '../../src/services/persistence/catalog-files';
+import { clearTransferCache } from '../../src/services/persistence/catalog-transfer';
+import { conversationRepository } from '../../src/services/persistence/conversation-store';
+import { endpointStore } from '../../src/services/persistence/endpoint-store';
 import { useTheme } from '../../src/ui/theme';
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const router = useRouter();
+
+  const confirmClearAll = () => {
+    Alert.alert(
+      'Delete all app data?',
+      'This removes conversations, endpoint settings, model cache, overrides, diagnostics, and saved credentials.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete all data',
+          style: 'destructive',
+          onPress: () => {
+            void clearAllData({
+              loadEndpoint: endpointStore.load,
+              removeCredential: credentialStore.remove,
+              clearCredentials: credentialStore.clearAll,
+              clearEndpoint: endpointStore.clear,
+              clearConversation: conversationRepository.clear,
+              clearCatalog: clearCatalogCache,
+              clearTransfers: clearTransferCache,
+              clearDiagnostics: clearDiagnosticRing,
+            })
+              .then(() => router.replace('/setup'))
+              .catch(() => Alert.alert('Could not delete all data', 'Close the app and try again.'));
+          },
+        },
+      ],
+    );
+  };
+
+  const exportDiagnostics = () => {
+    void shareDiagnostics().catch(() =>
+      Alert.alert('Could not export diagnostics', 'The system share sheet is unavailable.'),
+    );
+  };
+
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: theme.colors.background }}>
       <View style={{ padding: theme.spacing.screen, gap: theme.spacing.screen }}>
@@ -53,6 +97,42 @@ export default function SettingsScreen() {
             </Text>
           </Pressable>
         </Link>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Export diagnostics"
+          onPress={exportDiagnostics}
+          style={{
+            minHeight: 48,
+            justifyContent: 'center',
+            paddingHorizontal: theme.spacing.screen,
+            borderRadius: theme.radius.control,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surface,
+          }}>
+          <Text style={{ color: theme.colors.text, fontSize: theme.typography.body, fontWeight: '600' }}>
+            Export diagnostics
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Delete all app data"
+          onPress={confirmClearAll}
+          style={{
+            minHeight: 48,
+            justifyContent: 'center',
+            paddingHorizontal: theme.spacing.screen,
+            borderRadius: theme.radius.control,
+            borderWidth: 1,
+            borderColor: theme.colors.danger,
+            backgroundColor: theme.colors.surface,
+          }}>
+          <Text style={{ color: theme.colors.danger, fontSize: theme.typography.body, fontWeight: '600' }}>
+            Delete all app data
+          </Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );

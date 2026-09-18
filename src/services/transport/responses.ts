@@ -19,6 +19,7 @@ import {
 import { createSseParser, type SseFrame } from '../../domain/sse';
 import { buildSystemPrompt } from '../../domain/system-prompt';
 import { readResponseText } from './body';
+import { recordDiagnostic } from '../diagnostics/diagnostic-ring';
 
 export const RESPONSE_TIMEOUT_MS = 60_000;
 const RETRY_DELAY_MS = 250;
@@ -177,7 +178,17 @@ async function send(
       !result.error.retryable ||
       attempts >= MAX_ATTEMPTS
     ) {
-      return { ...result, attempts };
+      const outcome = { ...result, attempts };
+      void recordDiagnostic({
+        kind: result.ok ? 'response-completed' : result.cancelled ? 'request-cancelled' : 'response-failed',
+        endpointId: profile.id,
+        modelId: input.modelId,
+        attempt: attempts,
+        httpStatus: result.ok ? null : result.error.httpStatus,
+        errorCategory: result.ok ? null : result.error.category,
+        requestId: result.ok ? null : result.error.requestId,
+      });
+      return outcome;
     }
     await wait(result.error.retryAfterMs ?? RETRY_DELAY_MS);
   } while (true);

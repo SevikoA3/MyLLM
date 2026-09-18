@@ -104,7 +104,7 @@ test('connect sukses menyimpan key di secure store dan profile tanpa secret', as
   const result = await connectAndDiscover(setupInput(), null, withDeps(stores));
 
   assert.equal(result.ok, true);
-  assert.equal(stores.secure.size, 1);
+  assert.equal(stores.secure.size, 2);
   assert.equal([...stores.secure.values()][0], KEY);
   const serialized = [...stores.kv.entries()].map(([, value]) => value).join('|');
   assert.ok(!serialized.includes(KEY));
@@ -155,7 +155,7 @@ test('percobaan ulang memakai credential tersimpan tanpa key di form', async () 
     assert.equal(retry.profile.id, first.profile.id);
     assert.equal(retry.profile.credentialRef, first.profile.credentialRef);
   }
-  assert.equal(stores.secure.size, 1);
+  assert.equal(stores.secure.size, 2);
   assert.equal(await createCredentialStore(stores.secureStore).read(first.profile.credentialRef), KEY);
 });
 

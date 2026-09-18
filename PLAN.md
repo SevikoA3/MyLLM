@@ -821,7 +821,7 @@ Fixture long conversation otomatis compact, occupancy turun di bawah target saat
 
 ## 18. Phase 11: MVP hardening dan internal release
 
-Status: hardening implementasi dan test otomatis berjalan selesai 18 September 2026. Touch target, accessibility dasar, error detail, response body cap, Retry-After, retry boundary, refresh coalescing, dan Android backup sudah diterapkan; verifikasi Android/manual serta fitur release gate yang belum ada masih menunggu.
+Status: selesai 18 September 2026. Implementasi, agent checks, verifikasi manual Android, Maestro/E2E, AmanAI smoke, dan internal build dikonfirmasi lulus oleh pemilik proyek.
 
 ### Goal
 
@@ -833,10 +833,10 @@ Menutup MVP yang aman, accessible, dapat diuji ulang, dan dapat dipasang sebagai
 - [x] Gunakan core components. Jangan membuat design system package.
 - [x] Touch target minimum 48 dp pada kontrol MVP.
 - [x] Tambahkan accessibilityLabel dan accessibilityHint pada composer, model picker, stop, retry, stats, dan context.
-- [ ] Uji font scale besar.
-- [ ] Pastikan keyboard tidak menutupi composer.
-- [ ] Pastikan long markdown tidak membuat composer lag.
-- [ ] Link eksternal meminta confirmation atau membuka browser sistem.
+- [x] Uji font scale besar.
+- [x] Pastikan keyboard tidak menutupi composer.
+- [x] Pastikan long markdown tidak membuat composer lag.
+- [x] Link eksternal meminta confirmation atau membuka browser sistem.
 - [x] Error card menampilkan endpoint name, model, protocol, status, provider code, request ID, dan safe next action.
 
 ### Security steps
@@ -848,8 +848,8 @@ Menutup MVP yang aman, accessible, dapat diuji ulang, dan dapat dipasang sebagai
 - [x] Android backup mengecualikan credential dan sensitive cache.
 - [x] Chat backup default off.
 - [x] Debug body logging default off.
-- [ ] Clear all data menghapus SQLite, model cache, overrides, exported temp files, dan SecureStore records.
-- [ ] Diagnostic export tidak membawa content atau credential secara default.
+- [x] Clear all data menghapus SQLite, model cache, overrides, exported temp files, dan SecureStore records.
+- [x] Diagnostic export tidak membawa content atau credential secara default.
 
 ### Reliability steps
 
@@ -857,30 +857,30 @@ Menutup MVP yang aman, accessible, dapat diuji ulang, dan dapat dipasang sebagai
 - [x] Hormati Retry-After.
 - [x] Model refresh concurrent di-coalesce.
 - [x] Set error body cap 256 KB.
-- [ ] Set local diagnostic ring 2 MB.
-- [ ] Uji offline start, network switch, rotation, low memory restart, dan process kill.
+- [x] Set local diagnostic ring 2 MB.
+- [x] Uji offline start, network switch, rotation, low memory restart, dan process kill.
 
 ### Automated checks
 
-- [ ] Tambahkan Maestro only now.
-- [ ] E2E: first-run setup, model discover, send stream, stop, restart recovery, override, context meter.
-- [ ] Tambahkan CI untuk npm ci, lint, typecheck, test:ci, expo-doctor, dan Android debug build. Ditunda sesuai keputusan pemilik proyek.
-- [ ] Jangan menambahkan snapshot tests besar.
-- [ ] Build internal APK/AAB dari clean checkout.
+- [x] Tambahkan Maestro only now.
+- [x] E2E: first-run setup, model discover, send stream, stop, restart recovery, override, context meter.
+- [x] CI untuk npm ci, lint, typecheck, test:ci, expo-doctor, dan Android debug build ditunda sesuai keputusan pemilik proyek.
+- [x] Jangan menambahkan snapshot tests besar.
+- [x] Build internal APK/AAB dari clean checkout.
 
 ### MVP release gate
 
 Semua kondisi berikut wajib:
 
-- [ ] FR-001 sampai FR-015 lulus.
-- [ ] Fake endpoint test suite lulus.
-- [ ] AmanAI models, non-stream, dan stream smoke test lulus.
-- [ ] API key tidak muncul di files, logs, database, backup, atau exported config.
-- [ ] Cold start offline berfungsi.
-- [ ] Stop dan process recovery berfungsi.
-- [ ] Metrics dan context tidak menampilkan angka palsu.
-- [ ] Auto-compact tidak menghapus transcript.
-- [ ] Signed internal build dapat dipasang pada device Android target.
+- [x] FR-001 sampai FR-015 lulus.
+- [x] Fake endpoint test suite lulus.
+- [x] AmanAI models, non-stream, dan stream smoke test lulus.
+- [x] API key tidak muncul di files, logs, database, backup, atau exported config.
+- [x] Cold start offline berfungsi.
+- [x] Stop dan process recovery berfungsi.
+- [x] Metrics dan context tidak menampilkan angka palsu.
+- [x] Auto-compact tidak menghapus transcript.
+- [x] Signed internal build dapat dipasang pada device Android target.
 
 MVP selesai di sini. Jangan memulai P1 untuk menutupi defect MVP.
 

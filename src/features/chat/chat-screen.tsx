@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -522,6 +523,12 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
             code_block: { backgroundColor: theme.colors.background, color: theme.colors.text },
             fence: { backgroundColor: theme.colors.background, color: theme.colors.text },
             link: { color: theme.colors.accent },
+          }}
+          onLinkPress={(url) => {
+            if (/^https?:\/\//i.test(url)) {
+              void Linking.openURL(url).catch(() => undefined);
+            }
+            return false;
           }}>
           {message.text}
         </Markdown>

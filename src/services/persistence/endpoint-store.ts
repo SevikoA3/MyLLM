@@ -41,7 +41,9 @@ export function createEndpointStore(store?: KeyValueStore) {
       await (await resolve()).setItemAsync(ACTIVE_ENDPOINT_KEY, JSON.stringify(profile));
     },
     async clear(): Promise<void> {
-      await (await resolve()).removeItemAsync(ACTIVE_ENDPOINT_KEY);
+      const storage = await resolve();
+      await storage.removeItemAsync(ACTIVE_ENDPOINT_KEY);
+      await storage.removeItemAsync(ACTIVE_MODEL_KEY);
     },
     async loadActiveModelId(): Promise<string | null> {
       return (await resolve()).getItemAsync(ACTIVE_MODEL_KEY);
@@ -53,4 +55,3 @@ export function createEndpointStore(store?: KeyValueStore) {
 }
 
 export const endpointStore = createEndpointStore();
-

@@ -26,3 +26,10 @@ export async function shareOverridesJson(text: string): Promise<void> {
     dialogTitle: 'Export model overrides',
   });
 }
+
+export function clearTransferCache(): void {
+  const target = new File(Paths.cache, 'myllm-model-overrides.json');
+  if (target.exists) {
+    target.delete();
+  }
+}
