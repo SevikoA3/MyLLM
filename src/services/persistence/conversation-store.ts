@@ -8,6 +8,12 @@ import {
   type ConversationSummary,
   type TurnStatus,
 } from '../../domain/conversation';
+import {
+  buildCompactedContext,
+  parseCompactionSummary,
+  type CompactionSummary,
+  type CompactionTurn,
+} from '../../domain/compaction';
 import { buildTurnMetrics, normalizeUsage, type TurnMetrics } from '../../domain/usage';
 import type { StreamTiming } from '../transport/responses';
 
@@ -24,6 +30,7 @@ type StartTurnInput = {
   previousResponseId: string | null;
   reasoningSetting: string | null;
   outputCeiling: number | null;
+  autoCompact: boolean;
 };
 
 type FinishTurnInput = {
@@ -43,6 +50,31 @@ type ConversationRow = {
   updated_at: number;
   endpoint_id: string;
   active_model_id: string;
+  auto_compact: number;
+  active_compaction_id: string | null;
+};
+
+export type CompactionSource = {
+  previousSummary: CompactionSummary | null;
+  turns: CompactionTurn[];
+};
+
+export type BeginCompactionInput = {
+  conversationId: string;
+  sourceStartTurnId: string;
+  sourceEndTurnId: string;
+  sourceStartOrdinal: number;
+  sourceEndOrdinal: number;
+  modelId: string;
+  promptVersion: number;
+  beforeEstimate: number;
+};
+
+export type CompleteCompactionInput = {
+  id: string;
+  summary: CompactionSummary;
+  usage: Record<string, unknown> | null;
+  afterEstimate: number;
 };
 
 type ItemRow = {
@@ -75,6 +107,21 @@ type MetricRow = {
   completed: number | null;
 };
 
+type CompactionRow = {
+  id: string;
+  summary_json: string | null;
+  source_end_ordinal: number;
+  status: 'running' | 'active' | 'failed' | 'interrupted';
+};
+
+type CompactionTurnRow = {
+  turn_id: string;
+  ordinal: number;
+  user_content_json: string;
+  assistant_content_json: string | null;
+  assistant_status: TurnStatus | null;
+};
+
 async function nativeDatabase(): Promise<SQLiteDatabase> {
   const { openDatabaseAsync } = await import('expo-sqlite');
   return openDatabaseAsync(DATABASE_NAME);
@@ -101,13 +148,19 @@ export function createConversationRepository(
     const db = await database();
     await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     const version = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    if ((version?.user_version ?? 0) > 1) {
+    if ((version?.user_version ?? 0) > 2) {
       throw new Error('Database conversation dibuat oleh versi aplikasi yang lebih baru.');
     }
     if ((version?.user_version ?? 0) === 0) {
       await db.withExclusiveTransactionAsync(async (transaction) => {
         await transaction.execAsync(MIGRATION_V1);
         await transaction.execAsync('PRAGMA user_version = 1');
+      });
+    }
+    if ((version?.user_version ?? 0) < 2) {
+      await db.withExclusiveTransactionAsync(async (transaction) => {
+        await transaction.execAsync(MIGRATION_V2);
+        await transaction.execAsync('PRAGMA user_version = 2');
       });
     }
     await db.withExclusiveTransactionAsync(async (transaction) => {
@@ -120,6 +173,9 @@ export function createConversationRepository(
         `UPDATE items SET status = 'interrupted', updated_at = ?
          WHERE role = 'assistant' AND status IN ('sending', 'streaming')`,
         [now()],
+      );
+      await transaction.runAsync(
+        `UPDATE compactions SET status = 'interrupted' WHERE status = 'running'`,
       );
     });
   }
@@ -143,8 +199,8 @@ export function createConversationRepository(
         }
         await transaction.runAsync(
           `INSERT INTO conversations
-           (id, title, created_at, updated_at, endpoint_id, active_model_id)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+           (id, title, created_at, updated_at, endpoint_id, active_model_id, auto_compact)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             conversationId,
             titleFromPrompt(input.prompt),
@@ -152,12 +208,13 @@ export function createConversationRepository(
             timestamp,
             input.endpointId,
             input.modelId,
+            input.autoCompact ? 1 : 0,
           ],
         );
       } else {
         await transaction.runAsync(
-          `UPDATE conversations SET updated_at = ?, active_model_id = ? WHERE id = ?`,
-          [timestamp, input.modelId, conversationId],
+          `UPDATE conversations SET updated_at = ?, active_model_id = ?, auto_compact = ? WHERE id = ?`,
+          [timestamp, input.modelId, input.autoCompact ? 1 : 0, conversationId],
         );
       }
       const ordinal = await transaction.getFirstAsync<{ value: number }>(
@@ -301,6 +358,8 @@ export function createConversationRepository(
     previousResponseModelId: string | null;
     retry: { turnId: string; assistantItemId: string; prompt: string } | null;
     metrics: TurnMetrics[];
+    autoCompact: boolean;
+    compactionActive: boolean;
   } | null> {
     await initialize();
     const db = await database();
@@ -338,6 +397,8 @@ export function createConversationRepository(
       id: conversation.id,
       title: conversation.title,
       messages: rows.map(messageFromRow),
+      autoCompact: conversation.auto_compact !== 0,
+      compactionActive: conversation.active_compaction_id !== null,
       previousResponseId: previous?.response_id ?? null,
       previousResponseModelId: previous?.model_id ?? null,
       metrics: await loadTurnMetrics(conversation.id),
@@ -366,21 +427,159 @@ export function createConversationRepository(
   async function loadRequestHistory(conversationId: string): Promise<ConversationInputMessage[]> {
     await initialize();
     const db = await database();
+    const conversation = await db.getFirstAsync<ConversationRow>(
+      'SELECT * FROM conversations WHERE id = ?',
+      [conversationId],
+    );
+    if (conversation === null) {
+      return [];
+    }
+    const active = await activeCompaction(db, conversation.active_compaction_id);
+    const summary = parseActiveSummary(active);
     const rows = await db.getAllAsync<InputItemRow>(
       `SELECT i.role, i.status, i.content_json
        FROM items i JOIN turns t ON t.id = i.turn_id
        WHERE t.conversation_id = ?
+         AND t.ordinal > ?
          AND (i.role = 'user' OR (i.role = 'assistant' AND i.status = 'completed'))
        ORDER BY t.ordinal ASC, CASE i.role WHEN 'user' THEN 0 ELSE 1 END`,
-      [conversationId],
+      [conversationId, active?.source_end_ordinal ?? 0],
     );
-    return rows.flatMap((row) => {
+    const recent = rows.flatMap((row) => {
       if (row.role === null) {
         return [];
       }
       const text = parseContent(row.content_json).text;
       return text.length === 0 ? [] : [{ role: row.role, content: text }];
     });
+    return summary === null ? recent : buildCompactedContext(summary, recent);
+  }
+
+  async function loadCompactionSource(conversationId: string): Promise<CompactionSource> {
+    await initialize();
+    const db = await database();
+    const conversation = await db.getFirstAsync<ConversationRow>(
+      'SELECT * FROM conversations WHERE id = ?',
+      [conversationId],
+    );
+    if (conversation === null) {
+      return { previousSummary: null, turns: [] };
+    }
+    const active = await activeCompaction(db, conversation.active_compaction_id);
+    const previousSummary = parseActiveSummary(active);
+    const rows = await db.getAllAsync<CompactionTurnRow>(
+      `SELECT t.id AS turn_id, t.ordinal,
+              user.content_json AS user_content_json,
+              assistant.content_json AS assistant_content_json,
+              assistant.status AS assistant_status
+       FROM turns t
+       JOIN items user ON user.turn_id = t.id AND user.role = 'user'
+       JOIN items assistant ON assistant.turn_id = t.id AND assistant.role = 'assistant'
+       WHERE t.conversation_id = ? AND t.ordinal > ?
+         AND t.status = 'completed' AND assistant.status = 'completed'
+       ORDER BY t.ordinal ASC`,
+      [conversationId, active?.source_end_ordinal ?? 0],
+    );
+    return {
+      previousSummary,
+      turns: rows.map((row) => ({
+        turnId: row.turn_id,
+        ordinal: row.ordinal,
+        userText: parseContent(row.user_content_json).text,
+        assistantText: parseContent(row.assistant_content_json).text,
+      })),
+    };
+  }
+
+  async function setAutoCompact(conversationId: string, enabled: boolean): Promise<void> {
+    await initialize();
+    await (await database()).runAsync(
+      'UPDATE conversations SET auto_compact = ?, updated_at = ? WHERE id = ?',
+      [enabled ? 1 : 0, now(), conversationId],
+    );
+  }
+
+  async function beginCompaction(input: BeginCompactionInput): Promise<string | null> {
+    await initialize();
+    const db = await database();
+    const timestamp = now();
+    let id: string | null = null;
+    await db.withExclusiveTransactionAsync(async (transaction) => {
+      const running = await transaction.getFirstAsync<{ id: string }>(
+        `SELECT id FROM compactions WHERE conversation_id = ? AND status = 'running' LIMIT 1`,
+        [input.conversationId],
+      );
+      if (running !== null) {
+        return;
+      }
+      id = newId('compact', timestamp);
+      await transaction.runAsync(
+        `INSERT INTO compactions
+         (id, conversation_id, method, source_start_turn_id, source_end_turn_id,
+          source_start_ordinal, source_end_ordinal, model_id, prompt_version,
+          input_tokens, output_tokens, before_estimate, after_estimate, usage_json,
+          summary_json, created_at, completed_at, status)
+         VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, NULL, ?, NULL, 'running')`,
+        [
+          id,
+          input.conversationId,
+          input.sourceStartTurnId,
+          input.sourceEndTurnId,
+          input.sourceStartOrdinal,
+          input.sourceEndOrdinal,
+          input.modelId,
+          input.promptVersion,
+          input.beforeEstimate,
+          timestamp,
+        ],
+      );
+    });
+    return id;
+  }
+
+  async function completeCompaction(input: CompleteCompactionInput): Promise<void> {
+    await initialize();
+    const db = await database();
+    const timestamp = now();
+    const usageJson = input.usage === null ? null : JSON.stringify(input.usage);
+    const normalized = normalizeUsage(input.usage);
+    await db.withExclusiveTransactionAsync(async (transaction) => {
+      const row = await transaction.getFirstAsync<{ conversation_id: string }>(
+        `SELECT conversation_id FROM compactions WHERE id = ? AND status = 'running'`,
+        [input.id],
+      );
+      if (row === null) {
+        return;
+      }
+      await transaction.runAsync(
+        `UPDATE compactions
+         SET status = 'active', summary_json = ?, usage_json = ?, input_tokens = ?,
+             output_tokens = ?, after_estimate = ?, completed_at = ?
+         WHERE id = ?`,
+        [
+          JSON.stringify(input.summary),
+          usageJson,
+          normalized.inputTokens,
+          normalized.outputTokens,
+          input.afterEstimate,
+          timestamp,
+          input.id,
+        ],
+      );
+      await transaction.runAsync(
+        'UPDATE conversations SET active_compaction_id = ?, updated_at = ? WHERE id = ?',
+        [input.id, timestamp, row.conversation_id],
+      );
+    });
+  }
+
+  async function failCompaction(id: string, status: 'failed' | 'interrupted' = 'failed'): Promise<void> {
+    await initialize();
+    await (await database()).runAsync(
+      `UPDATE compactions SET status = ?, completed_at = ?
+       WHERE id = ? AND status = 'running'`,
+      [status, now(), id],
+    );
   }
 
   async function loadTurnMetrics(conversationId: string): Promise<TurnMetrics[]> {
@@ -466,11 +665,43 @@ export function createConversationRepository(
     loadConversation,
     loadLatest,
     loadRequestHistory,
+    loadCompactionSource,
+    setAutoCompact,
+    beginCompaction,
+    completeCompaction,
+    failCompaction,
     loadTurnMetrics,
     list,
     rename,
     remove,
   };
+}
+
+async function activeCompaction(
+  database: SQLiteDatabase,
+  id: string | null,
+): Promise<CompactionRow | null> {
+  return id === null
+    ? null
+    : database.getFirstAsync<CompactionRow>(
+        `SELECT id, summary_json, source_end_ordinal, status
+         FROM compactions WHERE id = ?`,
+        [id],
+      );
+}
+
+function parseActiveSummary(row: CompactionRow | null): CompactionSummary | null {
+  if (row === null || row.status !== 'active') {
+    return null;
+  }
+  if (row.summary_json === null) {
+    throw new Error('Compaction aktif tidak memiliki summary.');
+  }
+  const parsed = parseCompactionSummary(row.summary_json);
+  if (!parsed.ok) {
+    throw new Error(parsed.message);
+  }
+  return parsed.value;
 }
 
 function contentJson(text: string, reasoningSummary: string | null): string {
@@ -578,6 +809,33 @@ CREATE TABLE timing (
   first_visible_token REAL,
   completed REAL
 );
+`;
+
+const MIGRATION_V2 = `
+ALTER TABLE conversations ADD COLUMN auto_compact INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE conversations ADD COLUMN active_compaction_id TEXT;
+CREATE TABLE compactions (
+  id TEXT PRIMARY KEY NOT NULL,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  method TEXT NOT NULL CHECK(method IN ('local')),
+  source_start_turn_id TEXT NOT NULL,
+  source_end_turn_id TEXT NOT NULL,
+  source_start_ordinal INTEGER NOT NULL,
+  source_end_ordinal INTEGER NOT NULL,
+  model_id TEXT NOT NULL,
+  prompt_version INTEGER NOT NULL,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  before_estimate INTEGER NOT NULL,
+  after_estimate INTEGER,
+  usage_json TEXT,
+  summary_json TEXT,
+  created_at INTEGER NOT NULL,
+  completed_at INTEGER,
+  status TEXT NOT NULL CHECK(status IN ('running','active','failed','interrupted'))
+);
+CREATE INDEX compactions_conversation ON compactions(conversation_id, source_end_ordinal);
+CREATE UNIQUE INDEX compactions_running ON compactions(conversation_id) WHERE status = 'running';
 `;
 
 export const conversationRepository = createConversationRepository();

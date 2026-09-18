@@ -13,6 +13,14 @@ const mockLoadModel = jest.fn(async () => 'model-exact');
 let mockReasoningEffort = 'auto';
 const mockLoadModelConfig = jest.fn(async () => ({
   modelId: 'model-exact',
+  contextWindow: 128_000,
+  contextPolicy: {
+    autoCompact: true,
+    triggerPercent: 80,
+    targetPercent: 55,
+    hardStopPercent: 95,
+    minimumRecentTurns: 4,
+  },
   reasoningEffort: mockReasoningEffort,
   reasoningOptions: ['auto', 'low', 'high'],
   outputLimit: null,
@@ -22,6 +30,7 @@ const mockSaveReasoningEffort = jest.fn(async (_effort: string) => {
   mockReasoningEffort = _effort;
 });
 const mockSend = jest.fn<Promise<SendResponseResult>, unknown[]>();
+const mockRunLocalCompaction = jest.fn();
 const mockStartTurn = jest.fn(async (_input: unknown) => ({ conversationId: 'conv_1' }));
 const mockRestartTurn = jest.fn(async (_turnId: unknown, _itemId: unknown) => {});
 const mockFlushAssistant = jest.fn(
@@ -77,6 +86,10 @@ jest.mock('../../services/transport/responses', () => ({
     send: (profile: unknown, apiKey: unknown, input: unknown, options: unknown) =>
       mockSend(profile, apiKey, input, options),
   },
+}));
+
+jest.mock('../../services/context/local-compaction', () => ({
+  runLocalCompaction: (input: unknown) => mockRunLocalCompaction(input),
 }));
 
 const profile = createEndpointProfile({
@@ -140,6 +153,7 @@ describe('useChat', () => {
     mockLoadModelConfig.mockClear();
     mockSaveReasoningEffort.mockClear();
     mockSend.mockReset();
+    mockRunLocalCompaction.mockReset();
     mockStartTurn.mockClear();
     mockRestartTurn.mockClear();
     mockFlushAssistant.mockClear();
@@ -175,11 +189,13 @@ describe('useChat', () => {
       await first;
     });
 
-    mockLoadRequestHistory.mockResolvedValueOnce([
+    mockLoadRequestHistory
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
       { role: 'user', content: 'Halo' },
       { role: 'assistant', content: 'Jawaban satu' },
       { role: 'user', content: 'lanjut' },
-    ]);
+      ]);
     mockSend.mockResolvedValueOnce(success('resp_2', 'Jawaban dua', 'Ringkas'));
     await act(async () => {
       await result.current.send('lanjut');
@@ -263,6 +279,124 @@ describe('useChat', () => {
       await result.current.send('baru');
     });
     expect(mockSend.mock.calls[1][2]).toMatchObject({ previousResponseId: null });
+  });
+
+  it('memperbarui context budget setelah debounce draft', async () => {
+    jest.useFakeTimers();
+    try {
+      const { result } = await setup();
+
+      await act(async () => {
+        result.current.updateContext(' draft 😀 ');
+        jest.advanceTimersByTime(149);
+      });
+      expect(result.current.contextBudget).toBeNull();
+
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+        await Promise.resolve();
+      });
+      expect(result.current.contextBudget).toEqual(
+        expect.objectContaining({
+          contextWindow: 128_000,
+          requestedOutputReserve: 4_096,
+          quality: 'estimated',
+        }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('memblokir hard stop sebelum membuat turn atau mengirim main request', async () => {
+    const hardStopConfig = {
+      modelId: 'model-exact',
+      contextWindow: 100,
+      contextPolicy: {
+        autoCompact: true,
+        triggerPercent: 80,
+        targetPercent: 55,
+        hardStopPercent: 95,
+        minimumRecentTurns: 4,
+      },
+      reasoningEffort: mockReasoningEffort,
+      reasoningOptions: ['auto', 'low', 'high'],
+      outputLimit: null,
+      effectiveMaxOutput: 100,
+    };
+    mockLoadModelConfig
+      .mockResolvedValueOnce(hardStopConfig)
+      .mockResolvedValueOnce(hardStopConfig);
+    const { result } = await setup();
+
+    await act(async () => {
+      await expect(result.current.send('prompt panjang')).resolves.toBe(false);
+    });
+
+    expect(mockStartTurn).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(result.current.error?.message).toContain('Context hampir penuh');
+  });
+
+  it('melakukan auto-compact sebelum main request saat trigger tercapai', async () => {
+    const config = {
+      modelId: 'model-exact',
+      contextWindow: 8_000,
+      contextPolicy: {
+        autoCompact: true,
+        triggerPercent: 80,
+        targetPercent: 55,
+        hardStopPercent: 95,
+        minimumRecentTurns: 4,
+      },
+      reasoningEffort: mockReasoningEffort,
+      reasoningOptions: ['auto', 'low', 'high'],
+      outputLimit: null,
+      effectiveMaxOutput: 512,
+    };
+    mockLoadModelConfig.mockResolvedValue(config);
+    mockLoadConversation.mockResolvedValueOnce({
+      id: 'conv_saved',
+      title: 'Percakapan tersimpan',
+      messages: [],
+      previousResponseId: null,
+      previousResponseModelId: null,
+      metrics: [],
+      retry: null,
+      autoCompact: true,
+      compactionActive: false,
+    });
+    const longHistory: ConversationInputMessage[] = Array.from({ length: 80 }, (_, index) => ({
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: 'x'.repeat(300),
+    }));
+    mockLoadRequestHistory.mockResolvedValueOnce(longHistory).mockResolvedValue([
+      { role: 'user', content: 'summary' },
+      { role: 'assistant', content: 'recent' },
+    ]);
+    mockRunLocalCompaction.mockResolvedValueOnce({
+      ok: true,
+      summary: {},
+      afterEstimate: 2_000,
+    });
+    mockSend.mockResolvedValueOnce(success('resp_compacted', 'Berhasil setelah compact'));
+
+    const hook = await renderHook(() => useChat(profile, 'conv_saved'));
+    await act(async () => {
+      await hook.result.current.reloadModel();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await expect(hook.result.current.send('lanjut')).resolves.toBe(true);
+    });
+
+    expect(mockRunLocalCompaction).toHaveBeenCalledWith(
+      expect.objectContaining({ minimumRecentTurns: 4 }),
+    );
+    expect(hook.result.current.contextBudget?.usedPercent).toBeLessThan(55);
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.compactionActive).toBe(true);
   });
 
   it('membatch delta dan Stop mempertahankan partial response', async () => {

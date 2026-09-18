@@ -1,8 +1,11 @@
 import type { MergedModel } from './catalog-merge';
+import { DEFAULT_CONTEXT_POLICY, type ContextPolicy } from './context';
 import type { EndpointProfile } from './endpoint';
 
 export type ModelRequestSnapshot = {
   modelId: string;
+  contextWindow: number | null;
+  contextPolicy: ContextPolicy;
   reasoningEffort: string | null;
   reasoningOptions: string[];
   outputLimit: number | null;
@@ -49,6 +52,8 @@ export function modelRequestSnapshot(
   }
   return {
     modelId: model.id,
+    contextWindow: model.contextWindow,
+    contextPolicy: model.contextPolicy ?? DEFAULT_CONTEXT_POLICY,
     reasoningEffort: effort,
     reasoningOptions: reasoningChoices(model.reasoningEfforts),
     outputLimit,

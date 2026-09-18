@@ -10,20 +10,21 @@ const { createConversationRepository } = await import(
   '../.tests-build/services/persistence/conversation-store.js'
 );
 
-test('migration v1 membuat lima tabel, WAL, dan foreign key aktif', async (context) => {
+test('migration v2 membuat compactions, WAL, dan foreign key aktif', async (context) => {
   const directory = mkdtempSync(join(tmpdir(), 'myllm-conversations-'));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
   const { raw, repository } = setup(join(directory, 'test.db'));
   await repository.initialize();
 
-  assert.equal(raw.prepare('PRAGMA user_version').get().user_version, 1);
+  assert.equal(raw.prepare('PRAGMA user_version').get().user_version, 2);
   assert.equal(raw.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
   assert.equal(raw.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
   const names = raw
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
     .map((row) => row.name);
-  assert.deepEqual(names, ['conversations', 'items', 'timing', 'turns', 'usage']);
+  assert.deepEqual(names, ['compactions', 'conversations', 'items', 'timing', 'turns', 'usage']);
+  assert.equal(raw.prepare('SELECT auto_compact FROM conversations').get(), undefined);
 });
 
 test('partial stream tersimpan dan restart menandai assistant interrupted', async () => {
@@ -135,6 +136,76 @@ test('turn menyimpan request snapshot, response ID, usage, dan timing', async ()
   );
 });
 
+test('compaction memakai summary untuk request tetapi transcript asli tetap lengkap', async () => {
+  const state = setup();
+  let conversationId = null;
+  for (let index = 1; index <= 6; index += 1) {
+    const started = await start(state.repository, `turn_${index}`, conversationId, `user ${index}`);
+    conversationId = started.conversationId;
+    await state.repository.finishTurn({
+      turnId: `turn_${index}`,
+      assistantItemId: `assistant_turn_${index}`,
+      status: 'completed',
+      text: `assistant ${index}`,
+      reasoningSummary: null,
+      responseId: `response_${index}`,
+      usage: null,
+      timing: null,
+    });
+  }
+
+  const source = await state.repository.loadCompactionSource(conversationId);
+  const compactionId = await state.repository.beginCompaction({
+    conversationId,
+    sourceStartTurnId: source.turns[0].turnId,
+    sourceEndTurnId: source.turns[1].turnId,
+    sourceStartOrdinal: source.turns[0].ordinal,
+    sourceEndOrdinal: source.turns[1].ordinal,
+    modelId: 'model-exact',
+    promptVersion: 1,
+    beforeEstimate: 100,
+  });
+  await state.repository.completeCompaction({
+    id: compactionId,
+    summary: summary(),
+    usage: { input_tokens: 20, output_tokens: 10 },
+    afterEstimate: 50,
+  });
+
+  const history = await state.repository.loadRequestHistory(conversationId);
+  assert.equal(history.length, 9);
+  assert.match(history[0].content, /local compaction summary/);
+  assert.equal((await state.repository.loadConversation(conversationId)).messages.length, 12);
+});
+
+test('compaction running yang terputus menjadi interrupted dan tidak active', async () => {
+  const state = setup();
+  const started = await start(state.repository, 'turn_1', null, 'awal');
+  const source = await state.repository.loadCompactionSource(started.conversationId);
+  const compactionId = await state.repository.beginCompaction({
+    conversationId: started.conversationId,
+    sourceStartTurnId: source.turns[0]?.turnId ?? 'turn_1',
+    sourceEndTurnId: source.turns[0]?.turnId ?? 'turn_1',
+    sourceStartOrdinal: 1,
+    sourceEndOrdinal: 1,
+    modelId: 'model-exact',
+    promptVersion: 1,
+    beforeEstimate: 100,
+  });
+  assert.notEqual(compactionId, null);
+
+  const restarted = createConversationRepository(async () => state.database, () => 200);
+  await restarted.initialize();
+
+  assert.equal(
+    state.raw.prepare('SELECT status FROM compactions WHERE id = ?').get(compactionId).status,
+    'interrupted',
+  );
+  assert.deepEqual(await restarted.loadRequestHistory(started.conversationId), [
+    { role: 'user', content: 'awal' },
+  ]);
+});
+
 function setup(path = ':memory:') {
   const raw = new DatabaseSync(path);
   const database = adapter(raw);
@@ -153,7 +224,23 @@ function start(repository, turnId, conversationId, prompt) {
     previousResponseId: null,
     reasoningSetting: null,
     outputCeiling: 1024,
+    autoCompact: true,
   });
+}
+
+function summary() {
+  return {
+    userGoals: ['goal'],
+    constraints: ['constraint'],
+    decisions: ['decision'],
+    facts: ['fact'],
+    artifacts: ['artifact'],
+    completedActions: ['action'],
+    toolResults: [],
+    openQuestions: ['question'],
+    nextSteps: ['next'],
+    untrustedContentNotes: ['note'],
+  };
 }
 
 function adapter(database) {

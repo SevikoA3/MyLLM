@@ -7,6 +7,7 @@ import {
   type Pricing,
 } from './catalog';
 import { UNKNOWN_CAPABILITIES, type ModelCapabilities, type ModelRecord } from './model';
+import { ContextPolicySchema, type ContextPolicy } from './context';
 
 export const CATALOG_SOURCES = ['bundled', 'live', 'user-override', 'history'] as const;
 export type CatalogSource = (typeof CATALOG_SOURCES)[number];
@@ -20,6 +21,7 @@ export type MergedModel = ModelRecord & {
   pricing: Pricing | null;
   provenance: ProvenanceMap;
   request: { reasoningEffort: string | null; outputLimit: number | null };
+  contextPolicy?: ContextPolicy | null;
   /** false hanya jika pengguna mematikan model ini; model orphan tetap true. */
   enabled: boolean;
   /** true jika model tidak ada di defaults dan tidak ada di snapshot live. */
@@ -211,11 +213,17 @@ function toRecord(
     pricing: pricingFromRaw(raw),
     provenance,
     request: requestFromOverride(override?.request),
+    contextPolicy: contextPolicyValue(fields.contextPolicy),
     enabled:
       typeof override?.enabled === 'boolean' ? override.enabled : override?.disabledAt == null,
     orphaned,
   };
   return record;
+}
+
+function contextPolicyValue(value: unknown): ContextPolicy | null {
+  const parsed = ContextPolicySchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function mergeCapabilities(

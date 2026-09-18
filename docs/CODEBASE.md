@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: implementasi fase 7 selesai. Gate manual Android untuk streaming, recovery, dan model override masih menunggu.
+Status: implementasi fase 10 selesai. Gate manual Android untuk streaming, recovery, model override, context meter, dan auto-compact masih menunggu.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -51,6 +51,10 @@ myllm/
       catalog-merge.test.ts
       model-config.ts               reasoning, output cap, dan request config snapshot
       model-config.test.ts
+      context.ts                    estimasi context budget preflight dan safety margin
+      context.test.ts
+      compaction.ts                 policy, selection, prompt, schema summary, dan effective context
+      compaction.test.ts
       conversation.ts               tipe message, status turn, summary, cursor, auto title
       conversation.test.ts
       usage.ts                      normalisasi usage provider, timing, cache bucket, dan metrics
@@ -61,8 +65,10 @@ myllm/
       system-prompt.test.ts
     features/                       UI dan orkestrasi per layar
       chat/
-        chat-screen.tsx             FlatList pesan, composer, reasoning picker, streaming, metrics footer, Stop, retry, New chat
-        use-chat.ts                 state chat memory dan metrics, stateless history replay, batching delta, cancellation, request orchestration
+        chat-screen.tsx             FlatList pesan, composer, reasoning picker, streaming, metrics footer, Stop, retry, New chat, dan separator compaction
+        context-pill.tsx            pill context estimated dengan occupancy, reserve, margin, calibration hint, toggle, dan Compact now
+        context-pill.test.tsx
+        use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, request orchestration
         use-chat.test.tsx
       history/
         history-screen.tsx          pagination, buka, rename, delete, New chat
@@ -87,8 +93,11 @@ myllm/
       transport/
         models.ts                   GET /models dengan timeout dan tanpa redirect
         responses.ts                POST /responses streaming, event mapping, timing, cancellation
+      context/
+        local-compaction.ts         local summary request, retry satu kali, validation, dan compaction usage
+        local-compaction.test.ts
       persistence/
-        conversation-store.ts       migration SQLite, repository history, metrics, dan recovery
+        conversation-store.ts       migration SQLite, repository history, metrics, recovery, dan compaction
         endpoint-store.ts           profile endpoint dan activeModelId di kv-store
         endpoint-store.test.ts
         settings-store.ts           activeModelId untuk endpoint aktif
@@ -126,7 +135,7 @@ myllm/
   README.md
 ~~~
 
-Folder yang muncul di struktur target tetapi belum ada: `modules/`, dan berkas `domain` untuk usage, context, dan tool. Buat hanya saat fase pertama yang membutuhkannya.
+Folder yang muncul di struktur target tetapi belum ada: `modules/`, dan berkas `domain` untuk tool. Buat hanya saat fase pertama yang membutuhkannya.
 
 ## 3. Tanggung jawab berkas
 
@@ -159,13 +168,15 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `model-list.ts` | `parseModelList`, `normalizeModelRecord`, `OpenAiModelListSchema`, `EnrichedModelFieldsSchema` | Envelope divalidasi, elemen data loose, record rusak ditolak per record. |
 | `catalog.ts` | Schema katalog, override, parser JSON, preview perubahan, serializer, dan pricing | Field yang tidak ada berarti inherit, null berarti hapus override. Schema future ditolak. |
 | `catalog-merge.ts` | `mergeCatalog`, `MergedModel`, `ProvenanceMap`, `CATALOG_SOURCES` | Urutan menang: user-override, live, bundled. `enabled`, request setting, dan provenance dihitung di sini. |
-| `model-config.ts` | `effectiveMaxOutput`, `reasoningChoices`, `modelRequestSnapshot`, `protocolOutputCap` | Memvalidasi effort, output limit, dan membuat config immutable sebelum request. |
+| `model-config.ts` | `effectiveMaxOutput`, `reasoningChoices`, `modelRequestSnapshot`, `protocolOutputCap` | Memvalidasi effort, output limit, context policy, dan membuat config immutable sebelum request. |
+| `context.ts` | `ContextPolicySchema`, default policy, `buildContextBudget` | Menghitung effective input, output reserve, safety margin, occupancy, dan calibration hint tanpa I/O. |
+| `compaction.ts` | `CompactionSummarySchema`, prefix selector, prompt, parser, `buildCompactedContext` | Menjaga summary sebagai data untrusted dan memilih boundary turn lengkap tanpa menghapus transcript. |
 | `conversation.ts` | `ChatMessage`, `TurnStatus`, `ConversationSummary`, `ConversationCursor`, `titleFromPrompt` | Status mengunci sending, streaming, terminal, dan interrupted. |
 | `usage.ts` | `NormalizedUsage`, `TurnMetrics`, normalisasi field Responses, cache bucket, TTFT, TPS, dan session summary | Field usage yang hilang tetap null; cached input tidak dijumlahkan ulang. |
 | `sse.ts` | `createSseParser`, `SseFrame`, parser incremental `Uint8Array` dengan `TextDecoder` stream mode | Menangani LF, CRLF, comment, multiline data, event field, `[DONE]`, dan EOF. |
 | `system-prompt.ts` | `buildSystemPrompt`, `SYSTEM_PROMPT_VERSION`, instruksi asisten MyLLM dan model ID exact | Hanya menyebut capability yang tersedia; model ID di-escape sebagai JSON string. |
 
-`domain` belum punya berkas untuk usage, context, dan tool. Tambahkan pada fase yang memerlukannya.
+`domain` belum punya berkas untuk tool. Tambahkan pada fase yang memerlukannya.
 
 ### 3.3 src/features
 
@@ -174,8 +185,8 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/onboarding.ts` | `connectAndDiscover`, `profileFromInput`, `suggestName`, `newCredentialId`, `loadCredentialFor` | `domain/endpoint`, `domain/error`, `services/credentials/store`, `services/transport/models`, `services/persistence/endpoint-store` |
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
-| `chat/chat-screen.tsx` | FlatList pesan, composer, reasoning picker, metrics footer, Send atau Stop, partial output, error, retry, dan New chat | `domain/conversation`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
-| `chat/use-chat.ts` | Orkestrasi conversation aktif, reasoning override, config snapshot model, SQLite sebelum request, metrics per turn, stateless history replay, cache key per conversation, batching UI dan DB 50 ms, recovery, cancellation, dan retry | `domain/*`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
+| `chat/chat-screen.tsx` | FlatList pesan, composer, reasoning picker, metrics footer, Send atau Stop, partial output, error, retry, New chat, separator compaction, dan controls context | `domain/conversation`, `domain/context`, `domain/usage`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
+| `chat/use-chat.ts` | Orkestrasi conversation aktif, context preflight, local compaction, hard stop, toggle, reasoning override, config snapshot model, SQLite sebelum request, metrics per turn, stateless history replay, cache key per conversation, batching UI dan DB 50 ms, recovery, cancellation, dan retry | `domain/*`, `services/context/local-compaction`, `services/credentials`, `services/persistence/*`, `services/transport/responses` |
 | `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
 | `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
 | `models/model-detail-screen.tsx` | Nilai efektif dan provenance, reasoning, output limit, metadata override, reset field dan model | `domain/catalog`, `domain/model-config`, `models/use-model-catalog`, `ui/*` |
@@ -198,7 +209,8 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `persistence/catalog-store.ts` | `createCatalogRepository`, atomic snapshot dan override, preview/import, custom model, `loadModelRequestSnapshot`, dan `saveModelReasoningEffort` | `domain/catalog`, `domain/catalog-merge`, `domain/model-config`, `domain/endpoint` |
 | `persistence/catalog-files.ts` | `fileCatalogStorage` dan `readBundledDefaults` di document directory | `expo-file-system`, `assets/model-defaults.json` |
 | `persistence/catalog-transfer.ts` | `pickOverridesJson` dan `shareOverridesJson` untuk Android document picker dan share sheet | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
-| `persistence/conversation-store.ts` | `conversationRepository`, migration v1, WAL, foreign key, atomic turn writes, recovery, request history, pagination, normalized metrics, rename, delete | `domain/conversation`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
+| `persistence/conversation-store.ts` | `conversationRepository`, migration v1 dan v2, WAL, foreign key, atomic turn writes, recovery, request history, compaction source and active summary, pagination, normalized metrics, rename, delete | `domain/conversation`, `domain/compaction`, `domain/usage`, `services/transport/responses`, `expo-sqlite` |
+| `context/local-compaction.ts` | Memilih prefix turn, meminta summary terstruktur, retry tanpa output, validasi, dan menyimpan usage compaction terpisah | `domain/compaction`, `domain/context`, `persistence/conversation-store`, `transport/responses` |
 
 `CatalogStorage` sengaja sempit supaya test memakai `Map`, bukan berkas nyata. Ikuti pola ini untuk service baru.
 
@@ -221,7 +233,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `transport.test.mjs` | Contract test transport discovery terhadap fake endpoint. |
 | `onboarding.test.mjs` | Smoke test connect dan discover. |
 | `responses.test.mjs` | Contract test stream, SSE event, cancellation, partial output, retry boundary, timing, tool argument, usage, chaining, dan error terhadap fake endpoint. |
-| `conversations.test.mjs` | Contract test SQLite nyata untuk migration, WAL, FK cascade, partial recovery, metadata turn, dan keyset pagination. |
+| `conversations.test.mjs` | Contract test SQLite nyata untuk migration, WAL, FK cascade, partial recovery, metadata turn, compaction, dan keyset pagination. |
 | `model-fields.test.mjs` | Contract test normalizer terhadap bentuk payload GET /models AmanAI yang sudah diverifikasi. |
 | `dump-endpoint-fields.mjs` | Fetch langsung endpoint dari `.env` dan mencetak nama field, tipe, serta kelengkapan tanpa mencetak credential. |
 | `smoke-models.mjs` | Menjalankan alur refresh repository produksi terhadap endpoint nyata dari `.env` lalu melaporkan metadata katalog. |
@@ -247,13 +259,16 @@ Metrics: `conversationRepository.loadTurnMetrics` membaca usage dan timing per t
 
 Request history: `conversationRepository.loadRequestHistory` mengambil user item dan assistant item completed secara berurutan. `use-chat.ts` mengirim hasilnya sebagai Responses `input`, tanpa menggantungkan recall pada `previous_response_id` remote. Conversation ID yang sama dikirim sebagai `prompt_cache_key` agar endpoint kompatibel dapat mempertahankan cache affinity.
 
+Local compaction: preflight menghitung effective context. Saat trigger tercapai, `local-compaction.ts` meminta JSON summary lewat request stateless, memvalidasi schema, dan menyimpan hasil serta usage di `compactions`; transcript asli tetap utuh. Request history berikutnya memakai summary sebagai user/data context dengan label untrusted dan recent turns setelah source range. Hard stop menghentikan send sebelum turn baru dibuat.
+
 ## 5. Yang belum ada
 
 | Area | Fase | Keterangan |
 |---|---|---|
 | Gate Android streaming | 5 | Implementasi selesai; verifikasi emulator dan device fisik menunggu laporan manual. |
 | Gate Android recovery | 6 | Implementasi selesai; verifikasi kill app saat stream dan recovery UI menunggu laporan manual. |
-| Context meter, auto-compact | 9 sampai 10 | Belum ada. Usage normalization dan metrics footer Phase 8 sudah ada; verifikasi Android/manual masih menunggu. |
+| Context meter | 9 | Implementasi pure domain, hook debounce, dan pill selesai; verifikasi Android/manual masih menunggu. |
+| Auto-compact | 10 | Implementasi migration, local summary, preflight, replay, manual action, toggle, dan hard stop selesai; verifikasi Android/manual masih menunggu. |
 | MVP hardening | 11 | Belum ada. |
 
 ## 6. Aturan saat menambah berkas

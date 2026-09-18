@@ -1,6 +1,6 @@
 import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Markdown from 'react-native-markdown-display';
 import {
   ActivityIndicator,
@@ -28,6 +28,7 @@ import { InfoBlock, Screen } from '../../ui/components';
 import { useTheme } from '../../ui/theme';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { useChat } from './use-chat';
+import { ContextPill } from './context-pill';
 
 export default function ChatScreen() {
   const { status, profile } = useActiveEndpoint();
@@ -40,6 +41,7 @@ export default function ChatScreen() {
   const theme = useTheme();
   const router = useRouter();
   const reloadModel = chat.reloadModel;
+  const updateContext = chat.updateContext;
 
   useFocusEffect(
     useCallback(() => {
@@ -47,11 +49,16 @@ export default function ChatScreen() {
     }, [reloadModel]),
   );
 
+  useEffect(() => {
+    updateContext(draft);
+  }, [chat.pending, draft, updateContext]);
+
   const submit = useCallback(() => {
     const prompt = draft.trim();
     if (
       prompt.length === 0 ||
       chat.pending ||
+      chat.compacting ||
       chat.loadingModel ||
       chat.activeModelId === null
     ) {
@@ -62,7 +69,7 @@ export default function ChatScreen() {
   }, [chat, draft]);
   const sendDisabled =
     !chat.pending &&
-    (chat.loadingModel || chat.activeModelId === null || draft.trim().length === 0);
+    (chat.compacting || chat.loadingModel || chat.activeModelId === null || draft.trim().length === 0);
 
   if (status === 'loading') {
     return (
@@ -200,6 +207,7 @@ export default function ChatScreen() {
               padding: theme.spacing.screen,
             }}
             ListEmptyComponent={<EmptyChat />}
+            ListHeaderComponent={chat.compactionActive ? <CompactionSeparator /> : null}
             ListFooterComponent={chat.pending ? <PendingMessage /> : null}
             renderItem={({ item }) =>
               item.role === 'assistant' && item.status === 'sending' && item.text.length === 0
@@ -224,6 +232,17 @@ export default function ChatScreen() {
             borderTopColor: theme.colors.border,
             backgroundColor: theme.colors.background,
           }}>
+          {chat.contextBudget !== null && (
+            <ContextPill
+              budget={chat.contextBudget}
+              policy={chat.contextPolicy}
+              autoCompact={chat.autoCompact}
+              compacting={chat.compacting}
+              canCompact={chat.conversationId !== null && !chat.pending}
+              onCompact={() => void chat.compactNow()}
+              onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
+            />
+          )}
           {chat.metrics.length > 0 && <MetricsFooter metrics={chat.metrics} />}
           {chat.reasoningOptions.length > 0 && (
             <ReasoningSelector
@@ -240,7 +259,12 @@ export default function ChatScreen() {
               onChangeText={setDraft}
               placeholder="Tulis pesan..."
               placeholderTextColor={theme.colors.textMuted}
-              editable={!chat.pending && !chat.loadingModel && chat.activeModelId !== null}
+              editable={
+                !chat.pending &&
+                !chat.compacting &&
+                !chat.loadingModel &&
+                chat.activeModelId !== null
+              }
               multiline
               style={{
                 minHeight: 48,
@@ -292,6 +316,22 @@ export default function ChatScreen() {
         </View>
       </KeyboardAvoidingView>
     </Screen>
+  );
+}
+
+function CompactionSeparator() {
+  const theme = useTheme();
+  return (
+    <View style={{ paddingBottom: 4 }}>
+      <Text
+        style={{
+          color: theme.colors.textMuted,
+          fontSize: theme.typography.meta,
+          textAlign: 'center',
+        }}>
+        Ringkasan lokal aktif. Transcript asli tetap tersimpan.
+      </Text>
+    </View>
   );
 }
 

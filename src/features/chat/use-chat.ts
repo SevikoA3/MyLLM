@@ -5,9 +5,16 @@ import type {
   ConversationInputMessage,
   TurnStatus,
 } from '../../domain/conversation';
+import {
+  buildContextBudget,
+  DEFAULT_CONTEXT_POLICY,
+  type ContextBudgetResult,
+  type ContextPolicy,
+} from '../../domain/context';
 import type { EndpointProfile } from '../../domain/endpoint';
 import { createAppError, type AppError } from '../../domain/error';
 import type { ModelRequestSnapshot } from '../../domain/model-config';
+import { buildSystemPrompt } from '../../domain/system-prompt';
 import type { TurnMetrics } from '../../domain/usage';
 import { credentialStore } from '../../services/credentials/store';
 import { fileCatalogStorage, readBundledDefaults } from '../../services/persistence/catalog-files';
@@ -17,6 +24,7 @@ import {
 } from '../../services/persistence/catalog-store';
 import { conversationRepository } from '../../services/persistence/conversation-store';
 import { settingsStore } from '../../services/persistence/settings-store';
+import { runLocalCompaction } from '../../services/context/local-compaction';
 import {
   responsesClient,
   type ResponseStreamEvent,
@@ -24,6 +32,7 @@ import {
 } from '../../services/transport/responses';
 
 const UI_BATCH_MS = 50;
+const CONTEXT_DEBOUNCE_MS = 150;
 let idSequence = 0;
 
 type RetryState = {
@@ -36,6 +45,11 @@ export type ChatState = {
   conversationId: string | null;
   messages: ChatMessage[];
   metrics: TurnMetrics[];
+  contextBudget: ContextBudgetResult | null;
+  contextPolicy: ContextPolicy;
+  autoCompact: boolean;
+  compacting: boolean;
+  compactionActive: boolean;
   activeModelId: string | null;
   reasoningEffort: string | null;
   reasoningOptions: string[];
@@ -48,6 +62,9 @@ export type ChatState = {
   retry: () => Promise<boolean>;
   newChat: () => void;
   reloadModel: () => Promise<void>;
+  updateContext: (draft: string) => void;
+  compactNow: () => Promise<boolean>;
+  setAutoCompact: (enabled: boolean) => Promise<boolean>;
   setReasoningEffort: (effort: string) => Promise<boolean>;
 };
 
@@ -59,7 +76,13 @@ export function useChat(
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [metrics, setMetrics] = useState<TurnMetrics[]>([]);
+  const [contextBudget, setContextBudget] = useState<ContextBudgetResult | null>(null);
+  const [contextPolicy, setContextPolicy] = useState<ContextPolicy>(DEFAULT_CONTEXT_POLICY);
+  const [autoCompact, setAutoCompactState] = useState(true);
+  const [compacting, setCompacting] = useState(false);
+  const [compactionActive, setCompactionActive] = useState(false);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
+  const [modelConfig, setModelConfig] = useState<ModelRequestSnapshot | null>(null);
   const [reasoningEffort, setReasoningEffortState] = useState<string | null>(null);
   const [reasoningOptions, setReasoningOptions] = useState<string[]>([]);
   const [loadingModel, setLoadingModel] = useState(profile !== null);
@@ -73,13 +96,20 @@ export function useChat(
   const reasoningSavingRef = useRef(false);
   const activeController = useRef<AbortController | null>(null);
   const streamTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contextRequestId = useRef(0);
+  const compactingRef = useRef(false);
   const alive = useRef(true);
 
   const reloadModel = useCallback(async () => {
+    setModelConfig(null);
+    setContextBudget(null);
+    setContextPolicy(DEFAULT_CONTEXT_POLICY);
     if (profile === null) {
       setActiveModelId(null);
       setReasoningEffortState(null);
       setReasoningOptions([]);
+      setAutoCompactState(true);
       setLoadingModel(false);
       return;
     }
@@ -90,6 +120,8 @@ export function useChat(
       }
       setActiveModelId(modelId);
       if (modelId === null) {
+        setModelConfig(null);
+        setContextPolicy(DEFAULT_CONTEXT_POLICY);
         setReasoningEffortState(null);
         setReasoningOptions([]);
       } else {
@@ -101,11 +133,15 @@ export function useChat(
             modelId,
           );
           if (alive.current) {
+            setModelConfig(config);
+            setContextPolicy(config?.contextPolicy ?? DEFAULT_CONTEXT_POLICY);
             setReasoningEffortState(config?.reasoningEffort ?? null);
             setReasoningOptions(config?.reasoningOptions ?? []);
           }
         } catch {
           if (alive.current) {
+            setModelConfig(null);
+            setContextPolicy(DEFAULT_CONTEXT_POLICY);
             setReasoningEffortState(null);
             setReasoningOptions([]);
             setError(modelConfigError('Konfigurasi reasoning tidak valid. Periksa detail model.'));
@@ -115,6 +151,8 @@ export function useChat(
     } catch {
       if (alive.current) {
         setActiveModelId(null);
+        setModelConfig(null);
+        setContextPolicy(DEFAULT_CONTEXT_POLICY);
         setReasoningEffortState(null);
         setReasoningOptions([]);
       }
@@ -133,6 +171,10 @@ export function useChat(
       if (streamTimer.current !== null) {
         clearTimeout(streamTimer.current);
       }
+      if (contextTimer.current !== null) {
+        clearTimeout(contextTimer.current);
+      }
+      contextRequestId.current += 1;
     };
   }, []);
 
@@ -154,6 +196,8 @@ export function useChat(
           previousResponseId.current = null;
           previousResponseModelId.current = null;
           setRetryState(null);
+          setAutoCompactState(true);
+          setCompactionActive(false);
         } else {
           setConversationId(saved.id);
           setMessages(saved.messages);
@@ -161,6 +205,8 @@ export function useChat(
           previousResponseId.current = saved.previousResponseId;
           previousResponseModelId.current = saved.previousResponseModelId;
           setRetryState(saved.retry);
+          setAutoCompactState(saved.autoCompact ?? true);
+          setCompactionActive(saved.compactionActive ?? false);
         }
       }
       if (active) {
@@ -181,6 +227,7 @@ export function useChat(
     async (prompt: string, retry: RetryState | null): Promise<boolean> => {
       if (
         pendingRef.current ||
+        compactingRef.current ||
         loadingConversation ||
         profile === null ||
         activeModelId === null
@@ -214,8 +261,98 @@ export function useChat(
         }
         return false;
       }
+      setModelConfig(requestConfig);
+      setContextPolicy(requestConfig.contextPolicy ?? DEFAULT_CONTEXT_POLICY);
       if (!alive.current) {
         pendingRef.current = false;
+        return false;
+      }
+      const apiKey =
+        profile.credentialRef === null
+          ? null
+          : await credentialStore.read(profile.credentialRef);
+      if (apiKey === null) {
+        pendingRef.current = false;
+        if (alive.current) {
+          setPending(false);
+          setError(missingCredentialError());
+        }
+        return false;
+      }
+
+      const modelPolicy = requestConfig.contextPolicy ?? DEFAULT_CONTEXT_POLICY;
+      const requestPolicy = {
+        ...modelPolicy,
+        autoCompact: modelPolicy.autoCompact && autoCompact,
+      };
+      let preflightHistory: ConversationInputMessage[] = [];
+      try {
+        if (conversationId !== null) {
+          preflightHistory = await conversationRepository.loadRequestHistory(conversationId);
+        }
+        let budget = contextBudgetFor(requestConfig, preflightHistory, prompt, metrics.at(-1)?.usage.inputTokens ?? null);
+        let compactRounds = 0;
+        while (
+          conversationId !== null &&
+          requestPolicy.autoCompact &&
+          budget.usedPercent !== null &&
+          (budget.usedPercent >= requestPolicy.triggerPercent ||
+            (compactRounds > 0 && budget.usedPercent >= requestPolicy.targetPercent)) &&
+          compactRounds < 8
+        ) {
+          compactingRef.current = true;
+          setCompacting(true);
+          const compacted = await runLocalCompaction({
+            profile,
+            apiKey,
+            conversationId,
+            modelId: requestConfig.modelId,
+            contextWindow: requestConfig.contextWindow,
+            effectiveMaxOutput: requestConfig.effectiveMaxOutput,
+            reasoningEffort: requestConfig.reasoningEffort,
+            minimumRecentTurns: requestPolicy.minimumRecentTurns,
+            beforeEstimate: budget.prospectiveUsed ?? budget.inputTokensEstimate,
+          });
+          compactingRef.current = false;
+          setCompacting(false);
+          if (!compacted.ok) {
+            break;
+          }
+          setCompactionActive(true);
+          compactRounds += 1;
+          preflightHistory = await conversationRepository.loadRequestHistory(conversationId);
+          const nextBudget = contextBudgetFor(
+            requestConfig,
+            preflightHistory,
+            prompt,
+            metrics.at(-1)?.usage.inputTokens ?? null,
+          );
+          if ((nextBudget.prospectiveUsed ?? nextBudget.inputTokensEstimate) >= (budget.prospectiveUsed ?? budget.inputTokensEstimate)) {
+            budget = nextBudget;
+            break;
+          }
+          budget = nextBudget;
+        }
+        setContextBudget(budget);
+        if (
+          budget.usedPercent !== null &&
+          budget.usedPercent >= requestPolicy.hardStopPercent
+        ) {
+          pendingRef.current = false;
+          if (alive.current) {
+            setPending(false);
+            setError(contextHardStopError());
+          }
+          return false;
+        }
+      } catch {
+        compactingRef.current = false;
+        setCompacting(false);
+        pendingRef.current = false;
+        if (alive.current) {
+          setPending(false);
+          setError(localRequestError());
+        }
         return false;
       }
       const chainResponseId =
@@ -245,6 +382,7 @@ export function useChat(
             previousResponseId: chainResponseId,
             reasoningSetting: requestConfig.reasoningEffort,
             outputCeiling: requestConfig.outputLimit,
+            autoCompact,
           });
           currentConversationId = started.conversationId;
           setConversationId(started.conversationId);
@@ -336,20 +474,6 @@ export function useChat(
         if (requestHistory.length === 0) {
           requestHistory = [{ role: 'user', content: prompt }];
         }
-        const apiKey =
-          profile.credentialRef === null
-            ? null
-            : await credentialStore.read(profile.credentialRef);
-        if (apiKey === null) {
-          const missing = missingCredentialError();
-          await finish(turnId, assistantItemId, 'failed', streamedText, streamedReasoning, null);
-          if (alive.current) {
-            setError(missing);
-            setRetryState({ prompt, turnId, assistantItemId });
-          }
-          return false;
-        }
-
         const result = await responsesClient.send(
           profile,
           apiKey,
@@ -462,7 +586,143 @@ export function useChat(
         }
       }
     },
-    [activeModelId, conversationId, loadingConversation, profile],
+    [activeModelId, autoCompact, conversationId, loadingConversation, metrics, profile],
+  );
+
+  const updateContext = useCallback(
+    (draft: string) => {
+      if (contextTimer.current !== null) {
+        clearTimeout(contextTimer.current);
+        contextTimer.current = null;
+      }
+      const requestId = ++contextRequestId.current;
+      if (
+        profile === null ||
+        activeModelId === null ||
+        modelConfig === null ||
+        modelConfig.modelId !== activeModelId
+      ) {
+        setContextBudget(null);
+        return;
+      }
+      contextTimer.current = setTimeout(() => {
+        contextTimer.current = null;
+        void (async () => {
+          try {
+            const history =
+              conversationId === null
+                ? []
+                : await conversationRepository.loadRequestHistory(conversationId);
+            const prompt = draft.trim();
+            const next = contextBudgetFor(
+              modelConfig,
+              history,
+              prompt,
+              metrics.at(-1)?.usage.inputTokens ?? null,
+            );
+            if (alive.current && requestId === contextRequestId.current) {
+              setContextBudget(next);
+            }
+          } catch {
+            if (alive.current && requestId === contextRequestId.current) {
+              setContextBudget(null);
+            }
+          }
+        })();
+      }, CONTEXT_DEBOUNCE_MS);
+    },
+    [activeModelId, conversationId, metrics, modelConfig, profile],
+  );
+
+  const compactNow = useCallback(async (): Promise<boolean> => {
+    if (
+      pendingRef.current ||
+      compactingRef.current ||
+      profile === null ||
+      activeModelId === null ||
+      conversationId === null
+    ) {
+      return false;
+    }
+    compactingRef.current = true;
+    setCompacting(true);
+    setError(null);
+    try {
+      const config = await loadModelRequestSnapshot(
+        fileCatalogStorage,
+        readBundledDefaults,
+        profile,
+        activeModelId,
+      );
+      if (config === null) {
+        if (alive.current) {
+          setError(modelConfigError('Model aktif tidak ditemukan di katalog.'));
+        }
+        return false;
+      }
+      const apiKey = profile.credentialRef === null ? null : await credentialStore.read(profile.credentialRef);
+      if (apiKey === null) {
+        setError(missingCredentialError());
+        return false;
+      }
+      const policy = config.contextPolicy ?? DEFAULT_CONTEXT_POLICY;
+      setModelConfig(config);
+      setContextPolicy(policy);
+      const result = await runLocalCompaction({
+        profile,
+        apiKey,
+        conversationId,
+        modelId: config.modelId,
+        contextWindow: config.contextWindow,
+        effectiveMaxOutput: config.effectiveMaxOutput,
+        reasoningEffort: config.reasoningEffort,
+        minimumRecentTurns: policy.minimumRecentTurns,
+        beforeEstimate: contextBudget?.prospectiveUsed ?? contextBudget?.inputTokensEstimate ?? 0,
+      });
+      if (!result.ok) {
+        if (alive.current) {
+          setError(modelConfigError(result.message));
+        }
+        return false;
+      }
+      setCompactionActive(true);
+      setError(null);
+      updateContext('');
+      return true;
+    } catch {
+      if (alive.current) {
+        setError(localRequestError());
+      }
+      return false;
+    } finally {
+      compactingRef.current = false;
+      if (alive.current) {
+        setCompacting(false);
+      }
+    }
+  }, [activeModelId, contextBudget, conversationId, profile, updateContext]);
+
+  const setAutoCompact = useCallback(
+    async (enabled: boolean): Promise<boolean> => {
+      if (pendingRef.current || compactingRef.current) {
+        return false;
+      }
+      try {
+        if (conversationId !== null) {
+          await conversationRepository.setAutoCompact(conversationId, enabled);
+        }
+        if (alive.current) {
+          setAutoCompactState(enabled);
+        }
+        return true;
+      } catch {
+        if (alive.current) {
+          setError(localRequestError());
+        }
+        return false;
+      }
+    },
+    [conversationId],
   );
 
   const send = useCallback(
@@ -512,7 +772,7 @@ export function useChat(
   );
 
   const newChat = useCallback(() => {
-    if (pendingRef.current) {
+    if (pendingRef.current || compactingRef.current) {
       return;
     }
     setConversationId(null);
@@ -520,14 +780,22 @@ export function useChat(
     previousResponseId.current = null;
     previousResponseModelId.current = null;
     setMessages([]);
+    setContextBudget(null);
     setError(null);
     setRetryState(null);
+    setAutoCompactState(true);
+    setCompactionActive(false);
   }, []);
 
   return {
     conversationId,
     messages,
     metrics,
+    contextBudget,
+    contextPolicy,
+    autoCompact,
+    compacting,
+    compactionActive,
     activeModelId,
     reasoningEffort,
     reasoningOptions,
@@ -540,8 +808,30 @@ export function useChat(
     retry,
     newChat,
     reloadModel,
+    updateContext,
+    compactNow,
+    setAutoCompact,
     setReasoningEffort,
   };
+}
+
+function contextBudgetFor(
+  config: ModelRequestSnapshot,
+  history: ConversationInputMessage[],
+  prompt: string,
+  providerInputTokens: number | null,
+): ContextBudgetResult {
+  const input = prompt.length === 0
+    ? history
+    : [...history, { role: 'user' as const, content: prompt }];
+  return buildContextBudget({
+    contextWindow: config.contextWindow,
+    instructions: buildSystemPrompt(config.modelId),
+    input,
+    outputLimit: config.outputLimit,
+    effectiveMaxOutput: config.effectiveMaxOutput,
+    providerInputTokens,
+  });
 }
 
 function resultStatus(result: SendResponseResult): Exclude<TurnStatus, 'sending' | 'streaming'> {
@@ -586,6 +876,18 @@ function localRequestError(): AppError {
     providerCode: null,
     requestId: null,
     retryable: true,
+    safeDetails: {},
+  });
+}
+
+function contextHardStopError(): AppError {
+  return createAppError({
+    category: 'request',
+    message: 'Context hampir penuh. Pilih Compact now, mulai chat baru, atau kurangi output reserve.',
+    httpStatus: null,
+    providerCode: null,
+    requestId: null,
+    retryable: false,
     safeDetails: {},
   });
 }

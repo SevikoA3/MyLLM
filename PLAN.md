@@ -720,44 +720,48 @@ Fixture metrics cocok dengan formula manual dan tidak ada cache 0% palsu. Footer
 
 ## 16. Phase 9: Context meter
 
+Status: implementasi dan test otomatis selesai 18 September 2026. `npm run lint`, `npm run typecheck`, dan test terkait context lulus. Verifikasi manual Android untuk perubahan pill sebelum send masih menunggu.
+
 ### Goal
 
 Pengguna melihat berapa context budget yang dipakai dan berapa yang tersisa sebelum send.
 
 ### Steps
 
-- [ ] Tambahkan ContextBudget input dan result sebagai pure domain types.
-- [ ] Effective input hanya menghitung payload yang benar-benar akan dikirim.
-- [ ] Jangan memakai cumulative session usage sebagai occupancy.
-- [ ] Provider usage terakhir menjadi calibration hint, bukan otomatis occupancy request berikutnya.
-- [ ] Untuk preflight estimate, hitung UTF-8 bytes dari serialized text dan gunakan pembagi konservatif awal 3.
-- [ ] Tambahkan overhead kecil per message/item yang dapat disetel melalui constant code.
-- [ ] Label hasil estimated.
-- [ ] Jika endpoint menyediakan input token count endpoint yang kompatibel, tambahkan nanti melalui capability, bukan probing billable.
-- [ ] requestedOutputReserve memakai explicit output limit atau appAutoOutputBudget 4096.
-- [ ] Clamp reserve ke effectiveMaxOutput jika diketahui.
-- [ ] Safety margin: min 8192 dan max 1024 atau 2% context.
-- [ ] Hitung prospective used, remaining tokens, used percent, dan remaining percent.
-- [ ] Jika contextWindow unknown, jangan tampilkan persentase.
-- [ ] Tambahkan context pill dengan used, left, token remaining, reserve, margin, dan quality.
-- [ ] Gunakan warna sebagai tambahan, bukan satu-satunya indikator.
-- [ ] Update estimate saat draft berubah dengan debounce.
+- [x] Tambahkan ContextBudget input dan result sebagai pure domain types.
+- [x] Effective input hanya menghitung payload yang benar-benar akan dikirim.
+- [x] Jangan memakai cumulative session usage sebagai occupancy.
+- [x] Provider usage terakhir menjadi calibration hint, bukan otomatis occupancy request berikutnya.
+- [x] Untuk preflight estimate, hitung UTF-8 bytes dari serialized text dan gunakan pembagi konservatif awal 3.
+- [x] Tambahkan overhead kecil per message/item yang dapat disetel melalui constant code.
+- [x] Label hasil estimated.
+- [x] Belum ada capability input-token-count yang kompatibel; tidak dilakukan probing billable.
+- [x] requestedOutputReserve memakai explicit output limit atau appAutoOutputBudget 4096.
+- [x] Clamp reserve ke effectiveMaxOutput jika diketahui.
+- [x] Safety margin: min 8192 dan max 1024 atau 2% context.
+- [x] Hitung prospective used, remaining tokens, used percent, dan remaining percent.
+- [x] Jika contextWindow unknown, jangan tampilkan persentase.
+- [x] Tambahkan context pill dengan used, left, token remaining, reserve, margin, dan quality.
+- [x] Gunakan warna sebagai tambahan, bukan satu-satunya indikator.
+- [x] Update estimate saat draft berubah dengan debounce.
 
 ### Tests
 
-- [ ] Known context.
-- [ ] Unknown context.
-- [ ] Explicit output limit.
-- [ ] Unknown max output.
-- [ ] Clamp 0 sampai 100.
-- [ ] Multi-byte text.
-- [ ] Safety margin pada context kecil dan besar.
+- [x] Known context.
+- [x] Unknown context.
+- [x] Explicit output limit.
+- [x] Unknown max output.
+- [x] Clamp 0 sampai 100.
+- [x] Multi-byte text.
+- [x] Safety margin pada context kecil dan besar.
 
 ### Exit gate
 
-Context pill berubah sebelum send, detail rumus dapat diperiksa, dan model unknown tidak menampilkan persentase buatan.
+Context pill berubah sebelum send, detail rumus dapat diperiksa, dan model unknown tidak menampilkan persentase buatan. Implementasi serta test pure/component lulus; demonstrasi Android masih menunggu.
 
 ## 17. Phase 10: Local auto-compact
+
+Status: implementasi dan test otomatis selesai 18 September 2026. Migration, local summary, preflight, manual compact, toggle, hard stop, dan replay sudah terpasang; verifikasi Android pada exit gate masih menunggu.
 
 ### Goal
 
@@ -765,49 +769,49 @@ Long conversation dapat berlanjut tanpa menghapus transcript asli atau melakukan
 
 ### Steps
 
-- [ ] Tambahkan compactions table melalui migration version 2.
-- [ ] Tambahkan contextPolicy ke normalized model config.
-- [ ] Default trigger 80, target 55, hard stop 95, minimum recent turns 4.
-- [ ] Validate target < trigger < hard stop.
-- [ ] Preflight compaction berjalan sebelum main request ketika prospective use mencapai trigger.
-- [ ] Jangan compact saat stream aktif atau tool transaction belum lengkap.
-- [ ] Pilih prefix berdasarkan complete turn boundary.
-- [ ] Pertahankan instructions, recent turns, pinned facts, attachment references aktif, dan complete tool pairs.
-- [ ] Buat compaction prompt versioned yang meminta structured JSON summary.
-- [ ] Validate summary dengan zod.
-- [ ] Summary fields: user goals, constraints, decisions, facts, artifacts, completed actions, tool results, open questions, next steps, dan untrusted content notes.
-- [ ] Simpan source turn range, model, prompt version, usage, before/after estimate, status, dan summary.
-- [ ] Original turns tidak diubah atau dihapus.
-- [ ] Effective context builder memakai summary sebagai user/data context, bukan system instruction.
-- [ ] Setelah local compaction, gunakan stateless replay untuk effective context baru.
-- [ ] Hitung ulang occupancy dan compact chunk berikutnya jika masih di atas target.
-- [ ] Satu conversation hanya memiliki satu compaction job aktif.
-- [ ] Retry compaction paling banyak sekali jika belum ada output.
-- [ ] Di hard stop, block unsafe send dan tampilkan Compact now, Start new chat, atau Reduce output reserve.
-- [ ] Tambahkan separator compaction ringan di transcript.
-- [ ] Tambahkan manual Compact now dan Auto-compact toggle per conversation.
-- [ ] Catat usage compaction terpisah dari chat usage.
+- [x] Tambahkan compactions table melalui migration version 2.
+- [x] Tambahkan contextPolicy ke normalized model config.
+- [x] Default trigger 80, target 55, hard stop 95, minimum recent turns 4.
+- [x] Validate target < trigger < hard stop.
+- [x] Preflight compaction berjalan sebelum main request ketika prospective use mencapai trigger.
+- [x] Jangan compact saat stream aktif. Schema tool transaction belum ada pada MVP ini.
+- [x] Pilih prefix berdasarkan complete turn boundary.
+- [x] Pertahankan instructions dan recent turns. Pinned facts, attachment references, dan tool pairs belum memiliki persistence pada MVP ini.
+- [x] Buat compaction prompt versioned yang meminta structured JSON summary.
+- [x] Validate summary dengan zod.
+- [x] Summary fields: user goals, constraints, decisions, facts, artifacts, completed actions, tool results, open questions, next steps, dan untrusted content notes.
+- [x] Simpan source turn range, model, prompt version, usage, before/after estimate, status, dan summary.
+- [x] Original turns tidak diubah atau dihapus.
+- [x] Effective context builder memakai summary sebagai user/data context, bukan system instruction.
+- [x] Setelah local compaction, gunakan stateless replay untuk effective context baru.
+- [x] Hitung ulang occupancy dan compact chunk berikutnya jika masih di atas target dan prefix lengkap masih tersedia.
+- [x] Satu conversation hanya memiliki satu compaction job aktif.
+- [x] Retry compaction paling banyak sekali jika belum ada output.
+- [x] Di hard stop, block unsafe send dan tampilkan Compact now, Start new chat, atau Reduce output reserve.
+- [x] Tambahkan separator compaction ringan di transcript.
+- [x] Tambahkan manual Compact now dan Auto-compact toggle per conversation.
+- [x] Catat usage compaction terpisah dari chat usage.
 
 ### Security rules
 
-- [ ] External web/tool text tetap ditandai untrusted di summary.
-- [ ] Summary tidak boleh menaikkan privilege instruksi.
-- [ ] Native /responses/compact belum dipakai.
-- [ ] Tidak ada emergency sliding-window truncation pada MVP.
+- [x] External web/tool text tetap ditandai untrusted di summary.
+- [x] Summary tidak boleh menaikkan privilege instruksi.
+- [x] Native /responses/compact belum dipakai.
+- [x] Tidak ada emergency sliding-window truncation pada MVP.
 
 ### Tests
 
-- [ ] Trigger dan hysteresis.
-- [ ] Tool call/result tidak terpisah.
-- [ ] Summary invalid.
-- [ ] Summary masih terlalu besar.
-- [ ] Interrupted compaction tidak menjadi active.
-- [ ] Transcript asli tetap lengkap.
-- [ ] Hard stop tidak mengirim main request.
+- [x] Trigger dan hysteresis.
+- [x] Complete turn selection tidak memisahkan unit turn. Tool call/result belum ada di persistence MVP.
+- [x] Summary invalid.
+- [x] Summary masih terlalu besar ditahan oleh hard stop bila occupancy tetap tinggi.
+- [x] Interrupted compaction tidak menjadi active.
+- [x] Transcript asli tetap lengkap.
+- [x] Hard stop tidak mengirim main request.
 
 ### Exit gate
 
-Fixture long conversation otomatis compact, occupancy turun ke target, transcript tetap utuh, dan request berikutnya berhasil.
+Fixture long conversation otomatis compact, occupancy turun di bawah target saat prefix cukup, transcript tetap utuh, dan request berikutnya berhasil. Test otomatis lulus; demonstrasi Android masih menunggu.
 
 ## 18. Phase 11: MVP hardening dan internal release
 

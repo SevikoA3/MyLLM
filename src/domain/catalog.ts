@@ -1,6 +1,7 @@
 import * as z from 'zod';
 
 import { InputModalitySchema } from './model';
+import { ContextPolicySchema } from './context';
 
 /**
  * Tiga lapis katalog: bundled default, snapshot live, lalu override pengguna.
@@ -44,6 +45,7 @@ const CatalogModelFieldsSchema = z.object({
       nativeCompaction: CapabilityStateSchema.optional(),
     })
     .optional(),
+  contextPolicy: ContextPolicySchema.optional(),
   raw: z.record(z.string(), z.unknown()).optional(),
 });
 export type CatalogModelFields = z.infer<typeof CatalogModelFieldsSchema>;
@@ -93,6 +95,7 @@ export const ModelOverrideSchema = z
     inputModalities: z.array(InputModalitySchema).nullable().optional(),
     capabilities: CapabilityOverridesSchema.nullable().optional(),
     request: ModelRequestOverrideSchema.nullable().optional(),
+    contextPolicy: ContextPolicySchema.nullable().optional(),
     raw: z.record(z.string(), z.unknown()).nullable().optional(),
     /** Dibaca untuk kompatibilitas file fase 3; penulisan baru memakai enabled. */
     disabledAt: z.iso.datetime().nullable().optional(),
