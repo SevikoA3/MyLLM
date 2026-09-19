@@ -1,7 +1,24 @@
-import { render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { router } from 'expo-router';
 
 import type { MergedModel } from '../../domain/catalog-merge';
-import { ModelRow } from './models-screen';
+import { createEndpointProfile } from '../../domain/endpoint';
+import { endpointStore } from '../../services/persistence/endpoint-store';
+import { useActiveEndpoint } from '../setup/use-active-endpoint';
+import { useModelCatalog } from './use-model-catalog';
+import ModelsScreen, { ModelRow } from './models-screen';
+
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn(), replace: jest.fn() },
+  useFocusEffect: (effect: () => void) => effect(),
+}));
+
+jest.mock('../../services/persistence/endpoint-store', () => ({
+  endpointStore: { loadActiveModelId: jest.fn(), saveActiveModelId: jest.fn() },
+}));
+
+jest.mock('../setup/use-active-endpoint', () => ({ useActiveEndpoint: jest.fn() }));
+jest.mock('./use-model-catalog', () => ({ useModelCatalog: jest.fn() }));
 
 function model(overrides: Partial<MergedModel> = {}): MergedModel {
   return {
@@ -29,6 +46,42 @@ function model(overrides: Partial<MergedModel> = {}): MergedModel {
     ...overrides,
   };
 }
+
+describe('ModelsScreen', () => {
+  it('returns to chat after setting an active model', async () => {
+    const activeEndpoint = jest.mocked(useActiveEndpoint);
+    const modelCatalog = jest.mocked(useModelCatalog);
+    const profile = createEndpointProfile({ id: 'endpoint_1', name: 'Example endpoint', baseUrl: 'https://example.com/v1' });
+
+    jest.mocked(endpointStore.loadActiveModelId).mockResolvedValue(null);
+    jest.mocked(endpointStore.saveActiveModelId).mockResolvedValue(undefined);
+    activeEndpoint.mockReturnValue({ status: 'ready', profile });
+    modelCatalog.mockReturnValue({
+      runtime: { models: [model()], lastFetchedAt: '2026-09-19T00:00:00.000Z' },
+      loading: false,
+      refreshing: false,
+      failure: null,
+      reload: jest.fn().mockResolvedValue(undefined),
+      refresh: jest.fn().mockResolvedValue(undefined),
+      setOverride: jest.fn().mockResolvedValue(undefined),
+      addCustomModel: jest.fn().mockResolvedValue(undefined),
+      previewOverrides: jest.fn(),
+      applyOverridesText: jest.fn(),
+      exportOverrides: jest.fn(),
+    } as never);
+
+    const view = await render(<ModelsScreen />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Set as active model'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(endpointStore.saveActiveModelId).toHaveBeenCalledWith('amanai/glm-5.3');
+      expect(router.replace).toHaveBeenCalledWith('/(tabs)');
+    });
+  });
+});
 
 describe('ModelRow', () => {
   it('menampilkan metadata yang tersedia sebagai badge yang terbaca', async () => {

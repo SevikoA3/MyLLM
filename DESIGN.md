@@ -1,87 +1,209 @@
-# MyLLM Android Prototype
+---
+name: MyLLM
+colors:
+  surface: '#0b1326'
+  surface-dim: '#0b1326'
+  surface-bright: '#31394d'
+  surface-container-lowest: '#060e20'
+  surface-container-low: '#131b2e'
+  surface-container: '#171f33'
+  surface-container-high: '#222a3d'
+  surface-container-highest: '#2d3449'
+  on-surface: '#dae2fd'
+  on-surface-variant: '#bbcabf'
+  inverse-surface: '#dae2fd'
+  inverse-on-surface: '#283044'
+  outline: '#86948a'
+  outline-variant: '#3c4a42'
+  surface-tint: '#4edea3'
+  primary: '#4edea3'
+  on-primary: '#003824'
+  primary-container: '#10b981'
+  on-primary-container: '#00422b'
+  inverse-primary: '#006c49'
+  secondary: '#4cd7f6'
+  on-secondary: '#003640'
+  secondary-container: '#03b5d3'
+  on-secondary-container: '#00424e'
+  tertiary: '#ffb95f'
+  on-tertiary: '#472a00'
+  tertiary-container: '#e29100'
+  on-tertiary-container: '#523200'
+  error: '#ffb4ab'
+  on-error: '#690005'
+  error-container: '#93000a'
+  on-error-container: '#ffdad6'
+  primary-fixed: '#6ffbbe'
+  primary-fixed-dim: '#4edea3'
+  on-primary-fixed: '#002113'
+  on-primary-fixed-variant: '#005236'
+  secondary-fixed: '#acedff'
+  secondary-fixed-dim: '#4cd7f6'
+  on-secondary-fixed: '#001f26'
+  on-secondary-fixed-variant: '#004e5c'
+  tertiary-fixed: '#ffddb8'
+  tertiary-fixed-dim: '#ffb95f'
+  on-tertiary-fixed: '#2a1700'
+  on-tertiary-fixed-variant: '#653e00'
+  background: '#0b1326'
+  on-background: '#dae2fd'
+  surface-variant: '#2d3449'
+typography:
+  headline-lg:
+    fontFamily: Inter
+    fontSize: 32px
+    fontWeight: '600'
+    lineHeight: 40px
+    letterSpacing: -0.02em
+  headline-lg-mobile:
+    fontFamily: Inter
+    fontSize: 26px
+    fontWeight: '600'
+    lineHeight: 32px
+    letterSpacing: -0.02em
+  headline-md:
+    fontFamily: Inter
+    fontSize: 22px
+    fontWeight: '600'
+    lineHeight: 28px
+    letterSpacing: -0.01em
+  headline-sm:
+    fontFamily: Inter
+    fontSize: 18px
+    fontWeight: '500'
+    lineHeight: 24px
+  body-lg:
+    fontFamily: JetBrains Mono
+    fontSize: 15px
+    fontWeight: '400'
+    lineHeight: 24px
+  body-md:
+    fontFamily: JetBrains Mono
+    fontSize: 13px
+    fontWeight: '400'
+    lineHeight: 20px
+  body-sm:
+    fontFamily: JetBrains Mono
+    fontSize: 11px
+    fontWeight: '400'
+    lineHeight: 16px
+  label-lg:
+    fontFamily: Inter
+    fontSize: 13px
+    fontWeight: '600'
+    lineHeight: 18px
+    letterSpacing: 0.01em
+  label-md:
+    fontFamily: JetBrains Mono
+    fontSize: 11px
+    fontWeight: '500'
+    lineHeight: 16px
+    letterSpacing: 0.02em
+  label-sm:
+    fontFamily: JetBrains Mono
+    fontSize: 10px
+    fontWeight: '500'
+    lineHeight: 14px
+    letterSpacing: 0.04em
+rounded:
+  sm: 0.125rem
+  DEFAULT: 0.25rem
+  md: 0.375rem
+  lg: 0.5rem
+  xl: 0.75rem
+  full: 9999px
+spacing:
+  gutter: 0.75rem
+  margin: 1rem
+  space-xs: 0.25rem
+  space-sm: 0.5rem
+  space-md: 0.75rem
+  space-lg: 1rem
+  space-xl: 1.5rem
+---
 
-## Purpose
+## Brand & Style
 
-MyLLM is a technical Android client for a user-supplied OpenAI-compatible endpoint. The prototype makes connection status, model identity, local state, and externally sourced material explicit without adding visual noise.
+This design system delivers a high-precision, utilitarian Android operational interface built for machine learning engineers, infrastructure operators, and technical power users. The experience prioritizes rigorous observability, deterministic output validation, and exact hardware metrics over decorative styling.
 
-## Visual direction
+### Design Principles
+- **Absolute Determinism:** Ambiguity is treated as an error state. Data values strictly differentiate between null, unavailable, zero, and active inference (`NaN` ≠ `0` ≠ `—`).
+- **Tactile Density:** Information architecture conforms to Android system idioms (tactile feedback states, predictable bottom sheets, persistent top app bars) while sustaining the screen density required for telemetry inspection.
+- **Instrument Precision:** Surfaces act as monitor terminals. Subtle 1px structural dividers, high-contrast monospace readouts, and disciplined status pings replace subjective ornamentation.
 
-The interface uses a warm paper-like canvas with dark, technical conversation surfaces. It borrows an editorial rhythm for reading while keeping operational controls compact and utilitarian.
+## Colors
 
-- **Canvas:** Parchment `#f5f4ed`
-- **Surfaces:** Ivory `#faf9f5` and warm sand `#e8e6dc`
-- **Primary text:** Near black `#141413`
-- **Accent:** Terracotta `#c96442`, reserved for the primary action and active states
-- **Status colors:** Green for an active model, warm yellow for cached or constrained states, crimson for destructive or failed actions
-- **Depth:** warm borders and restrained ring shadows rather than heavy elevation
+The color system operates on an obsidian/slate dark-mode foundation designed to preserve eye comfort during late-night debugging while maximizing token contrast.
+
+### Palette Roles
+- **Primary (`#10B981` Emerald):** Represents healthy execution states, successful handshakes, active inference streams, confirmed model contexts, and primary commit actions.
+- **Secondary (`#06B6D4` Cyan):** Denotes secondary streaming protocols, active context windows, payload size telemetry, and cold network transfers.
+- **Tertiary (`#F59E0B` Amber):** Reserved for non-blocking warnings, fallback model triggers, context window truncation, parameter overrides, and unverified SSL certificates.
+- **Error (`#EF4444` Crimson):** Critical failures, endpoint connection drops, context length exhaustion, and schema validation crashes.
+- **Neutral Canvas (`#020617` to `#1E293B`):** Multi-tier obsidian base layers provide structural hierarchy without heavy shadows. Text defaults to `#F8FAFC` for primary alphanumeric readouts and `#94A3B8` for secondary telemetry labels.
+- **Provenance & Source Tints:**
+  - *Live Endpoint:* Emerald glow badge (`#10B981` at 15% opacity).
+  - *Local/Bundled:* Neutral slate badge (`#334155` at 40% opacity).
+  - *Override/Untrusted:* Amber outline badge (`#F59E0B` at 20% opacity).
 
 ## Typography
 
-- **Display:** Anthropic Serif, with Georgia fallback. Used for screen titles, model names, and dialogue titles.
-- **UI and body:** Anthropic Sans, with system fallback. Used for controls, explanations, metadata, and navigation.
-- **Technical data:** Anthropic Mono, with system monospace fallback. Used for model IDs, URLs, JSON, request IDs, and search queries.
+Typography establishes an intentional contrast between structural structural framing and pure computational readout.
 
-Serif text gives the product a calm editorial voice. Mono is kept for values the user may need to verify or copy. The UI never converts or abbreviates a model ID.
+- **Headings (Inter):** Applied to screen titles, modal headers, and top app bars. Inter keeps macro navigation clean, dense, and uncluttered.
+- **Body & Data Metrics (JetBrains Mono):** Applied across all conversation streams, JSON payloads, latency numbers (e.g., `42ms`), token counters (`1,024 / 8,192 ctx`), model identifiers (`meta-llama/Llama-3-70b-instruct`), and system validation tags.
+- **Numerical Formatting:** All numeric values must use tabular figures with zero slashed when displaying model weights, hashes, and hexadecimal memory addresses.
 
-## Layout
+## Layout & Spacing
 
-The prototype is framed as a 412px Android device on desktop and becomes edge-to-edge on narrow screens.
+Layout adheres to an 8dp computational grid with 4dp half-step sub-grid increments for dense data telemetry.
 
-- Persistent top bar for the page title, current model, and context actions.
-- Two-tab bottom navigation: Chat and Model.
-- Scrollable content sits above a fixed composer or navigation bar.
-- Sheets are used for temporary choices and request detail.
-- Dialogs are used before external navigation, data deletion, and one-time tool approval.
-- Forms use full-width fields with inline validation and a single primary action.
+### Android Canvas Architecture
+- **Safe Area Insets:** Strict padding accommodation for Android system navigation bars, gesture handles, status bars, and hardware camera cutouts.
+- **Top App Bar:** 56dp standard height holding model switcher pills, latency indicator, and connection status.
+- **Bottom Drawers & Sheets:** Modal bottom sheets snap at `45%` (inspection) and `90%` (full configuration) viewport heights.
+- **Density Tiering:** Data-heavy lists (token streams, request histories) utilize `space-xs` and `space-sm` internal padding to maximize line efficiency on narrow phone widths.
 
-## Core screens
+## Elevation & Depth
 
-| Screen | Primary job | Key behaviour |
-| --- | --- | --- |
-| Loading | Check local connection state | Routes to setup, catalog, or chat in a real product |
-| Setup endpoint | Save a custom endpoint and credential | Shows URL preview, security note, validation, and safe failures |
-| Model catalog | Select the active model | Keeps exact model IDs visible and distinguishes metadata sources |
-| Chat | Start and continue text conversations | Keeps the exact active model visible and the composer available |
-| History | Reopen and manage local conversations | Supports new chat, rename, and delete actions |
-| Model details | Inspect and adjust a model entry | Shows known metadata and marks unavailable values honestly |
-| Settings | Reach endpoint, model, and local data controls | Keeps destructive data removal behind confirmation |
+This design system uses flat, structural tonal surfaces combined with low-contrast keyline borders (1px solid `#334155` / `#1E293B`) rather than heavy blurred drop shadows. Depth matches native Android elevation levels via tint stepping:
 
-## Interaction rules
+- **Level 0 (Base Canvas):** `#020617` (Deep Obsidian).
+- **Level 1 (Card & Module Surface):** `#0B132B` with a 1px border of `#1E293B`.
+- **Level 2 (Active Controls & Input Bars):** `#1E293B` with high-contrast emerald focus borders.
+- **Level 3 (Bottom Sheets & Context Drawers):** `#0F172A` with a crisp `#334155` top-edge bevel and a 20% alpha black ambient backdrop scrim.
+- **Level 4 (Floating System Snackbars / Overlays):** `#1E293B` featuring an emerald accent rim (`#10B981`) and a 4dp vertical offset (`rgba(0, 0, 0, 0.45)`).
 
-- A successful endpoint connection opens the model catalog. It does not skip model selection.
-- API keys use a password field and are never rendered after saving.
-- A disabled model cannot become active until it is enabled in the picker.
-- New chat clears the active view without deleting history.
-- Streaming shows the user message first, then a compact generating state. Stopping preserves partial output.
-- Request metrics show their source quality: Exact, Estimated, Provider-reported, or Unavailable.
-- Context controls explain the hard limit and prevent duplicate compaction while it runs.
-- `web_search` requires approval for each call. Results are marked as untrusted external content.
-- External links require a confirmation dialog before leaving the app.
+## Shapes
 
-## States and trust cues
+Shapes reflect precision technical hardware. Soft corner geometries ensure components look engineered rather than decorative:
 
-The design puts uncertain information in clear language rather than filling gaps with plausible values.
+- **Standard Elements (Buttons, Inputs, Metric Cells):** 4px (`0.25rem`) corner radius.
+- **Cards, Modules, and Code Blocks:** 8px (`0.5rem`) corner radius.
+- **Android Bottom Sheets:** Top-left and top-right radii locked at 12px (`0.75rem`), with flat bottom edges.
+- **Status Pills & Provenance Tags:** 2px or 4px micro-radii to maintain an industrial tag aesthetic.
 
-- Unknown model metadata is labeled **Unknown** or omitted.
-- Missing metrics are labeled **Unavailable**.
-- Offline catalog data is shown as saved and requires a refresh when online.
-- Connection failures name a safe next action without exposing a credential, prompt, request body, or raw provider response.
-- Tool activity is visually separate from assistant messages.
-- Source cards show hostname, optional date, a short snippet, and the untrusted-content label.
+## Components
 
-## Component rules
+### Buttons
+- **Primary:** Background `#10B981`, text `#020617`, font `Inter` 600 weight. Zero shadow; sharp 1px border transition on touch feedback.
+- **Technical/Secondary:** Background `#1E293B`, border 1px solid `#334155`, text `#F8FAFC`. Provides monospaced accelerator hints (e.g., `[RUN]`).
+- **Destructive/Abort:** Outlined in `#EF4444`, background transparent; switches to filled `#EF4444` during an active inference interrupt.
 
-- Minimum touch target: 42px for icon controls and 46px for primary buttons.
-- Cards use 12px to 16px radius; chips use a pill radius only for compact metadata.
-- Primary actions use terracotta. Secondary actions use warm sand. Avoid duplicate primary actions in the same viewport.
-- Focus uses a visible blue ring reserved for keyboard accessibility.
-- Hover changes surface or elevation without reducing text contrast.
-- Motion stays short and functional: 150ms to 200ms for taps, sheets, and state changes.
+### Chips & Badges
+- **Provenance Tags:**
+  - `LIVE`: 1px solid `#10B981`, emerald text, glowing status dot indicator (4px circle).
+  - `OVERRIDE`: 1px solid `#F59E0B`, amber text, monospaced uppercase.
+  - `BUNDLED`: 1px solid `#475569`, slate muted text.
+- **Metrics Chips:** Key-value pairs enclosed in single pill wrappers (e.g., `TTFT: 240ms` or `TOK/S: 48.2`).
 
-## Prototype scope
+### Input Fields & Prompt Consoles
+- **Terminal Inputs:** Dark surface (`#0F172A`), monospace input text, `#10B981` solid vertical block caret with optional blink rate toggle.
+- **Validation Footers:** Displays real-time context token meter (`342 / 4,096 tokens`) directly under the input boundary. Amber warnings appear at 85% capacity; red appears on context boundary overflow.
 
-The HTML prototype uses local state only. It demonstrates the product flow and states without connecting to a real endpoint, storing credentials, opening external links, or performing web searches.
+### Bottom Sheets & Drawers
+- Handles are rendered as subtle 32x4px horizontal pills centered on sheet headers.
+- Contains segmented parameter sliders (Temperature, Top-P, Presence Penalty) displaying exact live float values (`0.72`) in JetBrains Mono.
 
-## Implementation dials
-
-ENERGY 1 / RHYTHM 2 / MOTION 1. The calm, editorial palette keeps long conversations readable; native serif headings separate human-facing names from exact monospace values. Cards group operational choices, and terracotta marks the active action only. Motion stays limited to native press and state feedback.
+### Untrusted External Content Callouts
+- Code payloads, markdown outputs, or tool calls returned by non-local endpoints render with an industrial warning bar on the left edge (2px solid `#06B6D4` or `#F59E0B`), accompanied by a monospace security badge: `UNTRUSTED LLM OUTPUT`.

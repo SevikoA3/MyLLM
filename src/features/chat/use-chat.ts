@@ -51,6 +51,7 @@ export type ChatState = {
   contextBudget: ContextBudgetResult | null;
   contextPolicy: ContextPolicy;
   autoCompact: boolean;
+  autoApproveTools: boolean;
   compacting: boolean;
   compactionActive: boolean;
   activeModelId: string | null;
@@ -71,6 +72,7 @@ export type ChatState = {
   updateContext: (draft: string) => void;
   compactNow: () => Promise<boolean>;
   setAutoCompact: (enabled: boolean) => Promise<boolean>;
+  setAutoApproveTools: (enabled: boolean) => void;
   setReasoningEffort: (effort: string) => Promise<boolean>;
 };
 
@@ -85,6 +87,7 @@ export function useChat(
   const [contextBudget, setContextBudget] = useState<ContextBudgetResult | null>(null);
   const [contextPolicy, setContextPolicy] = useState<ContextPolicy>(DEFAULT_CONTEXT_POLICY);
   const [autoCompact, setAutoCompactState] = useState(true);
+  const [autoApproveTools, setAutoApproveToolsState] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [compactionActive, setCompactionActive] = useState(false);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
@@ -544,7 +547,7 @@ export function useChat(
           transport: protocolClient,
           registry: toolRegistry,
           definitions: toolRegistry.definitions(),
-          policy: DEFAULT_TOOL_POLICY,
+          policy: autoApproveTools ? { approval: 'never' } : DEFAULT_TOOL_POLICY,
           persistence,
           signal: controller.signal,
           onEvent,
@@ -652,6 +655,7 @@ export function useChat(
     [
       activeModelId,
       autoCompact,
+      autoApproveTools,
       conversationId,
       loadingConversation,
       metrics,
@@ -868,6 +872,7 @@ export function useChat(
     contextBudget,
     contextPolicy,
     autoCompact,
+    autoApproveTools,
     compacting,
     compactionActive,
     activeModelId,
@@ -888,6 +893,7 @@ export function useChat(
     updateContext,
     compactNow,
     setAutoCompact,
+    setAutoApproveTools: (enabled) => setAutoApproveToolsState(enabled),
     setReasoningEffort,
   };
 }

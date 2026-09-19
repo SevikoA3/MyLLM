@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,15 +13,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ModelOverrideSchema, type ModelOverride } from '../../domain/catalog';
-import type { MergedModel } from '../../domain/catalog-merge';
+import type { CatalogSource, MergedModel } from '../../domain/catalog-merge';
 import { effectiveMaxOutput, protocolOutputCap, reasoningChoices } from '../../domain/model-config';
 import type { CapabilityState, InputModality } from '../../domain/model';
-import { PrimaryButton, Screen } from '../../ui/components';
-import { useTheme } from '../../ui/theme';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
-import { formatTokens } from './model-badges';
 import { useModelCatalog } from './use-model-catalog';
 
 type InheritBoolean = 'inherit' | 'true' | 'false';
@@ -39,11 +39,33 @@ type Form = {
   outputLimit: string;
 };
 
+const colors = {
+  background: '#0b1326',
+  surfaceLowest: '#060e20',
+  surfaceLow: '#131b2e',
+  surface: '#171f33',
+  surfaceHigh: '#222a3d',
+  border: '#334155',
+  outline: '#86948a',
+  text: '#dae2fd',
+  muted: '#bbcabf',
+  primary: '#10b981',
+  primaryText: '#020617',
+  secondary: '#06b6d4',
+  warning: '#f59e0b',
+  error: '#ef4444',
+} as const;
+
+const fonts = {
+  heading: 'Inter_600SemiBold',
+  mono: 'JetBrainsMono_400Regular',
+  monoMedium: 'JetBrainsMono_500Medium',
+} as const;
+
 export default function ModelDetailScreen() {
   const { modelId } = useLocalSearchParams<{ modelId?: string }>();
   const { status, profile } = useActiveEndpoint();
   const catalog = useModelCatalog(profile);
-  const theme = useTheme();
   const model = catalog.runtime?.models.find((entry) => entry.id === modelId) ?? null;
   const override =
     profile === null || modelId === undefined
@@ -51,6 +73,7 @@ export default function ModelDetailScreen() {
       : catalog.runtime?.overrides.endpoints[profile.id]?.models[modelId];
   const [draft, setDraft] = useState<Form | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
 
   const choices = useMemo(
     () => (model === null ? [] : reasoningChoices(model.reasoningEfforts)),
@@ -58,22 +81,13 @@ export default function ModelDetailScreen() {
   );
 
   if (status === 'loading' || catalog.loading || model === null || profile === null) {
-    return (
-      <Screen>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          {modelId === undefined || (status !== 'loading' && !catalog.loading && model === null) ? (
-            <Text style={{ color: theme.colors.danger }}>Model not found.</Text>
-          ) : (
-            <ActivityIndicator color={theme.colors.accent} />
-          )}
-        </View>
-      </Screen>
-    );
+    const missing = modelId === undefined || (status !== 'loading' && !catalog.loading && model === null);
+    return <DetailState loading={!missing} message={missing ? 'Model not found.' : 'Loading model specification.'} />;
   }
 
   const form = draft ?? formFrom(override);
-  const setForm = setDraft;
   const ceiling = effectiveMaxOutput(model.maxOutputTokens, protocolOutputCap(profile));
+  const hasOverride = override !== undefined;
 
   const save = async () => {
     setMessage(null);
@@ -84,162 +98,624 @@ export default function ModelDetailScreen() {
     }
     try {
       await catalog.setOverride(model.id, built.value);
-      setMessage('Saved. Catalog refresh will not overwrite this override.');
+      setMessage('Overrides saved locally. Catalog refresh will preserve them.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Override could not be saved.');
     }
   };
 
-  const resetModel = () => {
-    Alert.alert('Reset model?', 'All overrides for this model will be deleted.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reset',
-        style: 'destructive',
-        onPress: () => {
-          void catalog.setOverride(model.id, null).then(() => {
-            setForm(formFrom(undefined));
-            setMessage('Model override reset.');
-          });
-        },
-      },
-    ]);
+  const resetModel = async () => {
+    try {
+      await catalog.setOverride(model.id, null);
+      setDraft(formFrom(undefined));
+      setMessage('Model overrides reset to inherited values.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Model override could not be reset.');
+    } finally {
+      setResetOpen(false);
+    }
   };
 
   return (
-    <Screen>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ gap: 14, padding: theme.spacing.screen, paddingBottom: 40 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Action label="Back" onPress={() => router.back()} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
-                Model details
-              </Text>
-              <Text selectable style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-                {model.id}
-              </Text>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar style="light" />
+      <AppBar />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Back to model catalog"
+                onPress={() => router.back()}
+                hitSlop={4}
+                style={({ pressed }) => ({
+                  width: 40,
+                  height: 40,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  backgroundColor: colors.surface,
+                  opacity: pressed ? 0.8 : 1,
+                })}>
+                <SymbolView name={{ ios: 'chevron.left', android: 'arrow_back' }} size={20} tintColor={colors.text} />
+              </Pressable>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={{ color: colors.primary, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.8 }}>
+                  CATALOG / INSPECTION
+                </Text>
+                <Text numberOfLines={1} style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18, lineHeight: 24 }}>
+                  Model Spec & Overrides
+                </Text>
+              </View>
             </View>
+            <SourceBadge source={hasOverride ? 'user-override' : null} label={hasOverride ? 'OVERRIDE' : 'INHERITED'} />
           </View>
 
-          <Section title="Effective values and sources">
-            <ProvenanceRow model={model} path="displayName" label="Name" value={model.displayName} />
-            <ProvenanceRow model={model} path="contextWindow" label="Context" value={model.contextWindow} />
-            <ProvenanceRow model={model} path="maxOutputTokens" label="Max output" value={model.maxOutputTokens} />
-            <ProvenanceRow model={model} path="reasoningEfforts" label="Thinking levels" value={model.reasoningEfforts} />
-            <ProvenanceRow model={model} path="inputModalities" label="Input modalities" value={model.inputModalities} />
-            <ProvenanceRow model={model} path="enabled" label="Enabled" value={model.enabled} />
-            <ProvenanceRow model={model} path="capabilities.streaming" label="Streaming" value={model.capabilities.streaming} />
-            <ProvenanceRow model={model} path="capabilities.tools" label="Tools" value={model.capabilities.tools} />
-            <ProvenanceRow model={model} path="capabilities.structuredOutput" label="Structured output" value={model.capabilities.structuredOutput} />
-            <ProvenanceRow model={model} path="capabilities.nativeCompaction" label="Native compaction" value={model.capabilities.nativeCompaction} />
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
-              Effective output cap: {ceiling === null ? 'Unknown' : formatTokens(ceiling)}
-            </Text>
-          </Section>
+          <IdentifierCard model={model} />
+          <ProvenanceLegend />
 
-          <Section title="Metadata override">
+          <Panel title="Effective specifications" icon={{ ios: 'slider.horizontal.3', android: 'tune' }} accent={colors.primary}>
+            <SpecificationRow model={model} path="displayName" label="Display name" value={model.displayName} />
+            <SpecificationRow model={model} path="contextWindow" label="Context window" value={tokenText(model.contextWindow)} />
+            <SpecificationRow model={model} path="maxOutputTokens" label="Maximum output" value={tokenText(model.maxOutputTokens)} />
+            <SpecificationRow
+              model={model}
+              path="reasoningEfforts"
+              label="Thinking levels"
+              value={model.reasoningEfforts.length === 0 ? 'Unknown' : model.reasoningEfforts.join(' · ')}
+            />
+            <SpecificationRow
+              model={model}
+              path="inputModalities"
+              label="Input modalities"
+              value={model.inputModalities.length === 0 ? 'Unknown' : model.inputModalities.join(', ')}
+            />
+            <SpecificationRow model={model} path="capabilities.streaming" label="Streaming" value={capabilityText(model.capabilities.streaming)} />
+            <SpecificationRow model={model} path="capabilities.tools" label="Tool calling" value={capabilityText(model.capabilities.tools)} />
+            <SpecificationRow
+              model={model}
+              path="capabilities.structuredOutput"
+              label="Structured output"
+              value={capabilityText(model.capabilities.structuredOutput)}
+            />
+            <SpecificationRow
+              model={model}
+              path="capabilities.nativeCompaction"
+              label="Native compaction"
+              value={capabilityText(model.capabilities.nativeCompaction)}
+            />
+            <DerivedRow label="Effective output cap" value={tokenText(ceiling)} />
+          </Panel>
+
+          <Panel title="Modify local overrides" icon={{ ios: 'wrench.and.screwdriver', android: 'build_circle' }} accent={colors.warning} tag="CLIENT SIDE">
             <Field
               label="Display name"
               value={form.displayName}
               placeholder={model.displayName}
-              onChange={(value) => setForm({ ...form, displayName: value })}
-              onReset={() => setForm({ ...form, displayName: '' })}
+              onChange={(value) => setDraft({ ...form, displayName: value })}
+              onReset={() => setDraft({ ...form, displayName: '' })}
             />
             <Choice
-              label="Enabled"
+              label="Show in Chat Model Picker"
+              help="Inherit follows the current catalog state."
               value={form.enabled}
               values={['inherit', 'true', 'false']}
-              onChange={(value) => setForm({ ...form, enabled: value as InheritBoolean })}
+              labels={{ inherit: 'INHERIT', true: 'SHOWN', false: 'HIDDEN' }}
+              onChange={(value) => setDraft({ ...form, enabled: value as InheritBoolean })}
             />
             <Field
-              label="Context window"
+              label="Override max context tokens"
               value={form.contextWindow}
               placeholder={numberText(model.contextWindow)}
               keyboardType="number-pad"
-              onChange={(value) => setForm({ ...form, contextWindow: value })}
-              onReset={() => setForm({ ...form, contextWindow: '' })}
+              onChange={(value) => setDraft({ ...form, contextWindow: value })}
+              onReset={() => setDraft({ ...form, contextWindow: '' })}
             />
             <Field
-              label="Max output tokens"
+              label="Override max output tokens"
               value={form.maxOutputTokens}
               placeholder={numberText(model.maxOutputTokens)}
               keyboardType="number-pad"
-              onChange={(value) => setForm({ ...form, maxOutputTokens: value })}
-              onReset={() => setForm({ ...form, maxOutputTokens: '' })}
+              onChange={(value) => setDraft({ ...form, maxOutputTokens: value })}
+              onReset={() => setDraft({ ...form, maxOutputTokens: '' })}
             />
             <Field
               label="Reasoning efforts"
               value={form.reasoningEfforts}
               placeholder="auto, low, high"
-              help="Order is preserved. Empty = inherit; [] = empty array."
-              onChange={(value) => setForm({ ...form, reasoningEfforts: value })}
-              onReset={() => setForm({ ...form, reasoningEfforts: '' })}
+              help="Order is preserved. Empty inherits; [] clears the list."
+              onChange={(value) => setDraft({ ...form, reasoningEfforts: value })}
+              onReset={() => setDraft({ ...form, reasoningEfforts: '' })}
             />
             <Field
               label="Input modalities"
               value={form.inputModalities}
               placeholder="text, image"
-              help="Options: text, image, file, video. Empty = inherit; [] = empty array."
-              onChange={(value) => setForm({ ...form, inputModalities: value })}
-              onReset={() => setForm({ ...form, inputModalities: '' })}
+              help="Options: text, image, file, video. Empty inherits; [] clears the list."
+              onChange={(value) => setDraft({ ...form, inputModalities: value })}
+              onReset={() => setDraft({ ...form, inputModalities: '' })}
             />
-          </Section>
 
-          <Section title="Capability">
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
+              CAPABILITY OVERRIDES
+            </Text>
             {(['streaming', 'tools', 'structuredOutput', 'nativeCompaction'] as const).map((key) => (
               <Choice
                 key={key}
-                label={key}
+                label={capabilityLabel(key)}
                 value={form[key]}
                 values={['inherit', 'supported', 'unsupported', 'unknown']}
-                onChange={(value) => setForm({ ...form, [key]: value as CapabilityChoice })}
+                onChange={(value) => setDraft({ ...form, [key]: value as CapabilityChoice })}
               />
             ))}
-          </Section>
 
-          <Section title="Request">
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
+              REQUEST CONTROLS
+            </Text>
             {choices.length > 0 && (
               <Choice
                 label="Thinking"
                 value={form.reasoningEffort}
                 values={choices}
-                onChange={(value) => setForm({ ...form, reasoningEffort: value })}
+                onChange={(value) => setDraft({ ...form, reasoningEffort: value })}
               />
             )}
             <Field
               label="Output limit"
               value={form.outputLimit}
               placeholder="Auto"
-              help="Empty = Auto. The request omits max_output_tokens."
+              help={ceiling === null ? 'Empty uses Auto and omits max_output_tokens.' : 'Empty uses Auto. Maximum available: ' + tokenText(ceiling) + '.'}
               keyboardType="number-pad"
-              onChange={(value) => setForm({ ...form, outputLimit: value })}
-              onReset={() => setForm({ ...form, outputLimit: '' })}
+              onChange={(value) => setDraft({ ...form, outputLimit: value })}
+              onReset={() => setDraft({ ...form, outputLimit: '' })}
             />
-          </Section>
+          </Panel>
 
-          {message !== null && (
-            <Text style={{ color: message.startsWith('Saved') ? theme.colors.text : theme.colors.danger }}>
-              {message}
-            </Text>
-          )}
-          <PrimaryButton label="Save" onPress={() => void save()} />
-          <Action label="Reset model" danger onPress={resetModel} />
+          <View style={{ flexDirection: 'row', gap: 8, padding: 12, borderRadius: 8, backgroundColor: colors.surfaceLowest }}>
+            <View style={{ width: 2, borderRadius: 1, backgroundColor: colors.secondary }} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
+                LOCAL OVERRIDE POLICY
+              </Text>
+              <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11, lineHeight: 16 }}>
+                Overrides are stored locally for this endpoint and take precedence over bundled and discovered catalog values.
+              </Text>
+            </View>
+          </View>
+
+          {message !== null && <StatusMessage message={message} />}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Save Overrides"
+            onPress={() => void save()}
+            style={({ pressed }) => ({
+              minHeight: 48,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              borderRadius: 8,
+              backgroundColor: colors.primary,
+              opacity: pressed ? 0.8 : 1,
+            })}>
+            <SymbolView name={{ ios: 'square.and.arrow.down', android: 'save' }} size={20} tintColor={colors.primaryText} />
+            <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: 18 }}>Save Overrides</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reset to Server Defaults"
+            onPress={() => setResetOpen(true)}
+            hitSlop={2}
+            style={({ pressed }) => ({
+              minHeight: 44,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              opacity: pressed ? 0.8 : 1,
+            })}>
+            <SymbolView name={{ ios: 'arrow.counterclockwise', android: 'restart_alt' }} size={18} tintColor={colors.error} />
+            <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>Reset to Server Defaults</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
-    </Screen>
+
+      <ResetSheet modelId={model.id} visible={resetOpen} onCancel={() => setResetOpen(false)} onConfirm={() => void resetModel()} />
+    </SafeAreaView>
   );
+}
+
+function DetailState({ loading, message }: { loading: boolean; message: string }) {
+  return (
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar style="light" />
+      <AppBar />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16 }}>
+        {loading && <ActivityIndicator color={colors.primary} />}
+        <Text style={{ color: loading ? colors.muted : colors.error, fontFamily: fonts.mono, fontSize: 11 }}>{message}</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function AppBar() {
+  return (
+    <View
+      style={{
+        height: 56,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.background,
+      }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={20} tintColor={colors.primary} />
+        <Text style={{ color: colors.primary, fontFamily: fonts.heading, fontSize: 18, letterSpacing: -0.4 }}>MyLLM</Text>
+      </View>
+    </View>
+  );
+}
+
+function IdentifierCard({ model }: { model: MergedModel }) {
+  const source = model.provenance.displayName?.source ?? null;
+  return (
+    <View style={{ gap: 12, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceLow }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
+          CANONICAL IDENTIFIER
+        </Text>
+        <SourceBadge source={source} />
+      </View>
+      <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 4, backgroundColor: colors.surfaceLowest }}>
+        <Text selectable numberOfLines={2} style={{ color: colors.primary, fontFamily: fonts.monoMedium, fontSize: 11, lineHeight: 16 }}>
+          {model.id}
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 4 }}>
+        <IdentityMetric label="Vendor" value={model.vendor ?? 'Unknown'} />
+        <IdentityMetric label="Owner" value={model.ownedBy ?? 'Unknown'} />
+        <IdentityMetric label="Catalog" value={model.orphaned ? 'History only' : 'Current'} accent={model.orphaned ? colors.warning : colors.secondary} />
+      </View>
+    </View>
+  );
+}
+
+function IdentityMetric({ label, value, accent = colors.text }: { label: string; value: string; accent?: string }) {
+  return (
+    <View style={{ flex: 1, minWidth: 0, gap: 3, padding: 8, borderRadius: 4, backgroundColor: colors.surface }}>
+      <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>
+        {label.toUpperCase()}
+      </Text>
+      <Text numberOfLines={1} style={{ color: accent, fontFamily: fonts.monoMedium, fontSize: 10 }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function ProvenanceLegend() {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
+        PROVENANCE MAPPING
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        <SourceBadge source="live" />
+        <SourceBadge source="bundled" />
+        <SourceBadge source="user-override" />
+        <SourceBadge source="history" />
+        <SourceBadge source={null} />
+      </View>
+    </View>
+  );
+}
+
+function Panel({
+  title,
+  icon,
+  accent,
+  tag,
+  children,
+}: {
+  title: string;
+  icon: { ios: 'slider.horizontal.3' | 'wrench.and.screwdriver'; android: 'tune' | 'build_circle' };
+  accent: string;
+  tag?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={{ gap: 12, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceLow }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <SymbolView name={icon} size={18} tintColor={accent} />
+          <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>{title}</Text>
+        </View>
+        {tag !== undefined && <Text style={{ color: accent, fontFamily: fonts.monoMedium, fontSize: 10 }}>{tag}</Text>}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function SpecificationRow({ model, path, label, value }: { model: MergedModel; path: string; label: string; value: string }) {
+  return <ValueRow label={label} value={value} source={model.provenance[path]?.source ?? null} />;
+}
+
+function DerivedRow({ label, value }: { label: string; value: string }) {
+  return <ValueRow label={label} value={value} derived />;
+}
+
+function ValueRow({ label, value, source, derived = false }: { label: string; value: string; source?: CatalogSource | null; derived?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 8, borderRadius: 4, backgroundColor: colors.surface }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>{label}</Text>
+        <Text selectable numberOfLines={2} style={{ color: value === 'Unknown' ? colors.muted : colors.text, fontFamily: fonts.monoMedium, fontSize: 13, lineHeight: 18 }}>
+          {value}
+        </Text>
+      </View>
+      {derived ? <DerivedBadge /> : <SourceBadge source={source ?? null} />}
+    </View>
+  );
+}
+
+function SourceBadge({ source, label }: { source: CatalogSource | null; label?: string }) {
+  const details = sourceDetails(source);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, backgroundColor: colors.surfaceHigh }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: details.color }} />
+      <Text style={{ color: details.color, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label ?? details.label}</Text>
+    </View>
+  );
+}
+
+function DerivedBadge() {
+  return (
+    <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, backgroundColor: colors.surfaceHigh }}>
+      <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>CLIENT LIMIT</Text>
+    </View>
+  );
+}
+
+function Field({
+  label,
+  value,
+  placeholder,
+  help,
+  keyboardType,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  help?: string;
+  keyboardType?: 'default' | 'number-pad';
+  onChange: (value: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Text style={{ flex: 1, color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={'Reset ' + label}
+          onPress={onReset}
+          hitSlop={8}
+          style={{ minHeight: 32, justifyContent: 'center' }}>
+          <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>RESET</Text>
+        </Pressable>
+      </View>
+      <TextInput
+        accessibilityLabel={label}
+        value={value}
+        placeholder={placeholder}
+        placeholderTextColor={colors.outline}
+        keyboardType={keyboardType}
+        autoCapitalize="none"
+        autoCorrect={false}
+        onChangeText={onChange}
+        style={{ minHeight: 40, paddingHorizontal: 10, borderRadius: 4, color: colors.text, backgroundColor: colors.surfaceHigh, fontFamily: fonts.mono, fontSize: 13 }}
+      />
+      {help !== undefined && <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>{help}</Text>}
+    </View>
+  );
+}
+
+function Choice({
+  label,
+  value,
+  values,
+  help,
+  labels,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  values: readonly string[];
+  help?: string;
+  labels?: Partial<Record<string, string>>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {values.map((entry) => {
+          const selected = value === entry;
+          const optionLabel = labels?.[entry] ?? entry;
+          return (
+            <Pressable
+              key={entry}
+              accessibilityRole="radio"
+              accessibilityLabel={label + ': ' + optionLabel}
+              accessibilityState={{ checked: selected }}
+              onPress={() => onChange(entry)}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                minHeight: 32,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: 8,
+                borderRadius: 4,
+                backgroundColor: selected ? colors.primary : colors.surfaceHigh,
+                opacity: pressed ? 0.8 : 1,
+              })}>
+              <Text style={{ color: selected ? colors.primaryText : colors.text, fontFamily: fonts.monoMedium, fontSize: 10 }}>{optionLabel}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {help !== undefined && <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>{help}</Text>}
+    </View>
+  );
+}
+
+function StatusMessage({ message }: { message: string }) {
+  const success = message.startsWith('Overrides saved') || message.startsWith('Model overrides reset');
+  return (
+    <View accessibilityRole="alert" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 8, backgroundColor: colors.surfaceHigh }}>
+      <SymbolView name={{ ios: success ? 'checkmark.circle.fill' : 'exclamationmark.triangle.fill', android: success ? 'check_circle' : 'warning' }} size={18} tintColor={success ? colors.primary : colors.error} />
+      <Text style={{ flex: 1, color: success ? colors.text : colors.error, fontFamily: fonts.mono, fontSize: 11, lineHeight: 16 }}>{message}</Text>
+    </View>
+  );
+}
+
+function ResetSheet({
+  modelId,
+  visible,
+  onCancel,
+  onConfirm,
+}: {
+  modelId: string;
+  visible: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      transparent
+      animationType="slide"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      navigationBarTranslucent
+      visible={visible}
+      onRequestClose={onCancel}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.45)' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss reset confirmation" onPress={onCancel} style={{ flex: 1 }} />
+        <View
+          accessibilityViewIsModal
+          style={{
+            gap: 16,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 24,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            borderTopLeftRadius: 12,
+            borderTopRightRadius: 12,
+            backgroundColor: colors.surfaceLow,
+          }}>
+          <View style={{ alignItems: 'center' }}>
+            <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: colors.outline }} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: colors.surfaceHigh }}>
+              <SymbolView name={{ ios: 'exclamationmark.triangle.fill', android: 'warning' }} size={22} tintColor={colors.error} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18, lineHeight: 24 }}>Discard Client Overrides?</Text>
+              <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>
+                All local metadata and request customizations will return to inherited catalog values.
+              </Text>
+            </View>
+          </View>
+          <View style={{ padding: 10, borderRadius: 4, backgroundColor: colors.surfaceLowest }}>
+            <Text numberOfLines={2} selectable style={{ color: colors.primary, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>
+              {modelId}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <SheetButton label="Cancel" onPress={onCancel} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SheetButton label="Reset All" danger onPress={onConfirm} />
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SheetButton({ label, danger = false, onPress }: { label: string; danger?: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={4}
+      style={({ pressed }) => ({
+        minHeight: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 4,
+        backgroundColor: danger ? colors.error : colors.surfaceHigh,
+        opacity: pressed ? 0.8 : 1,
+      })}>
+      <Text style={{ color: danger ? colors.primaryText : colors.text, fontFamily: fonts.heading, fontSize: 13 }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function sourceDetails(source: CatalogSource | null): { label: string; color: string } {
+  switch (source) {
+    case 'live':
+      return { label: 'LIVE ENDPOINT', color: colors.primary };
+    case 'bundled':
+      return { label: 'BUNDLED SPEC', color: colors.secondary };
+    case 'user-override':
+      return { label: 'USER OVERRIDE', color: colors.warning };
+    case 'history':
+      return { label: 'HISTORY RECORD', color: colors.muted };
+    default:
+      return { label: 'UNKNOWN', color: colors.outline };
+  }
+}
+
+function tokenText(value: number | null): string {
+  return value === null ? 'Unknown' : value.toLocaleString() + ' tokens';
+}
+
+function capabilityText(value: CapabilityState): string {
+  return value === 'supported' ? 'Supported' : value === 'unsupported' ? 'Unsupported' : 'Unknown';
+}
+
+function capabilityLabel(key: keyof Pick<Form, 'streaming' | 'tools' | 'structuredOutput' | 'nativeCompaction'>): string {
+  return {
+    streaming: 'Streaming',
+    tools: 'Tool calling',
+    structuredOutput: 'Structured output',
+    nativeCompaction: 'Native compaction',
+  }[key];
 }
 
 function formFrom(override: ModelOverride | undefined): Form {
   return {
     displayName: override?.displayName ?? '',
-    enabled:
-      typeof override?.enabled === 'boolean' ? String(override.enabled) as InheritBoolean : 'inherit',
+    enabled: typeof override?.enabled === 'boolean' ? String(override.enabled) as InheritBoolean : 'inherit',
     contextWindow: numberText(override?.contextWindow),
     maxOutputTokens: numberText(override?.maxOutputTokens),
     reasoningEfforts: arrayText(override?.reasoningEfforts),
@@ -328,158 +804,4 @@ function numberText(value: number | null | undefined): string {
 function arrayText(value: readonly string[] | null | undefined): string {
   if (value === undefined || value === null) return '';
   return value.length === 0 ? '[]' : value.join(', ');
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const theme = useTheme();
-  return (
-    <View style={{ gap: 10, padding: 14, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }}>
-      <Text style={{ color: theme.colors.text, fontSize: theme.typography.subtitle, fontWeight: '700' }}>
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
-}
-
-function ProvenanceRow({
-  model,
-  path,
-  label,
-  value,
-}: {
-  model: MergedModel;
-  path: string;
-  label: string;
-  value: string | number | boolean | null | string[];
-}) {
-  const theme = useTheme();
-  const source = model.provenance[path]?.source ?? 'unknown';
-  const text = Array.isArray(value) ? (value.length === 0 ? 'Unknown' : value.join(', ')) : value ?? 'Unknown';
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-      <Text style={{ color: theme.colors.textMuted, flex: 1 }}>{label}</Text>
-      <Text selectable style={{ color: theme.colors.text, flex: 2, textAlign: 'right' }}>
-        {String(text)} · {source}
-      </Text>
-    </View>
-  );
-}
-
-function Field({
-  label,
-  value,
-  placeholder,
-  help,
-  keyboardType,
-  onChange,
-  onReset,
-}: {
-  label: string;
-  value: string;
-  placeholder: string;
-  help?: string;
-  keyboardType?: 'default' | 'number-pad';
-  onChange: (value: string) => void;
-  onReset: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{label}</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={'Reset ' + label}
-          style={{ minHeight: 48, justifyContent: 'center' }}
-          onPress={onReset}>
-          <Text style={{ color: theme.colors.accent, fontWeight: '700' }}>Reset</Text>
-        </Pressable>
-      </View>
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.textMuted}
-        keyboardType={keyboardType}
-        autoCapitalize="none"
-        autoCorrect={false}
-        onChangeText={onChange}
-        style={{
-          minHeight: 48,
-          color: theme.colors.text,
-          backgroundColor: theme.colors.background,
-          borderColor: theme.colors.border,
-          borderWidth: 1,
-          borderRadius: theme.radius.control,
-          paddingHorizontal: 12,
-        }}
-      />
-      {help !== undefined && <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>{help}</Text>}
-    </View>
-  );
-}
-
-function Choice({
-  label,
-  value,
-  values,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  values: readonly string[];
-  onChange: (value: string) => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={{ gap: 6 }}>
-      <Text style={{ color: theme.colors.text, fontWeight: '600' }}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {values.map((entry) => (
-          <Pressable
-            key={entry}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: value === entry }}
-            onPress={() => onChange(entry)}
-            style={{
-              minHeight: 48,
-              justifyContent: 'center',
-              paddingHorizontal: 10,
-              borderRadius: theme.radius.pill,
-              borderWidth: 1,
-              borderColor: value === entry ? theme.colors.borderStrong : theme.colors.border,
-              backgroundColor: value === entry ? theme.colors.accent : theme.colors.background,
-            }}>
-            <Text style={{ color: value === entry ? theme.colors.accentText : theme.colors.text }}>
-              {entry}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function Action({ label, danger = false, onPress }: { label: string; danger?: boolean; onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={{
-        minHeight: 48,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        borderRadius: theme.radius.control,
-        borderWidth: 1,
-        borderColor: danger ? theme.colors.danger : theme.colors.border,
-      }}>
-      <Text style={{ color: danger ? theme.colors.danger : theme.colors.text, fontWeight: '700' }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
 }

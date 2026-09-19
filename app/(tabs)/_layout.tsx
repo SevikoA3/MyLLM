@@ -1,35 +1,48 @@
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-import { useTheme } from '../../src/ui/theme';
+const colors = {
+  background: '#060e20',
+  border: '#334155',
+  muted: '#bbcabf',
+  primary: '#10b981',
+} as const;
 
 export default function TabLayout() {
-  const theme = useTheme();
-
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.colors.accent,
-        tabBarInactiveTintColor: theme.colors.textMuted,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
-          backgroundColor: theme.colors.background,
-          borderTopColor: theme.colors.border,
+          backgroundColor: colors.background,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
         },
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
-        sceneStyle: { backgroundColor: theme.colors.background },
+        tabBarLabelStyle: {
+          fontFamily: 'JetBrainsMono_500Medium',
+          fontSize: 10,
+          letterSpacing: 0.4,
+          marginBottom: 4,
+        },
+        tabBarItemStyle: { minHeight: 44, paddingVertical: 2 },
+        tabBarIconStyle: { marginTop: 4 },
+        sceneStyle: { backgroundColor: '#0b1326' },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Chat',
-          tabBarIcon: ({ color, focused, size }) => (
+          tabBarIcon: ({ color, focused }) => (
             <SymbolView
               name={{
                 ios: focused ? 'bubble.left.and.bubble.right.fill' : 'bubble.left.and.bubble.right',
                 android: 'chat_bubble',
               }}
-              size={size}
+              size={22}
               tintColor={color}
             />
           ),
@@ -38,14 +51,40 @@ export default function TabLayout() {
       <Tabs.Screen
         name="models"
         options={{
-          title: 'Model',
-          tabBarIcon: ({ color, focused, size }) => (
+          title: 'Catalog',
+          tabBarIcon: ({ color, focused }) => (
             <SymbolView
               name={{
                 ios: focused ? 'square.grid.2x2.fill' : 'square.grid.2x2',
                 android: 'grid_view',
               }}
-              size={size}
+              size={22}
+              tintColor={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'History',
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{ ios: 'clock.arrow.circlepath', android: 'history' }}
+              size={22}
+              tintColor={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{ ios: 'gearshape', android: 'settings' }}
+              size={22}
               tintColor={color}
             />
           ),

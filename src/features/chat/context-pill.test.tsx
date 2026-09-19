@@ -21,7 +21,7 @@ function result(overrides: Partial<ContextBudgetResult> = {}): ContextBudgetResu
 }
 
 describe('ContextPill', () => {
-  it('shows a circular usage meter and hides details until opened', async () => {
+  it('shows usage summary and hides details until opened', async () => {
     const view = await render(<ContextPill budget={result()} cacheHitPercent={42.5} />);
 
     expect(view.getByLabelText('Context usage, 19 percent')).toBeTruthy();
@@ -58,5 +58,18 @@ describe('ContextPill', () => {
     expect(view.getByLabelText('Context usage unavailable')).toBeTruthy();
     expect(view.queryByText('?')).toBeNull();
     expect(view.queryByText(/Input ~1,000 tokens/)).toBeNull();
+  });
+
+  it('toggles read-only tool auto approval', async () => {
+    const onToggle = jest.fn();
+    const view = await render(
+      <ContextPill budget={result()} onToggleAutoApproveTools={onToggle} />,
+    );
+
+    fireEvent.press(view.getByLabelText('Context usage, 19 percent'));
+    await waitFor(() => expect(view.getByLabelText('Auto-approve read-only tools')).toBeTruthy());
+    fireEvent(view.getByLabelText('Auto-approve read-only tools'), 'valueChange', true);
+
+    expect(onToggle).toHaveBeenCalledWith(true);
   });
 });

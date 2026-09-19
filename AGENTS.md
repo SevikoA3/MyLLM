@@ -16,7 +16,14 @@ Baca `docs/CODEBASE.md` lebih dulu untuk menemukan berkas. Jangan menjelajahi se
 
 Untuk perubahan UI, baca `DESIGN.md` setelah `docs/CODEBASE.md`. Terapkan arahnya tanpa mengubah perilaku produk yang dikontrak `PLAN.md`.
 
-## 1A. Batas eksekusi lokal
+## 1A. Prioritas dokumen
+
+- `PLAN.md` mengatur requirement, fase, default produk, dan exit gate.
+- `AGENTS.md` mengatur perilaku agent dan batas kerja repository.
+- `docs/CODEBASE.md` hanya mencatat keadaan repository dan menjadi indeks navigasi.
+- Jika dokumen bertentangan, jangan menebak. Laporkan konflik dan minta keputusan.
+
+## 1B. Batas eksekusi lokal
 
 Agent tidak boleh menjalankan Expo atau build Android. Jangan menjalankan `expo`, `npx expo`, `expo prebuild`, `expo run:*`, `npx expo-doctor`, `npm run doctor`, bundler, emulator, device check, Gradle, APK, atau AAB.
 
@@ -124,9 +131,52 @@ Aturan test:
 3. Cari berkas terkait lewat `docs/CODEBASE.md`.
 4. Sebutkan asumsi jika ada keputusan yang belum tercantum di PLAN.md. Jika bertentangan dengan default, hentikan dan tanyakan.
 5. Kerjakan hanya scope fase aktif. Jangan mempersiapkan abstraksi untuk fase berikutnya.
-6. Jalankan typecheck, lint, dan test yang relevan.
+6. Jalankan typecheck, lint, dan test yang relevan. Perubahan docs-only tidak memerlukan pemeriksaan source code.
 7. Perbarui checklist PLAN.md setelah verifikasi, bukan sebelum.
-8. Perbarui `docs/CODEBASE.md` pada commit yang sama jika struktur atau tanggung jawab berkas berubah. Prompt pembaruannya ada di bagian 35 PLAN.md.
+8. Periksa `docs/CODEBASE.md` setelah setiap perubahan. Perbarui pada commit yang sama hanya jika struktur, file, tanggung jawab, export utama, arah dependency, atau alur runtime berubah.
+9. Pastikan `git diff` hanya berisi perubahan yang terkait tugas.
+
+### 8A. Prompt wajib pembaruan CODEBASE.md
+
+Jalankan prompt ini setelah perubahan yang mungkin memengaruhi peta codebase. Ganti bagian dalam tanda kurung. Jika tidak ada struktur, file, tanggung jawab, export utama, arah dependency, atau alur runtime yang berubah, jangan mengubah `docs/CODEBASE.md`.
+
+~~~text
+Update docs/CODEBASE.md to match the current repository after this codebase change.
+
+Change context: (describe the completed change, for example: "Phase 4 non-streaming chat").
+
+Changed files: (list files changed by this task, or inspect the current git diff).
+
+Steps:
+
+1. Inspect the current git diff and list real files with: find app src tools assets -type f | sort
+2. Compare the result with section 2, Folder structure, in docs/CODEBASE.md.
+3. Add, remove, or move every file entry required by the current repository.
+4. Update section 3 for every file whose responsibility, main export, or imported layer changed.
+5. Update section 4 when the runtime flow, data flow, or dependency direction changed.
+6. Remove or revise section 5 entries that no longer describe missing work.
+7. Update the Status line when the repository state or completed phase changed.
+
+Rules:
+
+- Reflect the repository as it exists now, not a future plan.
+- Do not change PLAN.md, README.md, or source code during this refresh.
+- Do not add requirements, phases, or speculative entries.
+- Do not record dependency versions, test counts, or line counts.
+- Preserve Indonesian language and the existing table style.
+- Keep claims checkable from the referenced files.
+- Apply changes directly to `docs/CODEBASE.md`; do not return recommendations only.
+- If no update is needed, make no empty change.
+- Do not use an em dash.
+
+Verify:
+
+- Every path in section 2 exists.
+- Every file under app/, src/, tools/, or assets/ is represented.
+- Every responsibility and dependency claim matches the referenced source file.
+
+Output only the diff for docs/CODEBASE.md.
+~~~
 
 ## 9. Larangan
 

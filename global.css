@@ -3,3 +3,9 @@
 @import "tailwindcss/utilities.css";
 
 @import "nativewind/theme";
+
+html,
+body,
+#root {
+  background-color: #0b1326;
+}

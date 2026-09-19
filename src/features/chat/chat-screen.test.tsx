@@ -1,6 +1,31 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import { ReasoningSelector, ToolApprovalModal, WebSearchSourceCards } from './chat-screen';
+import { MessageBubble, ReasoningSelector, ToolApprovalModal, ToolProgress, WebSearchSourceCards } from './chat-screen';
+
+describe('MessageBubble', () => {
+  it('uses compact markdown headings and the reference transcript shape', async () => {
+    const view = await render(
+      <MessageBubble
+        modelId="example/model"
+        message={{
+          id: 'assistant_1',
+          role: 'assistant',
+          text: '# A compact heading\n\n- A list item\n\n`inline code`',
+          status: 'completed',
+          reasoningSummary: null,
+        }}
+      />,
+    );
+
+    expect(view.getByLabelText('Assistant response')).toHaveStyle({
+      padding: 12,
+      borderRadius: 16,
+      borderTopLeftRadius: 2,
+    });
+    expect(view.getByText('A compact heading')).toHaveStyle({ fontSize: 26, lineHeight: 32 });
+    expect(view.getByText('inline code')).toHaveStyle({ paddingHorizontal: 4, paddingVertical: 2, borderRadius: 2 });
+  });
+});
 
 describe('ReasoningSelector', () => {
   it('memilih thinking dari dropdown', async () => {
@@ -50,6 +75,30 @@ describe('ToolApprovalModal', () => {
     fireEvent.press(view.getByLabelText('Reject tool call'));
 
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith(false));
+  });
+});
+
+describe('ToolProgress', () => {
+  it('keeps tool details collapsed until selected', async () => {
+    const view = await render(
+      <ToolProgress
+        calls={[{
+          id: 'tool_1',
+          callId: 'call_1',
+          name: 'get_current_time',
+          argumentsJson: '{"timezone":"Asia/Jakarta"}',
+          target: 'Device clock',
+          sideEffect: 'Reads device time.',
+          status: 'completed',
+          approval: 'not_required',
+          result: { callId: 'call_1', output: '{}', isError: false },
+        }]}
+      />,
+    );
+
+    expect(view.queryByText('{"timezone":"Asia/Jakarta"}')).toBeNull();
+    fireEvent.press(view.getByLabelText('Tool usage, get_current_time, Tool completed'));
+    await waitFor(() => expect(view.getByText('{"timezone":"Asia/Jakarta"}')).toBeTruthy());
   });
 });
 

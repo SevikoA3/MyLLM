@@ -1,9 +1,4 @@
-import type { KeyValueStore } from './endpoint-store';
-
-async function nativeStorage(): Promise<KeyValueStore> {
-  const { default: Storage } = await import('expo-sqlite/kv-store');
-  return Storage;
-}
+import { nativeStorage, type KeyValueStore } from './endpoint-store';
 
 /** Satu model aktif untuk endpoint aktif, memakai key yang sama dengan onboarding. */
 export function createSettingsStore(store?: KeyValueStore) {

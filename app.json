@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myllm",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "android": {
       "package": "com.seviko.myllm",
       "versionCode": 1,
@@ -30,7 +30,10 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#0b1326",
+          "dark": {
+            "backgroundColor": "#0b1326"
+          }
         }
       ],
       "expo-secure-store",

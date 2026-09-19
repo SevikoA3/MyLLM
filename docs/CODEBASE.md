@@ -24,9 +24,11 @@ myllm/
     setup.tsx                       form onboarding endpoint dan discover model
     history.tsx                     re-export layar history
     (tabs)/
-      _layout.tsx                   tab Beranda dan Model dengan ikon native
+      _layout.tsx                   four bottom tabs with native icons
       index.tsx                     re-export layar chat utama
       models.tsx                    re-export src/features/models/models-screen
+      history.tsx                   re-export src/features/history/history-screen
+      settings.tsx                  re-export app/settings/index.tsx
     settings/
       index.tsx                     settings, safe diagnostic export, and clear-all-data confirmation
       models.tsx                    re-export src/features/models/models-screen
@@ -70,14 +72,15 @@ myllm/
     features/                       UI dan orkestrasi per layar
       chat/
         chat-screen.tsx             message list, composer, tool progress, source cards, approval modal, streaming, retry, and context controls
-        context-pill.tsx            small SVG context ring with dismissible modal details, cache hit, toggle, and Compact now
+        context-pill.tsx            textual context usage pill with modal details, cache hit, auto-compact, and read-only tool auto-approval
         context-pill.test.tsx
         use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, protocol request orchestration
         use-chat.test.tsx
         agent-loop.ts               bounded request-tool-result loop, approval, caps, timeout, cancellation, and dedupe
         agent-loop.test.ts
       history/
-        history-screen.tsx          pagination, buka, rename, delete, New chat
+        history-screen.tsx          local console history, filter, inline rename, bottom-sheet delete, New chat
+        history-screen.test.ts       mapping status conversation history
       setup/
         onboarding.ts               alur connect, discover, simpan profile dan credential
         onboarding.test.ts
@@ -86,7 +89,8 @@ myllm/
       models/
         models-screen.tsx           layar picker model
         models-screen.test.tsx
-        model-detail-screen.tsx     detail provenance, request control, dan override form
+        model-detail-screen.tsx     inspection provenance, request control, local override form, dan reset sheet
+        model-detail-screen.test.ts mapping label provenance katalog
         models-json-screen.tsx      editor, preview, import, dan export override JSON
         use-model-catalog.ts        hook runtime katalog dan refresh coalescing
         use-model-catalog.test.tsx
@@ -165,9 +169,11 @@ Folder yang muncul di struktur target tetapi belum ada: `modules/`. Buat hanya s
 | `app/_layout.tsx` | Stack root, StatusBar, import `global.css` | expo-router |
 | `app/index.tsx` | Redirect ke setup atau tabs berdasarkan endpoint aktif | `features/setup/use-active-endpoint` |
 | `app/setup.tsx` | Form base URL, auth mode, dan API key; preview URL; panggil connect; tampilkan error | `domain/endpoint`, `features/setup/*`, `features/models/catalog-seed`, `services/transport/models`, `services/persistence/catalog-files` |
-| `app/(tabs)/_layout.tsx` | Dua tab: Beranda dan Model, warna theme, dan ikon native lintas platform | expo-router, expo-symbols, `ui/theme` |
+| `app/(tabs)/_layout.tsx` | Four bottom tabs: Chat, Catalog, History, Settings; design tokens and native icons | expo-router, expo-symbols |
 | `app/(tabs)/index.tsx` | Re-export layar chat utama | `features/chat/chat-screen` |
 | `app/(tabs)/models.tsx` | Re-export layar picker | `features/models/models-screen` |
+| `app/(tabs)/history.tsx` | Re-export layar history untuk bottom tab | `features/history/history-screen` |
+| `app/(tabs)/settings.tsx` | Re-export layar settings untuk bottom tab | `app/settings/index.tsx` |
 | `app/settings/models.tsx` | Re-export layar picker | `features/models/models-screen` |
 | `app/settings/model.tsx` | Re-export detail dan override model | `features/models/model-detail-screen` |
 | `app/settings/models-json.tsx` | Re-export editor JSON override | `features/models/models-json-screen` |
@@ -204,12 +210,15 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/onboarding.ts` | `connectAndDiscover`, `profileFromInput`, `suggestName`, `newCredentialId`, `loadCredentialFor` | `domain/endpoint`, `domain/error`, `services/credentials/store`, `services/transport/models`, `services/persistence/endpoint-store` |
 | `setup/use-active-endpoint.ts` | `useActiveEndpoint` mengembalikan status loading atau ready | `services/persistence/endpoint-store` |
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
-| `chat/chat-screen.tsx` | Message list, composer, tool progress, source cards, per-call approval, streaming, retry, dan context controls | `domain/conversation`, `domain/context`, `domain/tool`, `domain/usage`, `domain/web-search`, `features/chat/use-chat`, `features/setup/use-active-endpoint`, `ui/*` |
-| `chat/use-chat.ts` | Orkestrasi conversation, compaction, model snapshot, persistence, metrics, cancellation, dan AgentLoop | `features/chat/agent-loop`, `services/*`, `ui/*` |
+| `chat/chat-screen.tsx` | Dark operational chat shell, model and diagnostic bars, inline collapsed tool usage, message list, composer, source cards, per-call approval, streaming, retry, dan context controls | `domain/conversation`, `domain/context`, `domain/tool`, `domain/usage`, `domain/web-search`, `features/chat/use-chat`, `features/setup/use-active-endpoint` |
+| `chat/context-pill.tsx` | Context usage modal, cache hit, auto-compact, dan auto-approve read-only tools | `domain/context`, `domain/usage` |
+| `chat/use-chat.ts` | Orkestrasi conversation, compaction, model snapshot, persistence, metrics, cancellation, tool approval policy, dan AgentLoop | `features/chat/agent-loop`, `services/*` |
 | `chat/agent-loop.ts` | Bounded model-tool loop, policy, approval callback, output cap, timeout, cancellation, dan dedupe | `domain/tool`, `services/transport/*` |
-| `history/history-screen.tsx` | History `FlatList` dengan keyset pagination, buka chat, rename, delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store`, `ui/*` |
+| `history/history-screen.tsx` | History local console dengan keyset pagination, filter title/model/status, buka chat, inline rename, bottom-sheet delete confirmation, dan New chat | `domain/conversation`, `services/persistence/conversation-store` |
+| `history/history-screen.test.ts` | Mengunci mapping status conversation history | `history/history-screen` |
 | `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
-| `models/model-detail-screen.tsx` | Nilai efektif dan provenance, reasoning, output limit, metadata override, reset field dan model | `domain/catalog`, `domain/model-config`, `models/use-model-catalog`, `ui/*` |
+| `models/model-detail-screen.tsx` | Inspection console nilai efektif dan provenance, reasoning, output limit, metadata override, reset field dan model | `domain/catalog`, `domain/catalog-merge`, `domain/model-config`, `models/use-model-catalog` |
+| `models/model-detail-screen.test.ts` | Mengunci label provenance katalog dan state unknown | `models/model-detail-screen` |
 | `models/models-json-screen.tsx` | Raw JSON editor, validation path, preview model, import, export, dan save | `models/use-model-catalog`, `services/persistence/catalog-transfer`, `ui/*` |
 | `models/use-model-catalog.ts` | `useModelCatalog` menyatukan refresh, model override, custom model, preview, replace JSON, dan export | `services/persistence/catalog-store`, `services/persistence/catalog-files`, `services/credentials/store`, `services/transport/models` |
 | `models/catalog-seed.ts` | `seedCatalogCache` menulis snapshot setelah discover pertama | `services/persistence/catalog-store` |
