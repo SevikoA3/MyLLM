@@ -148,6 +148,7 @@ myllm/
     exit-gate.mjs                   bukti exit gate Phase 2
   docs/
     CODEBASE.md                     dokumen ini
+  DESIGN.md                         arah visual produk untuk semua perubahan UI
   PLAN.md                           rencana fase dan kontrak executor
   RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md
   README.md
@@ -244,9 +245,9 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 
 | File | Isi |
 |---|---|
-| `ui/tokens.ts` | Token spacing, radius, dan ukuran teks. |
-| `ui/theme.ts` | Palet light/dark dengan warna teks eksplisit agar kontras konsisten. |
-| `ui/components.tsx` | `Screen`, tombol utama, kartu link, blok informasi, dan placeholder bersama. |
+| `ui/tokens.ts` | Token spacing, radius, skala tipografi, dan family font platform. |
+| `ui/theme.ts` | Palet parchment light/dark dengan warna teks eksplisit agar kontras konsisten. |
+| `ui/components.tsx` | `Screen`, top bar, tombol utama, kartu link, blok informasi, dan placeholder bersama. |
 | `ui/components.test.tsx` | Mengunci `Screen` agar selalu memenuhi tinggi route tanpa bergantung pada class runtime. |
 | `app-info.ts` | `APP_NAME`, `EXPECTED_ANDROID_PACKAGE`. Dipakai test agar app.json tidak menyimpang. |
 

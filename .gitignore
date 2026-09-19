@@ -47,7 +47,3 @@ coverage/
 
 # runtime data aplikasi (bukan source)
 /data/
-
-# catatan kerja pribadi
-AGENTS.md
-docs/
