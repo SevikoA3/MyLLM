@@ -1,14 +1,18 @@
+import type { ImageAttachment } from './attachment';
+
 export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
   reasoningSummary: string | null;
   status: TurnStatus;
+  attachments: ImageAttachment[];
 };
 
 export type ConversationInputMessage = {
   role: 'user' | 'assistant';
   content: string;
+  attachments?: ImageAttachment[];
 };
 
 export type TurnStatus =

@@ -79,6 +79,30 @@ test('request body dapat memakai seluruh history lokal', async () => {
   assert.equal('previous_response_id' in JSON.parse(result.response.text), false);
 });
 
+test('image history uses the documented Responses input_image shape', () => {
+  const body = buildResponsesBody(profile, {
+    ...input,
+    history: [{
+      role: 'user',
+      content: 'Describe this image.',
+      attachments: [{
+        id: 'image_1',
+        name: 'photo.png',
+        mimeType: 'image/png',
+        byteSize: 100,
+        uri: 'file:///private/photo.png',
+      }],
+    }],
+  }, new Map([['image_1', 'data:image/png;base64,AA==']]));
+  assert.deepEqual(body.input.at(-1), {
+    role: 'user',
+    content: [
+      { type: 'input_text', text: 'Describe this image.' },
+      { type: 'input_image', image_url: 'data:image/png;base64,AA==' },
+    ],
+  });
+});
+
 test('tool definition dan result memakai bentuk Responses', () => {
   const body = buildResponsesBody(profile, {
     ...input,

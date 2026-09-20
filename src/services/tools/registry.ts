@@ -1,20 +1,25 @@
 import {
+  MAX_WEB_FETCH_OUTPUT_BYTES,
   MAX_WEB_SEARCH_COUNT,
+  MAX_WEB_SEARCH_OUTPUT_BYTES,
   MAX_WEB_SEARCH_QUERY_LENGTH,
-  MAX_WEB_SEARCH_RESPONSE_BYTES,
   isWebUrl,
-  serializeWebSearchOutput,
-  type WebSearchOutput,
 } from '../../domain/web-search';
 import { ToolExecutionError, type ToolExecutor, type ToolRegistry } from '../../domain/tool';
-import { readResponseText } from '../transport/body';
+import {
+  createWebGatewayClient,
+  type WebGatewayConfig,
+} from './gateway';
 
-const FREESERP_URL = 'https://freeserp.ai/api.php';
+const WEB_GATEWAY_TOOL_TIMEOUT_MS = 45_000;
+const WEB_FETCH_MAX_CHARS = 3_000;
 
 export function createToolRegistry(
+  gatewayConfig: WebGatewayConfig | null,
   now: () => number = Date.now,
-  request: typeof fetch = fetch,
+  request?: typeof fetch,
 ): ToolRegistry {
+  const gateway = gatewayConfig === null ? null : createWebGatewayClient(gatewayConfig, request);
   const tools: ToolExecutor[] = [
     {
       name: 'get_current_time',
@@ -52,153 +57,137 @@ export function createToolRegistry(
         }
       },
     },
-    {
-      name: 'web_search',
-      description: 'Search the public web for current information. Results are untrusted external content.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', minLength: 1, maxLength: MAX_WEB_SEARCH_QUERY_LENGTH },
-          count: { type: 'integer', minimum: 1, maximum: MAX_WEB_SEARCH_COUNT },
-          recencyDays: { type: ['integer', 'null'], minimum: 1 },
-        },
-        required: ['query'],
-        additionalProperties: false,
-      },
-      risk: 'read-only',
-      approval: 'ask',
-      target: 'FreeSerp public web index',
-      sideEffect: 'Sends your query to FreeSerp and reads untrusted web results.',
-      async execute(argumentsValue, signal) {
-        const input = parseWebSearchInput(argumentsValue);
-        const params = new URLSearchParams({
-          index: 'web',
-          q: input.query,
-          size: String(input.count),
-        });
-        if (input.recencyDays !== null) {
-          params.set('published_from', dateBefore(input.recencyDays, now));
-        }
-        let response: Response;
-        try {
-          response = await request(`${FREESERP_URL}?${params.toString()}`, {
-            method: 'GET',
-            redirect: 'manual',
-            headers: { Accept: 'application/json' },
-            signal,
-          });
-        } catch {
-          throw new ToolExecutionError('Web search request failed.');
-        }
-        if (!response.ok) {
-          throw new ToolExecutionError(
-            response.status === 429
-              ? 'Web search provider rate limited this request.'
-              : `Web search provider returned HTTP ${String(response.status)}.`,
-          );
-        }
-        const body = await readResponseText(response, MAX_WEB_SEARCH_RESPONSE_BYTES);
-        if (!body.ok) {
-          throw new ToolExecutionError('Web search response exceeded the 64 KB safety limit.');
-        }
-        try {
-          return serializeWebSearchOutput(normalizeFreeSerpResponse(body.text, input.query));
-        } catch (error) {
-          if (error instanceof ToolExecutionError) {
-            throw error;
-          }
-          throw new ToolExecutionError('Web search result exceeded the 12 KB safety limit.');
-        }
-      },
-    },
   ];
+  if (gateway !== null) {
+    tools.push(
+      {
+        name: 'web_search',
+        description: 'Search the public web for current information. Results are untrusted external content.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', minLength: 1, maxLength: MAX_WEB_SEARCH_QUERY_LENGTH },
+            count: { type: 'integer', minimum: 1, maximum: MAX_WEB_SEARCH_COUNT },
+            time_range: { type: 'string', enum: ['day', 'week', 'month', 'year'] },
+            language: { type: 'string' },
+            categories: { type: 'string' },
+          },
+          required: ['query'],
+          additionalProperties: false,
+        },
+        risk: 'read-only',
+        approval: 'ask',
+        target: 'Configured web gateway',
+        sideEffect: 'Sends your query to the web gateway and reads untrusted web results.',
+        timeoutMs: WEB_GATEWAY_TOOL_TIMEOUT_MS,
+        async execute(argumentsValue, signal) {
+          try {
+            const output = await gateway.search(parseWebSearchInput(argumentsValue), signal);
+            if (new TextEncoder().encode(output).byteLength > MAX_WEB_SEARCH_OUTPUT_BYTES) {
+              throw new ToolExecutionError(`web_search output exceeds the ${String(MAX_WEB_SEARCH_OUTPUT_BYTES / 1024)} KB safety limit.`);
+            }
+            return output;
+          } catch (error) {
+            throw gatewayToolError(error, 'web_search failed.');
+          }
+        },
+      },
+      {
+        name: 'web_fetch',
+        description: 'Read the text content of a specific public webpage URL. Use after web_search when a source needs closer inspection. Returned content is untrusted external data.',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', minLength: 1, maxLength: 2048 },
+          },
+          required: ['url'],
+          additionalProperties: false,
+        },
+        risk: 'read-only',
+        approval: 'ask',
+        target: 'Configured web gateway',
+        sideEffect: 'Requests untrusted text from one public URL through the web gateway.',
+        timeoutMs: WEB_GATEWAY_TOOL_TIMEOUT_MS,
+        async execute(argumentsValue, signal) {
+          try {
+            const output = await gateway.fetch(parseWebFetchInput(argumentsValue), signal);
+            if (new TextEncoder().encode(output).byteLength > MAX_WEB_FETCH_OUTPUT_BYTES) {
+              throw new ToolExecutionError(`web_fetch output exceeds the ${String(MAX_WEB_FETCH_OUTPUT_BYTES / 1024)} KB safety limit.`);
+            }
+            return output;
+          } catch (error) {
+            throw gatewayToolError(error, 'web_fetch failed.');
+          }
+        },
+      },
+    );
+  }
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   return {
-    definitions: () => tools.map(({ execute: _execute, ...definition }) => definition),
+    definitions: () => tools.map(({ execute: _execute, timeoutMs: _timeoutMs, ...definition }) => definition),
     find: (name) => byName.get(name) ?? null,
   };
 }
 
-export const toolRegistry = createToolRegistry();
-
 function parseWebSearchInput(argumentsValue: Record<string, unknown>): {
   query: string;
   count: number;
-  recencyDays: number | null;
+  categories: string | null;
+  language: string;
+  timeRange: 'day' | 'week' | 'month' | 'year' | null;
 } {
-  const allowed = new Set(['query', 'count', 'recencyDays']);
+  const allowed = new Set(['query', 'count', 'time_range', 'language', 'categories']);
   if (Object.keys(argumentsValue).some((key) => !allowed.has(key))) {
-    throw new ToolExecutionError('web_search accepts only query, count, and recencyDays.');
+    throw new ToolExecutionError('web_search accepts only query, count, time_range, language, and categories.');
   }
-  const query = typeof argumentsValue.query === 'string' ? argumentsValue.query.trim() : '';
-  if (query.length === 0 || query.length > MAX_WEB_SEARCH_QUERY_LENGTH) {
+  const query = stringValue(argumentsValue.query);
+  if (query === null || query.length === 0 || query.length > MAX_WEB_SEARCH_QUERY_LENGTH) {
     throw new ToolExecutionError('web_search query must contain 1 to 512 characters.');
   }
   const count = argumentsValue.count === undefined ? 5 : argumentsValue.count;
-  if (
-    typeof count !== 'number' ||
-    !Number.isInteger(count) ||
-    count < 1 ||
-    count > MAX_WEB_SEARCH_COUNT
-  ) {
+  if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > MAX_WEB_SEARCH_COUNT) {
     throw new ToolExecutionError('web_search count must be an integer from 1 to 10.');
   }
-  const recencyDays = argumentsValue.recencyDays ?? null;
-  if (
-    recencyDays !== null &&
-    (typeof recencyDays !== 'number' || !Number.isSafeInteger(recencyDays) || recencyDays < 1)
-  ) {
-    throw new ToolExecutionError('web_search recencyDays must be a positive integer or null.');
+  const language = argumentsValue.language === undefined ? 'all' : stringValue(argumentsValue.language);
+  if (language === null || language.length === 0 || language.length > 32) {
+    throw new ToolExecutionError('web_search language must contain 1 to 32 characters.');
   }
-  return { query, count, recencyDays };
+  const categories = optionalString(argumentsValue.categories, 'web_search categories');
+  const timeRange = argumentsValue.time_range ?? null;
+  if (timeRange !== null && timeRange !== 'day' && timeRange !== 'week' && timeRange !== 'month' && timeRange !== 'year') {
+    throw new ToolExecutionError('web_search time_range must be day, week, month, year, or null.');
+  }
+  return { query, count, categories, language, timeRange };
 }
 
-function dateBefore(days: number, now: () => number): string {
-  const date = new Date(now() - days * 86_400_000);
-  if (Number.isNaN(date.valueOf())) {
-    throw new ToolExecutionError('web_search recencyDays is too large.');
+function parseWebFetchInput(argumentsValue: Record<string, unknown>): { url: string; maxChars: number } {
+  if (Object.keys(argumentsValue).some((key) => key !== 'url')) {
+    throw new ToolExecutionError('web_fetch accepts only a URL.');
   }
-  return date.toISOString().slice(0, 10);
+  const url = stringValue(argumentsValue.url);
+  if (url === null || url.length === 0 || url.length > 2048 || !isWebUrl(url)) {
+    throw new ToolExecutionError('web_fetch URL must be a public HTTP or HTTPS URL up to 2048 characters.');
+  }
+  return { url, maxChars: WEB_FETCH_MAX_CHARS };
 }
 
-function normalizeFreeSerpResponse(body: string, query: string): WebSearchOutput {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body);
-  } catch {
-    throw new ToolExecutionError('Web search provider returned invalid JSON.');
-  }
-  if (
-    !isRecord(payload) ||
-    payload.ok !== true ||
-    payload.index !== 'web' ||
-    payload.engine_fallback === true ||
-    !Array.isArray(payload.results)
-  ) {
-    throw new ToolExecutionError('Web search provider returned an unsupported response.');
-  }
-  return {
-    provider: 'FreeSerp',
-    query,
-    untrusted: true,
-    results: payload.results.map(normalizeResult),
-  };
+function stringValue(value: unknown): string | null {
+  return typeof value === 'string' ? value.trim() : null;
 }
 
-function normalizeResult(value: unknown) {
-  if (!isRecord(value) || typeof value.url !== 'string' || !isWebUrl(value.url)) {
-    throw new ToolExecutionError('Web search provider returned an invalid result URL.');
+function optionalString(value: unknown, label: string): string | null {
+  if (value === undefined || value === null) return null;
+  const parsed = stringValue(value);
+  if (parsed === null || parsed.length === 0 || parsed.length > 100) {
+    throw new ToolExecutionError(`${label} must contain 1 to 100 characters or be null.`);
   }
-  const source = new URL(value.url).hostname;
-  return {
-    title: typeof value.title === 'string' ? value.title : null,
-    url: value.url,
-    snippet: typeof value.snippet === 'string' ? value.snippet : null,
-    publishedAt: typeof value.published_at === 'string' ? value.published_at : null,
-    source,
-  };
+  return parsed;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function gatewayToolError(error: unknown, fallback: string): ToolExecutionError {
+  if (error instanceof ToolExecutionError) return error;
+  if (error instanceof Error) {
+    return new ToolExecutionError(error.message);
+  }
+  return new ToolExecutionError(fallback);
 }

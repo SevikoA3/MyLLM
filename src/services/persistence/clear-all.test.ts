@@ -18,6 +18,8 @@ describe('clearAllData', () => {
       clearConversation: async () => { calls.push('conversation'); },
       clearCatalog: () => calls.push('catalog'),
       clearTransfers: () => calls.push('transfers'),
+      clearAttachments: () => calls.push('attachments'),
+      clearWebTools: async () => { calls.push('web tools'); },
       clearDiagnostics: async () => { calls.push('diagnostics'); },
     };
 
@@ -30,6 +32,8 @@ describe('clearAllData', () => {
       'conversation',
       'catalog',
       'transfers',
+      'attachments',
+      'web tools',
       'diagnostics',
     ]));
   });

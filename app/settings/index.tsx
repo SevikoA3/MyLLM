@@ -1,8 +1,8 @@
 import { Link, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
-import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useActiveEndpoint } from '../../src/features/setup/use-active-endpoint';
@@ -12,8 +12,12 @@ import { shareDiagnostics } from '../../src/services/diagnostics/diagnostic-tran
 import { clearAllData } from '../../src/services/persistence/clear-all';
 import { clearCatalogCache } from '../../src/services/persistence/catalog-files';
 import { clearTransferCache } from '../../src/services/persistence/catalog-transfer';
+import { clearStagedImages } from '../../src/services/attachments/images';
 import { conversationRepository } from '../../src/services/persistence/conversation-store';
 import { endpointStore } from '../../src/services/persistence/endpoint-store';
+import { WEB_TOOLS_CREDENTIAL_ID, webToolsStore } from '../../src/services/persistence/web-tools-store';
+import { createWebToolsSettings, normalizeGatewayUrl } from '../../src/domain/web-tools';
+import { testWebGateway } from '../../src/services/tools/gateway';
 
 const colors = {
   background: '#0b1326',
@@ -57,6 +61,34 @@ export default function SettingsScreen() {
   const [resetting, setResetting] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [webToolsReady, setWebToolsReady] = useState(false);
+  const [webToolsEnabled, setWebToolsEnabled] = useState(false);
+  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [gatewayEngines, setGatewayEngines] = useState('bing');
+  const [gatewayToken, setGatewayToken] = useState('');
+  const [gatewayTokenSaved, setGatewayTokenSaved] = useState(false);
+  const [savingWebTools, setSavingWebTools] = useState(false);
+  const [testingGateway, setTestingGateway] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      webToolsStore.load(),
+      credentialStore.read(WEB_TOOLS_CREDENTIAL_ID),
+    ]).then(([settings, token]) => {
+      if (!active) return;
+      setWebToolsEnabled(settings.enabled);
+      setGatewayUrl(settings.baseUrl ?? '');
+      setGatewayEngines(settings.engines);
+      setGatewayTokenSaved(token !== null && token.trim().length > 0);
+      setWebToolsReady(true);
+    }).catch(() => {
+      if (!active) return;
+      setNotice('Web tools settings could not be loaded.');
+      setWebToolsReady(true);
+    });
+    return () => { active = false; };
+  }, []);
 
   async function exportDiagnostics() {
     setExporting(true);
@@ -85,6 +117,61 @@ export default function SettingsScreen() {
     }
   }
 
+  async function saveWebTools() {
+    setNotice(null);
+    let settings;
+    try {
+      settings = createWebToolsSettings({
+        enabled: webToolsEnabled,
+        baseUrl: gatewayUrl.trim().length === 0 ? null : gatewayUrl,
+        engines: gatewayEngines,
+      });
+    } catch (error) {
+      Alert.alert('Could not save web tools', error instanceof Error ? error.message : 'Check the gateway URL.');
+      return;
+    }
+    if (settings.enabled && gatewayToken.trim().length === 0 && !gatewayTokenSaved) {
+      Alert.alert('Gateway token required', 'Enter a bearer token before enabling web tools.');
+      return;
+    }
+    setSavingWebTools(true);
+    try {
+      if (gatewayToken.trim().length > 0) {
+        await credentialStore.save(WEB_TOOLS_CREDENTIAL_ID, gatewayToken.trim());
+        setGatewayToken('');
+        setGatewayTokenSaved(true);
+      }
+      await webToolsStore.save(settings);
+      setGatewayUrl(settings.baseUrl ?? '');
+      setGatewayEngines(settings.engines);
+      setNotice('Web tools settings saved.');
+    } catch {
+      Alert.alert('Could not save web tools', 'Secure storage is unavailable. Try again later.');
+    } finally {
+      setSavingWebTools(false);
+    }
+  }
+
+  async function testGateway() {
+    let baseUrl: string;
+    try {
+      baseUrl = normalizeGatewayUrl(gatewayUrl);
+    } catch (error) {
+      Alert.alert('Could not test gateway', error instanceof Error ? error.message : 'Check the gateway URL.');
+      return;
+    }
+    setNotice(null);
+    setTestingGateway(true);
+    try {
+      await testWebGateway(baseUrl);
+      setNotice('Connected');
+    } catch {
+      Alert.alert('Could not connect to gateway', 'The gateway health check failed. Verify the HTTPS URL and try again.');
+    } finally {
+      setTestingGateway(false);
+    }
+  }
+
   async function clearData() {
     setClearing(true);
     try {
@@ -96,7 +183,9 @@ export default function SettingsScreen() {
         clearConversation: conversationRepository.clear,
         clearCatalog: clearCatalogCache,
         clearTransfers: clearTransferCache,
+        clearAttachments: clearStagedImages,
         clearDiagnostics: clearDiagnosticRing,
+        clearWebTools: webToolsStore.clear,
       });
       router.replace('/setup');
     } catch {
@@ -219,6 +308,104 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
+        <Section label="WEB TOOLS" icon="web" tone="secondary">
+          <View style={{ gap: 10, borderRadius: 4, backgroundColor: colors.surface, padding: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>Enable web search and fetch</Text>
+                <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
+                  Requests go only to your configured HTTPS gateway.
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="Enable web search and fetch"
+                accessibilityState={{ checked: webToolsEnabled, disabled: !webToolsReady || savingWebTools }}
+                disabled={!webToolsReady || savingWebTools}
+                value={webToolsEnabled}
+                onValueChange={setWebToolsEnabled}
+                trackColor={{ false: colors.surfaceHigh, true: colors.primary }}
+                thumbColor={colors.text}
+              />
+            </View>
+            <StatusBadge
+              label={!webToolsReady ? 'LOADING' : !webToolsEnabled ? 'DISABLED' : gatewayTokenSaved ? 'CONFIGURED' : 'TOKEN REQUIRED'}
+              tone={!webToolsReady || !webToolsEnabled || !gatewayTokenSaved ? 'warning' : 'secondary'}
+            />
+          </View>
+
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>GATEWAY URL</Text>
+            <TextInput
+              accessibilityLabel="Gateway URL"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={webToolsReady && !savingWebTools}
+              keyboardType="url"
+              onChangeText={setGatewayUrl}
+              placeholder="https://gateway.example.com"
+              placeholderTextColor={colors.outline}
+              value={gatewayUrl}
+              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
+            />
+          </View>
+
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>GATEWAY TOKEN</Text>
+            <TextInput
+              accessibilityLabel="Gateway token"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={webToolsReady && !savingWebTools}
+              onChangeText={setGatewayToken}
+              placeholder={gatewayTokenSaved ? 'Saved securely. Enter a new token to replace it.' : 'Bearer token'}
+              placeholderTextColor={colors.outline}
+              secureTextEntry
+              value={gatewayToken}
+              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
+            />
+            <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
+              The token is stored securely and is never included in diagnostics or tool output.
+            </Text>
+          </View>
+
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>SEARXNG ENGINES</Text>
+            <TextInput
+              accessibilityLabel="SearXNG engines"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={webToolsReady && !savingWebTools}
+              onChangeText={setGatewayEngines}
+              placeholder="bing"
+              placeholderTextColor={colors.outline}
+              value={gatewayEngines}
+              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
+            />
+            <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
+              Comma-separated engine names for your SearXNG instance. Default: bing.
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <SettingsAction
+                label={testingGateway ? 'TESTING...' : 'TEST CONNECTION'}
+                disabled={!webToolsReady || testingGateway || savingWebTools}
+                onPress={() => void testGateway()}
+                tone="secondary"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <SettingsAction
+                label={savingWebTools ? 'SAVING...' : 'SAVE WEB TOOLS'}
+                disabled={!webToolsReady || savingWebTools || testingGateway}
+                onPress={() => void saveWebTools()}
+                tone="primary"
+              />
+            </View>
+          </View>
+        </Section>
+
         <Section label="DIAGNOSTICS &amp; AUDIT" icon="diagnostics" tone="warning">
           <View style={{ gap: 8, borderRadius: 4, backgroundColor: colors.surface, padding: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
@@ -302,11 +489,12 @@ function LoadingScreen() {
   );
 }
 
-function Section({ label, icon, tone, children }: { label: string; icon: 'endpoint' | 'model' | 'diagnostics' | 'danger'; tone: 'primary' | 'secondary' | 'warning' | 'error'; children: ReactNode }) {
+function Section({ label, icon, tone, children }: { label: string; icon: 'endpoint' | 'model' | 'web' | 'diagnostics' | 'danger'; tone: 'primary' | 'secondary' | 'warning' | 'error'; children: ReactNode }) {
   const color = colors[tone];
   const symbol = {
     endpoint: { ios: 'terminal', android: 'router' },
     model: { ios: 'cpu', android: 'memory' },
+    web: { ios: 'globe', android: 'public' },
     diagnostics: { ios: 'wrench.and.screwdriver', android: 'troubleshoot' },
     danger: { ios: 'exclamationmark.triangle.fill', android: 'warning' },
   } as const;
@@ -318,6 +506,30 @@ function Section({ label, icon, tone, children }: { label: string; icon: 'endpoi
       </View>
       <View style={cardStyle}>{children}</View>
     </View>
+  );
+}
+
+function SettingsAction({ label, disabled, onPress, tone }: { label: string; disabled: boolean; onPress: () => void; tone: 'primary' | 'secondary' }) {
+  const color = colors[tone];
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 4,
+        backgroundColor: tone === 'primary' ? color : colors.surfaceHigh,
+        borderWidth: tone === 'secondary' ? 1 : 0,
+        borderColor: color,
+        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+      })}>
+      <Text style={{ color: tone === 'primary' ? colors.surfaceLowest : color, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text>
+    </Pressable>
   );
 }
 

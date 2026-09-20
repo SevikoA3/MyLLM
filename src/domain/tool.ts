@@ -60,6 +60,7 @@ export type StoredToolCall = ToolActivity & { turnId: string };
 export type ToolCallUpdate = Pick<ToolActivity, 'id' | 'status' | 'approval' | 'result'>;
 
 export type ToolExecutor = ToolDefinition & {
+  timeoutMs?: number;
   execute: (argumentsValue: Record<string, unknown>, signal: AbortSignal) => Promise<string>;
 };
 

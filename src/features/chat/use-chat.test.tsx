@@ -11,6 +11,7 @@ import { useChat } from './use-chat';
 const mockCredentialRead = jest.fn(async () => 'sk-test');
 const mockLoadModel = jest.fn(async () => 'model-exact');
 let mockReasoningEffort = 'auto';
+let mockInputModalities: ('text' | 'image')[] = ['text'];
 const mockLoadModelConfig = jest.fn(async () => ({
   modelId: 'model-exact',
   contextWindow: 128_000,
@@ -23,6 +24,7 @@ const mockLoadModelConfig = jest.fn(async () => ({
   },
   reasoningEffort: mockReasoningEffort,
   reasoningOptions: ['auto', 'low', 'high'],
+  inputModalities: mockInputModalities,
   outputLimit: null,
   effectiveMaxOutput: 128_000,
 }));
@@ -43,6 +45,11 @@ const mockLoadRequestHistory = jest.fn<Promise<ConversationInputMessage[]>, [unk
 );
 const mockLoadConversation = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
 const mockLoadLatest = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
+const mockLoadImageAttachments = jest.fn(async () => []);
+const mockStageImage = jest.fn(async (_attachments: unknown) => ({ kind: 'cancelled' as const }));
+const mockDeleteStagedImages = jest.fn();
+const mockDeleteUnreferencedStagedImages = jest.fn();
+const mockLoadWebTools = jest.fn(async () => ({ enabled: false, baseUrl: null, engines: 'bing' }));
 
 jest.mock('../../services/credentials/store', () => ({
   credentialStore: { read: () => mockCredentialRead() },
@@ -78,7 +85,19 @@ jest.mock('../../services/persistence/conversation-store', () => ({
     loadTurnMetrics: (id: unknown) => mockLoadTurnMetrics(id),
     loadConversation: (id: unknown) => mockLoadConversation(id),
     loadLatest: (id: unknown) => mockLoadLatest(id),
+    loadImageAttachments: () => mockLoadImageAttachments(),
   },
+}));
+
+jest.mock('../../services/attachments/images', () => ({
+  stageImageAttachment: (attachments: unknown) => mockStageImage(attachments),
+  deleteStagedImages: (attachments: unknown) => mockDeleteStagedImages(attachments),
+  deleteUnreferencedStagedImages: (attachments: unknown) => mockDeleteUnreferencedStagedImages(attachments),
+}));
+
+jest.mock('../../services/persistence/web-tools-store', () => ({
+  WEB_TOOLS_CREDENTIAL_ID: 'web_tools_gateway',
+  webToolsStore: { load: () => mockLoadWebTools() },
 }));
 
 jest.mock('../../services/transport/protocol', () => ({
@@ -148,6 +167,7 @@ describe('useChat', () => {
 
   beforeEach(() => {
     mockReasoningEffort = 'auto';
+    mockInputModalities = ['text'];
     mockCredentialRead.mockClear();
     mockLoadModel.mockClear();
     mockLoadModelConfig.mockClear();
@@ -162,6 +182,21 @@ describe('useChat', () => {
     mockLoadTurnMetrics.mockClear();
     mockLoadConversation.mockClear();
     mockLoadLatest.mockClear();
+    mockLoadImageAttachments.mockClear();
+    mockStageImage.mockClear();
+    mockDeleteStagedImages.mockClear();
+    mockDeleteUnreferencedStagedImages.mockClear();
+    mockLoadWebTools.mockClear();
+  });
+
+  it('only enables image attachments for an explicit image modality', async () => {
+    const { result } = await setup();
+    expect(result.current.canAttachImages).toBe(false);
+
+    mockInputModalities = ['text', 'image'];
+    await act(async () => result.current.reloadModel());
+
+    expect(result.current.canAttachImages).toBe(true);
   });
 
   it('menampilkan user segera, mencegah send duplikat, dan mengirim history lokal', async () => {
@@ -243,6 +278,21 @@ describe('useChat', () => {
     expect(mockSend).toHaveBeenCalledTimes(2);
   });
 
+  it('does not mislabel a response save failure as a request failure', async () => {
+    mockSend.mockResolvedValueOnce(success('resp_1', 'Jawaban'));
+    mockFinishTurn.mockRejectedValueOnce(new Error('database locked'));
+    const { result } = await setup();
+
+    await act(async () => {
+      await result.current.send('halo');
+    });
+
+    expect(result.current.messages.at(-1)).toMatchObject({ text: 'Jawaban', status: 'completed' });
+    expect(result.current.error).toMatchObject({ safeDetails: { stage: 'persistence' } });
+    expect(result.current.canRetry).toBe(false);
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+
   it('mengubah reasoning dari chat dan memakai snapshot baru saat send', async () => {
     mockSend.mockResolvedValue(success('resp_1', 'Jawaban'));
     const { result } = await setup();
@@ -321,6 +371,7 @@ describe('useChat', () => {
       },
       reasoningEffort: mockReasoningEffort,
       reasoningOptions: ['auto', 'low', 'high'],
+      inputModalities: mockInputModalities,
       outputLimit: null,
       effectiveMaxOutput: 100,
     };
@@ -351,6 +402,7 @@ describe('useChat', () => {
       },
       reasoningEffort: mockReasoningEffort,
       reasoningOptions: ['auto', 'low', 'high'],
+      inputModalities: mockInputModalities,
       outputLimit: null,
       effectiveMaxOutput: 512,
     };

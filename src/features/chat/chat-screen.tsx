@@ -1,13 +1,15 @@
 import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import Markdown from 'react-native-markdown-display';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   type ImageStyle,
   KeyboardAvoidingView,
+  type ListRenderItemInfo,
   Linking,
   Modal,
   Platform,
@@ -24,7 +26,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ChatMessage } from '../../domain/conversation';
 import type { AppError } from '../../domain/error';
 import type { ToolActivity } from '../../domain/tool';
-import { parseWebSearchOutput } from '../../domain/web-search';
+import { parseWebFetchOutput, parseWebSearchOutput } from '../../domain/web-search';
 import { formatCount } from '../../domain/usage';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { useChat } from './use-chat';
@@ -56,6 +58,8 @@ const CHAT_THEME = {
 } as const;
 
 const theme = CHAT_THEME;
+const chatMessageKey = (item: ChatMessage) => item.id;
+const chatListStyle = { flex: 1 } as const;
 
 const MARKDOWN_STYLE: Record<string, ImageStyle | TextStyle | ViewStyle> = {
   body: { color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.body, lineHeight: 20 },
@@ -98,6 +102,33 @@ export default function ChatScreen() {
   const router = useRouter();
   const reloadModel = chat.reloadModel;
   const updateContext = chat.updateContext;
+  const activeAssistantId = chat.messages.at(-1)?.id ?? null;
+  const listContentStyle = useMemo<ViewStyle>(() => ({
+    flexGrow: 1,
+    gap: 16,
+    justifyContent: chat.messages.length === 0 ? 'center' : 'flex-start',
+    paddingHorizontal: theme.spacing.screen,
+    paddingTop: 12,
+    paddingBottom: 12,
+  }), [chat.messages.length]);
+  const emptyChat = useMemo(() => <EmptyChat />, []);
+  const compactionSeparator = useMemo(
+    () => (chat.compactionActive ? <CompactionSeparator /> : null),
+    [chat.compactionActive],
+  );
+  const renderMessage = useCallback(({ item }: ListRenderItemInfo<ChatMessage>) => {
+    const activeAssistant = item.role === 'assistant' && item.id === activeAssistantId;
+    const calls = chat.toolActivities[item.id] ?? [];
+    return (
+      <View style={{ gap: 8 }}>
+        {calls.length > 0 && <ToolProgress calls={calls} onResolve={chat.resolveToolApproval} />}
+        {activeAssistant && chat.pending && <PendingMessage calls={calls} />}
+        {item.role === 'assistant' && item.status === 'sending' && item.text.length === 0
+          ? null
+          : <MessageBubble message={item} modelId={chat.activeModelId} />}
+      </View>
+    );
+  }, [activeAssistantId, chat.activeModelId, chat.pending, chat.resolveToolApproval, chat.toolActivities]);
 
   useFocusEffect(
     useCallback(() => {
@@ -112,7 +143,7 @@ export default function ChatScreen() {
   const submit = useCallback(() => {
     const prompt = draft.trim();
     if (
-      prompt.length === 0 ||
+      (prompt.length === 0 && chat.attachments.length === 0) ||
       chat.pending ||
       chat.compacting ||
       chat.loadingModel ||
@@ -121,11 +152,14 @@ export default function ChatScreen() {
       return;
     }
     setDraft('');
-    void chat.send(prompt);
+    void chat.send(prompt, chat.attachments);
   }, [chat, draft]);
   const sendDisabled =
     !chat.pending &&
-    (chat.compacting || chat.loadingModel || chat.activeModelId === null || draft.trim().length === 0);
+    (chat.compacting ||
+      chat.loadingModel ||
+      chat.activeModelId === null ||
+      (draft.trim().length === 0 && chat.attachments.length === 0));
 
   if (status === 'loading') {
     return (
@@ -299,14 +333,17 @@ export default function ChatScreen() {
               cacheHitPercent={chat.metrics.at(-1)?.cacheHitPercent ?? null}
               policy={chat.contextPolicy}
               autoCompact={chat.autoCompact}
-              autoApproveTools={chat.autoApproveTools}
               compacting={chat.compacting}
               canCompact={chat.conversationId !== null && !chat.pending}
               onCompact={() => void chat.compactNow()}
               onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
-              onToggleAutoApproveTools={chat.setAutoApproveTools}
             />
           )}
+          <ToolApprovalControl
+            enabled={chat.autoApproveTools}
+            disabled={chat.pending}
+            onToggle={(enabled) => chat.setAutoApproveTools(enabled)}
+          />
         </ScrollView>
 
         {profile === null ? (
@@ -339,32 +376,15 @@ export default function ChatScreen() {
           </View>
         ) : (
           <FlatList
-            style={{ flex: 1 }}
+            style={chatListStyle}
             data={chat.messages}
-            keyExtractor={(item) => item.id}
+            extraData={chat.toolActivities}
+            keyExtractor={chatMessageKey}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{
-              flexGrow: 1,
-              gap: 16,
-              justifyContent: chat.messages.length === 0 ? 'center' : 'flex-start',
-              paddingHorizontal: theme.spacing.screen,
-              paddingTop: 12,
-              paddingBottom: 12,
-            }}
-            ListEmptyComponent={<EmptyChat />}
-            ListHeaderComponent={chat.compactionActive ? <CompactionSeparator /> : null}
-            renderItem={({ item }) => {
-              const activeAssistant = item.role === 'assistant' && item.id === chat.messages.at(-1)?.id;
-              return (
-                <View style={{ gap: 8 }}>
-                  {activeAssistant && chat.toolProgress.length > 0 && <ToolProgress calls={chat.toolProgress} />}
-                  {activeAssistant && chat.pending && <PendingMessage calls={chat.toolProgress} />}
-                  {item.role === 'assistant' && item.status === 'sending' && item.text.length === 0
-                    ? null
-                    : <MessageBubble message={item} modelId={chat.activeModelId} />}
-                </View>
-              );
-            }}
+            contentContainerStyle={listContentStyle}
+            ListEmptyComponent={emptyChat}
+            ListHeaderComponent={compactionSeparator}
+            renderItem={renderMessage}
           />
         )}
 
@@ -406,42 +426,77 @@ export default function ChatScreen() {
           </View>
           <View
             style={{
-              minHeight: 56,
-              flexDirection: 'row',
-              alignItems: 'flex-end',
               gap: 8,
               padding: 8,
               borderRadius: theme.radius.bubble,
               backgroundColor: theme.colors.surfaceHigh,
             }}>
-            <TextInput
-              accessibilityLabel="Message"
-              accessibilityHint="Write a message to send to the active model"
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={chat.activeModelId === null ? 'Choose a model to start...' : `Message ${chat.activeModelId}...`}
-              placeholderTextColor="#7f8ba8"
-              editable={
-                !chat.pending &&
-                !chat.compacting &&
-                !chat.loadingModel &&
-                chat.activeModelId !== null
-              }
-              multiline
-              style={{
-                flex: 1,
-                minHeight: 40,
-                maxHeight: 132,
-                paddingHorizontal: 8,
-                paddingVertical: 5,
-                color: theme.colors.text,
-                fontFamily: theme.fonts.mono,
-                fontSize: theme.typography.body,
-                lineHeight: 20,
-                textAlignVertical: 'top',
-              }}
-            />
-            <Pressable
+            {chat.attachments.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
+                {chat.attachments.map((attachment) => (
+                  <View key={attachment.id} style={{ position: 'relative', width: 48, height: 48 }}>
+                    <Image
+                      accessibilityLabel={`Attached image, ${attachment.name}`}
+                      source={{ uri: attachment.uri }}
+                      style={{ width: 48, height: 48, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${attachment.name}`}
+                      hitSlop={12}
+                      onPress={() => chat.removeImage(attachment.id)}
+                      style={{ position: 'absolute', top: -4, right: -4, width: 20, height: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.colors.danger }}>
+                      <Text style={{ color: theme.colors.accentText, fontWeight: '800' }}>×</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <View style={{ minHeight: 40, flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+              {chat.canAttachImages && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Attach image"
+                  accessibilityHint="Choose a PNG, JPEG, or WebP image up to 8 MB"
+                  disabled={chat.pending || chat.compacting || chat.attachments.length >= 4}
+                  onPress={() => void chat.addImage()}
+                  style={({ pressed }) => ({
+                    width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting || chat.attachments.length >= 4 ? 0.4 : pressed ? 0.7 : 1,
+                  })}>
+                  <SymbolView name={{ ios: 'paperclip', android: 'attach_file' }} size={18} tintColor={theme.colors.secondary} />
+                </Pressable>
+              )}
+              <TextInput
+                accessibilityLabel="Message"
+                accessibilityHint="Write a message to send to the active model"
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={chat.activeModelId === null ? 'Choose a model to start...' : `Message ${chat.activeModelId}...`}
+                placeholderTextColor="#7f8ba8"
+                editable={
+                  !chat.pending &&
+                  !chat.compacting &&
+                  !chat.loadingModel &&
+                  chat.activeModelId !== null
+                }
+                multiline
+                style={{
+                  flex: 1,
+                  minHeight: 40,
+                  maxHeight: 132,
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  color: theme.colors.text,
+                  fontFamily: theme.fonts.mono,
+                  fontSize: theme.typography.body,
+                  lineHeight: 20,
+                  textAlignVertical: 'top',
+                }}
+              />
+              <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={chat.pending ? 'Stop' : 'Send'}
                 accessibilityHint={chat.pending ? 'Stop the current response' : 'Send message'}
@@ -472,11 +527,49 @@ export default function ChatScreen() {
                   />
                 )}
               </Pressable>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
-      <ToolApprovalModal activity={chat.toolApproval} onResolve={chat.resolveToolApproval} />
     </SafeAreaView>
+  );
+}
+
+export function ToolApprovalControl({
+  enabled,
+  disabled,
+  onToggle,
+}: {
+  enabled: boolean;
+  disabled: boolean;
+  onToggle: (enabled: boolean) => void;
+}) {
+  const label = enabled
+    ? 'Tool approval, read-only tools auto-approved'
+    : 'Tool approval, read-only tools require approval';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint="Change approval for the next message. Write and dangerous tools always require approval."
+      accessibilityState={{ disabled, selected: enabled }}
+      disabled={disabled}
+      onPress={() => onToggle(!enabled)}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        borderRadius: theme.radius.control,
+        backgroundColor: enabled ? theme.colors.accent : theme.colors.surface,
+        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+      })}>
+      <SymbolView name={{ ios: 'wrench.and.screwdriver', android: 'build' }} size={14} tintColor={enabled ? theme.colors.accentText : theme.colors.secondary} />
+      <Text style={{ color: enabled ? theme.colors.accentText : theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+        {enabled ? 'Tools: Auto read' : 'Tools: Ask'}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -539,7 +632,7 @@ export function ReasoningSelector({
           alignItems: 'center',
           gap: 5,
           paddingHorizontal: 10,
-          borderRadius: theme.radius.pill,
+          borderRadius: theme.radius.control,
           backgroundColor: theme.colors.surface,
           opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
         })}>
@@ -681,6 +774,19 @@ export const MessageBubble = memo(function MessageBubble({ message, modelId = nu
           )}
         </View>
       )}
+      {message.attachments.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {message.attachments.map((attachment) => (
+            <Image
+              key={attachment.id}
+              accessibilityLabel={`Attached image, ${attachment.name}`}
+              source={{ uri: attachment.uri }}
+              style={{ width: 160, height: 120, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}
+              resizeMode="cover"
+            />
+          ))}
+        </View>
+      )}
       {!user && message.status === 'completed' ? (
         <Markdown
           style={MARKDOWN_STYLE}
@@ -749,7 +855,13 @@ function EmptyChat() {
   );
 }
 
-export function ToolProgress({ calls }: { calls: ToolActivity[] }) {
+export function ToolProgress({
+  calls,
+  onResolve,
+}: {
+  calls: ToolActivity[];
+  onResolve?: (approved: boolean) => void;
+}) {
   const [openCallId, setOpenCallId] = useState<string | null>(null);
 
   return (
@@ -760,18 +872,24 @@ export function ToolProgress({ calls }: { calls: ToolActivity[] }) {
           <View
             key={call.callId}
             style={{
+              alignSelf: 'flex-start',
+              width: '100%',
+              borderWidth: 1,
+              borderColor: toolStatusColor(call.status),
               borderLeftWidth: 2,
               borderLeftColor: toolStatusColor(call.status),
-              borderRadius: theme.radius.sheet,
+              borderRadius: theme.radius.bubble,
+              borderTopLeftRadius: theme.radius.micro,
+              overflow: 'hidden',
               backgroundColor: theme.colors.surfaceLow,
             }}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Tool usage, ${call.name || 'Unknown tool'}, ${toolStatusLabel(call.status)}`}
+              accessibilityLabel={`Tool request, ${call.name || 'Unknown tool'}, ${toolStatusLabel(call.status)}`}
               accessibilityState={{ expanded }}
               onPress={() => setOpenCallId(expanded ? null : call.callId)}
               style={({ pressed }) => ({
-                minHeight: 52,
+                minHeight: 44,
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 8,
@@ -781,10 +899,10 @@ export function ToolProgress({ calls }: { calls: ToolActivity[] }) {
               <SymbolView name={{ ios: 'wrench.and.screwdriver', android: 'build' }} size={16} tintColor={theme.colors.secondary} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-                  Tool usage
+                  Tool request · {call.name || 'Unknown tool'}
                 </Text>
                 <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
-                  {call.name || 'Unknown tool'}
+                  {call.target}
                 </Text>
               </View>
               <Text style={{ color: toolStatusColor(call.status), fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
@@ -796,21 +914,65 @@ export function ToolProgress({ calls }: { calls: ToolActivity[] }) {
                 tintColor={theme.colors.textMuted}
               />
             </Pressable>
+            {call.status === 'awaiting_approval' && onResolve !== undefined && (
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Reject tool request"
+                  onPress={() => onResolve(false)}
+                  style={({ pressed }) => ({
+                    minHeight: 44,
+                    justifyContent: 'center',
+                    paddingHorizontal: 14,
+                    borderRadius: theme.radius.control,
+                    backgroundColor: theme.colors.canvas,
+                    opacity: pressed ? 0.7 : 1,
+                  })}>
+                  <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>Reject</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Approve tool request"
+                  onPress={() => onResolve(true)}
+                  style={({ pressed }) => ({
+                    minHeight: 44,
+                    justifyContent: 'center',
+                    paddingHorizontal: 14,
+                    borderRadius: theme.radius.control,
+                    backgroundColor: theme.colors.accent,
+                    opacity: pressed ? 0.7 : 1,
+                  })}>
+                  <Text style={{ color: theme.colors.accentText, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>Approve</Text>
+                </Pressable>
+              </View>
+            )}
             {expanded && (
-              <View style={{ gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, backgroundColor: theme.colors.canvas }}>
+              <View style={{ gap: 6, padding: 10, borderTopWidth: 1, borderTopColor: theme.colors.border, backgroundColor: theme.colors.canvas }}>
                 <ApprovalField label="Target" value={call.target} />
                 <ApprovalField label="Side effect" value={call.sideEffect} />
                 <View style={{ gap: 4 }}>
                   <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
                     Arguments
                   </Text>
-                  <ScrollView style={{ maxHeight: 120, borderRadius: theme.radius.control, backgroundColor: theme.colors.background }} contentContainerStyle={{ padding: 8 }}>
+                  <ScrollView style={{ maxHeight: 120, flexGrow: 0, borderRadius: theme.radius.control, backgroundColor: theme.colors.background }} contentContainerStyle={{ padding: 8 }}>
                     <Text selectable style={{ color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
                       {call.argumentsJson}
                     </Text>
                   </ScrollView>
                 </View>
-                {call.name === 'web_search' && <WebSearchSourceCards output={call.result?.output ?? null} />}
+                {call.result !== null && (
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+                      {call.result.isError ? 'Result error' : 'Result'}
+                    </Text>
+                    <ScrollView style={{ maxHeight: 180, flexGrow: 0, borderRadius: theme.radius.control, backgroundColor: theme.colors.background }} contentContainerStyle={{ padding: 8 }}>
+                      <Text selectable style={{ color: call.result.isError ? theme.colors.warningText : theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
+                        {call.result.output}
+                      </Text>
+                    </ScrollView>
+                  </View>
+                )}
+                {(call.name === 'web_search' || call.name === 'web_fetch') && <WebToolSourceCards name={call.name} output={call.result?.output ?? null} />}
               </View>
             )}
           </View>
@@ -870,6 +1032,53 @@ export function WebSearchSourceCards({ output }: { output: string | null }) {
   );
 }
 
+export function WebToolSourceCards({ name, output }: { name: string; output: string | null }) {
+  if (name === 'web_search') {
+    return <WebSearchSourceCards output={output} />;
+  }
+  const fetched = output === null ? null : parseWebFetchOutput(output);
+  if (fetched === null) {
+    return null;
+  }
+  const source = new URL(fetched.url).hostname;
+  const title = fetched.title ?? source;
+  return (
+    <View style={{ gap: 6, paddingTop: 6 }}>
+      <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+        Web source
+      </Text>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`Open source ${title}`}
+        onPress={() => {
+          void Linking.openURL(fetched.url).catch(() => undefined);
+        }}
+        style={({ pressed }) => ({
+          gap: 3,
+          padding: 10,
+          borderLeftWidth: 2,
+          borderLeftColor: theme.colors.secondary,
+          borderRadius: theme.radius.card,
+          backgroundColor: theme.colors.canvas,
+          opacity: pressed ? 0.7 : 1,
+        })}>
+        <Text style={{ color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+          {title}
+        </Text>
+        <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
+          {source}{fetched.truncated === true ? ' · truncated' : ''}
+        </Text>
+        <Text numberOfLines={3} style={{ color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
+          {fetched.content}
+        </Text>
+        <Text style={{ color: theme.colors.secondary, fontFamily: theme.fonts.mono, fontSize: 10 }}>
+          Untrusted web content
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function PendingMessage({ calls }: { calls: ToolActivity[] }) {
   const active = calls.find((call) => call.status === 'awaiting_approval' || call.status === 'executing');
   const label = active === undefined ? 'Waiting for response...' : toolStatusLabel(active.status);
@@ -891,102 +1100,6 @@ function PendingMessage({ calls }: { calls: ToolActivity[] }) {
         {label}
       </Text>
     </View>
-  );
-}
-
-export function ToolApprovalModal({
-  activity,
-  onResolve,
-}: {
-  activity: ToolActivity | null;
-  onResolve: (approved: boolean) => void;
-}) {
-  if (activity === null) {
-    return null;
-  }
-  return (
-    <Modal
-      visible
-      transparent
-      animationType="slide"
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={() => onResolve(false)}>
-      <View
-        style={{
-          flex: 1,
-          justifyContent: 'flex-end',
-          backgroundColor: 'rgba(0, 0, 0, 0.45)',
-        }}>
-        <View
-          style={{
-            width: '100%',
-            maxHeight: '82%',
-            gap: 12,
-            padding: theme.spacing.screen,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
-            borderTopLeftRadius: theme.radius.sheet,
-            borderTopRightRadius: theme.radius.sheet,
-            backgroundColor: theme.colors.sheet,
-          }}>
-          <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
-          <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.subtitle }}>
-            Approve tool call?
-          </Text>
-          <ApprovalField label="Tool" value={activity.name || 'Unknown tool'} />
-          <ApprovalField label="Target" value={activity.target} />
-          <ApprovalField label="Side effect" value={activity.sideEffect} />
-          <View style={{ gap: 4 }}>
-            <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-              Arguments
-            </Text>
-            <ScrollView
-              style={{ maxHeight: 180, borderRadius: theme.radius.control, backgroundColor: theme.colors.background }}
-              contentContainerStyle={{ padding: 10 }}>
-              <Text selectable style={{ color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
-                {activity.argumentsJson}
-              </Text>
-            </ScrollView>
-          </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Reject tool call"
-              onPress={() => onResolve(false)}
-              style={({ pressed }) => ({
-                minHeight: 48,
-                justifyContent: 'center',
-                paddingHorizontal: 16,
-                borderRadius: theme.radius.control,
-                backgroundColor: theme.colors.background,
-                opacity: pressed ? 0.7 : 1,
-              })}>
-              <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
-                Reject
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Approve tool call"
-              onPress={() => onResolve(true)}
-              style={({ pressed }) => ({
-                minHeight: 48,
-                justifyContent: 'center',
-                paddingHorizontal: 16,
-                borderRadius: theme.radius.control,
-                backgroundColor: theme.colors.accent,
-                opacity: pressed ? 0.7 : 1,
-              })}>
-              <Text style={{ color: theme.colors.accentText, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
-                Approve
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -1057,6 +1170,7 @@ function ErrorCard({
   canRetry: boolean;
   onRetry: () => void;
 }) {
+  const persistenceFailure = error.safeDetails.stage === 'persistence';
   return (
     <View
       style={{
@@ -1070,7 +1184,7 @@ function ErrorCard({
         backgroundColor: theme.colors.surface,
       }}>
       <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta, fontWeight: '700' }}>
-        Request failed
+        {persistenceFailure ? 'Response save failed' : 'Request failed'}
       </Text>
       <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta }}>{error.message}</Text>
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
@@ -1084,7 +1198,9 @@ function ErrorCard({
       </Text>
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
         Safe next step:{' '}
-        {error.retryable ? 'try again after checking the endpoint.' : 'check the endpoint and active model.'}
+        {persistenceFailure
+          ? 'copy the response before leaving this chat.'
+          : error.retryable ? 'try again after checking the endpoint.' : 'check the endpoint and active model.'}
       </Text>
       {canRetry && (
         <Pressable

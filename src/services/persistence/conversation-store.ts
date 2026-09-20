@@ -9,6 +9,11 @@ import {
   type TurnStatus,
 } from '../../domain/conversation';
 import {
+  orphanedImageAttachments,
+  parseImageAttachments,
+  type ImageAttachment,
+} from '../../domain/attachment';
+import {
   buildCompactedContext,
   parseCompactionSummary,
   type CompactionSummary,
@@ -34,6 +39,7 @@ type StartTurnInput = {
   userItemId: string;
   assistantItemId: string;
   prompt: string;
+  attachments: ImageAttachment[];
   endpointId: string;
   modelId: string;
   previousResponseId: string | null;
@@ -144,6 +150,8 @@ type ToolCallRow = {
   result_json: string | null;
 };
 
+type ToolCallWithAssistantRow = ToolCallRow & { assistant_item_id: string };
+
 async function nativeDatabase(): Promise<SQLiteDatabase> {
   const { openDatabaseAsync } = await import('expo-sqlite');
   return openDatabaseAsync(DATABASE_NAME);
@@ -251,7 +259,7 @@ export function createConversationRepository(
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             conversationId,
-            titleFromPrompt(input.prompt),
+            input.prompt.trim().length > 0 ? titleFromPrompt(input.prompt) : 'Image attachment',
             timestamp,
             timestamp,
             input.endpointId,
@@ -290,7 +298,13 @@ export function createConversationRepository(
         `INSERT INTO items
          (id, turn_id, type, role, status, content_json, provider_item_id, phase, created_at, updated_at)
          VALUES (?, ?, 'message', 'user', 'completed', ?, NULL, NULL, ?, ?)`,
-        [input.userItemId, input.turnId, contentJson(input.prompt, null), timestamp, timestamp],
+        [
+          input.userItemId,
+          input.turnId,
+          contentJson(input.prompt, null, input.attachments),
+          timestamp,
+          timestamp,
+        ],
       );
       await transaction.runAsync(
         `INSERT INTO items
@@ -475,6 +489,7 @@ export function createConversationRepository(
     id: string;
     title: string;
     messages: ChatMessage[];
+    toolActivities: Record<string, ToolActivity[]>;
     previousResponseId: string | null;
     previousResponseModelId: string | null;
     retry: { turnId: string; assistantItemId: string; prompt: string } | null;
@@ -498,6 +513,22 @@ export function createConversationRepository(
        ORDER BY t.ordinal ASC, CASE i.role WHEN 'user' THEN 0 ELSE 1 END`,
       [id],
     );
+    const toolRows = await db.getAllAsync<ToolCallWithAssistantRow>(
+      `SELECT tc.id, tc.turn_id, tc.call_id, tc.name, tc.arguments_json, tc.target, tc.side_effect,
+              tc.status, tc.approval, tc.result_json, assistant.id AS assistant_item_id
+       FROM tool_calls tc
+       JOIN turns t ON t.id = tc.turn_id
+       JOIN items assistant ON assistant.turn_id = t.id AND assistant.role = 'assistant'
+       WHERE t.conversation_id = ?
+       ORDER BY t.ordinal ASC, tc.created_at ASC`,
+      [id],
+    );
+    const toolActivities = toolRows.reduce<Record<string, ToolActivity[]>>((current, row) => {
+      const calls = current[row.assistant_item_id] ?? [];
+      calls.push(toolActivityFromRow(row));
+      current[row.assistant_item_id] = calls;
+      return current;
+    }, {});
     const previous = await db.getFirstAsync<{ response_id: string; model_id: string }>(
       `SELECT response_id, model_id FROM turns
        WHERE conversation_id = ? AND status = 'completed' AND response_id IS NOT NULL
@@ -518,6 +549,7 @@ export function createConversationRepository(
       id: conversation.id,
       title: conversation.title,
       messages: rows.map(messageFromRow),
+      toolActivities,
       autoCompact: conversation.auto_compact !== 0,
       compactionActive: conversation.active_compaction_id !== null,
       previousResponseId: previous?.response_id ?? null,
@@ -567,13 +599,32 @@ export function createConversationRepository(
       [conversationId, active?.source_end_ordinal ?? 0],
     );
     const recent = rows.flatMap((row) => {
-      if (row.role === null) {
-        return [];
-      }
-      const text = parseContent(row.content_json).text;
-      return text.length === 0 ? [] : [{ role: row.role, content: text }];
+      if (row.role === null) return [];
+      const content = parseContent(row.content_json);
+      if (content.text.length === 0 && content.attachments.length === 0) return [];
+      return [inputMessage(row.role, content)];
     });
-    return summary === null ? recent : buildCompactedContext(summary, recent);
+    if (summary === null || active === null) {
+      return recent;
+    }
+    const compactedRows = await db.getAllAsync<{ content_json: string }>(
+      `SELECT i.content_json FROM items i JOIN turns t ON t.id = i.turn_id
+       WHERE t.conversation_id = ? AND t.ordinal <= ? AND i.role = 'user'`,
+      [conversationId, active.source_end_ordinal],
+    );
+    return buildCompactedContext(
+      summary,
+      recent,
+      compactedRows.flatMap((row) => parseContent(row.content_json).attachments),
+    );
+  }
+
+  async function loadImageAttachments(): Promise<ImageAttachment[]> {
+    await initialize();
+    const rows = await (await database()).getAllAsync<{ content_json: string }>(
+      "SELECT content_json FROM items WHERE role = 'user'",
+    );
+    return rows.flatMap((row) => parseContent(row.content_json).attachments);
   }
 
   async function loadCompactionSource(conversationId: string): Promise<CompactionSource> {
@@ -772,9 +823,27 @@ export function createConversationRepository(
     );
   }
 
-  async function remove(id: string): Promise<void> {
+  async function remove(
+    id: string,
+    removeFiles: (attachments: ImageAttachment[]) => void = () => undefined,
+  ): Promise<void> {
     await initialize();
-    await (await database()).runAsync('DELETE FROM conversations WHERE id = ?', [id]);
+    const db = await database();
+    const deletedRows = await db.getAllAsync<{ content_json: string }>(
+      "SELECT i.content_json FROM items i JOIN turns t ON t.id = i.turn_id WHERE t.conversation_id = ? AND i.role = 'user'",
+      [id],
+    );
+    const deleted = deletedRows.flatMap((row) => parseContent(row.content_json).attachments);
+    await db.runAsync('DELETE FROM conversations WHERE id = ?', [id]);
+    const retainedRows = await db.getAllAsync<{ content_json: string }>(
+      "SELECT content_json FROM items WHERE role = 'user'",
+    );
+    removeFiles(
+      orphanedImageAttachments(
+        deleted,
+        retainedRows.flatMap((row) => parseContent(row.content_json).attachments),
+      ),
+    );
   }
 
   return {
@@ -789,6 +858,7 @@ export function createConversationRepository(
     loadConversation,
     loadLatest,
     loadRequestHistory,
+    loadImageAttachments,
     loadCompactionSource,
     setAutoCompact,
     beginCompaction,
@@ -828,13 +898,21 @@ function parseActiveSummary(row: CompactionRow | null): CompactionSummary | null
   return parsed.value;
 }
 
-function contentJson(text: string, reasoningSummary: string | null): string {
-  return JSON.stringify({ text, reasoningSummary });
+function contentJson(
+  text: string,
+  reasoningSummary: string | null,
+  attachments: ImageAttachment[] = [],
+): string {
+  return JSON.stringify({ text, reasoningSummary, attachments });
 }
 
-function parseContent(value: string | null): { text: string; reasoningSummary: string | null } {
+function parseContent(value: string | null): {
+  text: string;
+  reasoningSummary: string | null;
+  attachments: ImageAttachment[];
+} {
   if (value === null) {
-    return { text: '', reasoningSummary: null };
+    return { text: '', reasoningSummary: null, attachments: [] };
   }
   try {
     const parsed: unknown = JSON.parse(value);
@@ -844,12 +922,22 @@ function parseContent(value: string | null): { text: string; reasoningSummary: s
         text: typeof record.text === 'string' ? record.text : '',
         reasoningSummary:
           typeof record.reasoningSummary === 'string' ? record.reasoningSummary : null,
+        attachments: parseImageAttachments(record.attachments),
       };
     }
   } catch {
     // Invalid persisted content is rendered empty instead of crashing history.
   }
-  return { text: '', reasoningSummary: null };
+  return { text: '', reasoningSummary: null, attachments: [] };
+}
+
+function inputMessage(
+  role: ConversationInputMessage['role'],
+  content: ReturnType<typeof parseContent>,
+): ConversationInputMessage {
+  return content.attachments.length === 0
+    ? { role, content: content.text }
+    : { role, content: content.text, attachments: content.attachments };
 }
 
 function parseRawUsage(value: string | null): unknown {

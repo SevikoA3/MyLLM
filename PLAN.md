@@ -1,6 +1,6 @@
 # Implementation Plan Aplikasi Chat LLM Android
 
-Status: Phase 14 completed on 18 September 2026. TypeScript, ESLint, and Jest passed.
+Status: Phase 15 implementation and automated tests completed on 20 September 2026. The Android endpoint and memory exit gate remain manual.
 
 Tanggal: 16 September 2026.
 
@@ -66,7 +66,8 @@ Gunakan default berikut sampai pemilik proyek memutuskan lain:
 | Active endpoint | Satu pada MVP |
 | Protocol MVP | Responses API |
 | Chat Completions | Ditambahkan setelah MVP core stabil |
-| Content MVP | Text only |
+| Content | Text, plus gated image input for declared Responses-capable models |
+| Image attachment | PNG, JPEG, WebP; max 8 MB per image, 12 MB per message, four images; only declared Responses image modality |
 | State remote | Stateless replay dari history lokal; `previous_response_id` hanya jika endpoint mendokumentasikan dukungan |
 | Local history | Selalu authoritative untuk UI |
 | Database encryption | Tidak memakai SQLCipher pada MVP |
@@ -79,8 +80,6 @@ Gunakan default berikut sampai pemilik proyek memutuskan lain:
 Keputusan yang harus diminta sebelum relevan:
 
 - Application ID final sebelum build yang akan didistribusikan.
-- Provider web search sebelum Phase 14.
-- Batas file dan format attachment sebelum Phase 15.
 - Apakah background generation wajib sebelum Phase 16.
 - Apakah Termux, remote sandbox, atau keduanya benar-benar dibutuhkan sebelum Phase 18.
 
@@ -988,38 +987,43 @@ Jika belum ada keputusan, phase berhenti di sini. Jangan membuat provider abstra
 
 Keputusan pemilik proyek:
 
-- FreeSerp dipakai sebagai provider keyless melalui endpoint HTTPS tetap; tidak ada search key untuk disimpan.
-- Tool menerima maksimal 10 hasil, raw response dibatasi 64 KB, output normalisasi 12 KB, dan tidak melakukan retry sendiri.
-- Error HTTP, rate limit, fallback index, dan response invalid dikirim kembali sebagai structured tool error.
-- Hanya snippet search. `fetch_url`, Jina Reader, native fetch, dan Termux tidak ditambahkan karena belum ada trusted backend.
+- Aplikasi memakai private Search Gateway yang dikonfigurasi pengguna dengan URL HTTPS dan bearer token.
+- Pengguna memilih SearXNG engine di Settings. Nilai default `bing` dikirim sebagai parameter `engines` pada setiap search dan tidak dapat diubah model.
+- Gateway menangani authentication, limit input, SSRF, redirect, download limit, dan ekstraksi HTML. Aplikasi tidak menghubungi SearXNG atau URL hasil secara langsung.
+- Token disimpan di SecureStore. URL, status enabled, dan token tidak pernah dimasukkan ke model context, diagnostics, atau tool output.
+- Tool menerima maksimal 10 hasil, raw response dibatasi 64 KB, output model 12 KB, dan tidak melakukan retry sendiri.
+- `web_fetch` meminta maksimal 3.000 karakter agar hasilnya muat pada cap tool output 12 KB. Gateway tetap memberi penanda `truncated`.
+- Error HTTP, rate limit, timeout, dan response invalid dikirim kembali sebagai structured tool error tanpa detail gateway.
 
 ### Web search steps
 
-- [x] Implementasikan provider FreeSerp konkret tanpa provider abstraction.
-- [x] FreeSerp keyless, sehingga tidak ada search key untuk SecureStore.
-- [x] Tool input: query, count maksimal 10, recencyDays optional.
-- [x] Validate query length dan count.
+- [x] Implementasikan client private Search Gateway konkret tanpa provider abstraction.
+- [x] Simpan URL HTTPS dan status enabled di storage aplikasi, serta bearer token di SecureStore.
+- [x] Simpan SearXNG engine pada Settings dengan default `bing` dan migrasikan setting gateway lama ke nilai default itu.
+- [x] Tool input: query, count maksimal 10, time_range, language, dan categories optional.
+- [x] Validate query length, count, time_range, language, categories, dan URL fetch.
 - [x] Batasi raw response 64 KB dan output 12 KB tanpa truncation diam-diam.
-- [x] Normalize title, URL, snippet, published date, dan source.
-- [x] Tandai seluruh hasil sebagai untrusted external content.
+- [x] Teruskan JSON respons search dan fetch gateway secara mentah ke model tanpa parsing atau normalisasi.
+- [x] Perlakukan seluruh hasil sebagai untrusted external content; UI hanya membaca field source card yang diperlukan.
 - [x] Tampilkan source cards di UI.
-- [x] Tetapkan `web_search` read-only dengan approval `ask`; hasil tidak dapat mengubah policy.
+- [x] Tetapkan `web_search` dan `web_fetch` read-only dengan approval `ask`; hasil tidak dapat mengubah policy.
 - [x] Persist query metadata dan result summary melalui audit `tool_calls`, tanpa secret.
+- [x] Tambahkan Web Tools settings, test connection `GET /health`, dan source card untuk hasil fetch.
 
-### fetch_url decision
+### web_fetch decision
 
-expo/fetch tidak memberi aplikasi kontrol penuh atas DNS resolution dan redirect IP validation. Karena itu:
+expo/fetch tidak memberi aplikasi kontrol penuh atas DNS resolution dan redirect IP validation. Karena itu aplikasi hanya dapat melakukan fetch lewat gateway tepercaya:
 
-- [x] Tidak memakai fetch sebelum trusted backend memvalidasi DNS, private ranges, redirect, MIME, timeout, dan size.
-- [x] Native fetch module ditunda sampai threat review.
-- [x] Tidak mengklaim JS-only fetch sebagai SSRF-safe.
-- [x] Ship `web_search` tanpa `fetch_url` karena belum ada jalur aman.
+- [x] `web_fetch` hanya memanggil `POST /fetch` pada gateway. Gateway memvalidasi DNS, private ranges, redirect, MIME, timeout, dan size.
+- [x] Aplikasi tidak mengklaim JS-only fetch sebagai SSRF-safe dan tidak membuat generic HTTP proxy.
+- [x] `web_fetch` hanya menerima URL HTTP(S), meneruskan token sebagai bearer header, dan mengembalikan text sebagai untrusted data.
+- [x] Aplikasi tidak menghubungi SearXNG, Jina Reader, atau tujuan fetch secara langsung.
 
 ### Exit gate
 
-Search bekerja dengan satu provider nyata, hasil memiliki source, output dibatasi, dan prompt injection tidak dapat melewati tool policy.
+Search dan fetch bekerja melalui satu gateway nyata, hasil memiliki source, output dibatasi, dan prompt injection tidak dapat melewati tool policy.
 
-Status: Phase 14 completed on 18 September 2026. `npm run typecheck`, `npx eslint .`, and `npm run test:ci` passed.
+Status: Phase 14 extended on 20 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, and `npm run test:web-tools` passed. Android verification remains manual.
 
 ## 22. Phase 15: Image dan file attachment
 
@@ -1035,31 +1039,33 @@ Mengirim attachment hanya ke model dan protocol yang menyatakan dukungan.
 
 ### Steps
 
-- [ ] Tentukan allowlist MIME dan max size.
-- [ ] Gunakan content URI dan copy file terpilih ke app-private staging.
-- [ ] Jangan membaca seluruh file besar ke JS memory.
-- [ ] Attachment composer hanya aktif jika modality model supported.
-- [ ] Unknown modality membutuhkan explicit user override.
-- [ ] Buat provider mapping untuk image/file input pada Responses.
-- [ ] Jangan mengasumsikan upload endpoint universal.
-- [ ] Jika endpoint memerlukan file upload API yang tidak kompatibel, tandai unsupported sampai adapter khusus dibuat.
-- [ ] Tampilkan upload progress jika benar-benar ada upload.
-- [ ] Hapus staging file setelah lifecycle selesai.
-- [ ] Delete conversation menghapus attachment yang tidak direferensikan.
-- [ ] Jangan mendukung video pada implementasi pertama.
+- [x] Allowlist PNG, JPEG, WebP; max 8 MB per image, 12 MB per message, empat image.
+- [x] Gunakan content URI dan copy file terpilih ke app-private staging.
+- [x] File di atas batas ditolak sebelum dibaca ke JS; data URL bounded dibuat sekali pada batas send Responses.
+- [x] Attachment composer hanya aktif jika modality model supported.
+- [x] Unknown modality membutuhkan explicit user override lewat metadata model.
+- [x] Buat provider mapping image `input_image` pada Responses.
+- [x] Jangan mengasumsikan upload endpoint universal.
+- [x] Generic file upload incompatible ditandai unsupported dengan tidak menyediakan composer atau adapter file.
+- [x] Tidak ada endpoint upload, jadi tidak ada progress upload semu.
+- [x] Hapus staging file saat new chat, cleanup startup, clear-all, dan delete conversation.
+- [x] Delete conversation menghapus attachment yang tidak direferensikan.
+- [x] Jangan mendukung video pada implementasi pertama.
 
 ### Tests
 
-- [ ] Unsupported modality.
-- [ ] File terlalu besar.
-- [ ] MIME tidak diizinkan.
-- [ ] Permission ditolak.
-- [ ] Process restart saat staging.
-- [ ] Delete cleanup.
+- [x] Unsupported modality.
+- [x] File terlalu besar.
+- [x] MIME tidak diizinkan.
+- [x] Permission ditolak.
+- [x] Process restart saat staging.
+- [x] Delete cleanup.
 
 ### Exit gate
 
 Satu image flow yang didukung endpoint berhasil tanpa memory spike dan model text-only tidak menampilkan attachment control.
+
+Status: Implementasi dan test otomatis selesai 20 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, `npm run test:conversations`, dan `npm run test:responses` lulus. Verifikasi Android endpoint nyata dan memory masih menunggu pemilik proyek.
 
 ## 23. Phase 16: Background generation
 

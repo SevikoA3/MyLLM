@@ -19,7 +19,7 @@ async function nativeSecureStore(): Promise<SecureStoreLike> {
   };
 }
 
-// Hanya API key yang masuk ke sini, dengan key berbasis credentialId.
+// API key provider dan token gateway disimpan dengan key berbasis credentialId.
 export function createCredentialStore(store?: SecureStoreLike) {
   async function resolve(): Promise<SecureStoreLike> {
     return store ?? (await nativeSecureStore());

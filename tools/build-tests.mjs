@@ -18,6 +18,7 @@ const ENTRIES = [
   'src/domain/model-list.ts',
   // Seed katalog dipakai jalur onboarding, jadi ikut dikompilasi.
   'src/services/persistence/catalog-seed.ts',
+  'src/services/tools/registry.ts',
 ];
 
 // expo-file-system adalah native module. Contract test Node menimpa modul hasil

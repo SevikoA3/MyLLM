@@ -8,6 +8,8 @@ export type ClearAllDataDeps = {
   clearConversation: () => Promise<void>;
   clearCatalog: () => void;
   clearTransfers: () => void;
+  clearAttachments: () => void;
+  clearWebTools: () => Promise<void>;
   clearDiagnostics: () => Promise<void>;
 };
 
@@ -21,7 +23,9 @@ export async function clearAllData(deps: ClearAllDataDeps): Promise<void> {
     deps.clearEndpoint(),
     deps.clearConversation(),
     deps.clearDiagnostics(),
+    deps.clearWebTools(),
   ]);
   deps.clearCatalog();
   deps.clearTransfers();
+  deps.clearAttachments();
 }

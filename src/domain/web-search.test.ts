@@ -1,7 +1,6 @@
 import {
-  MAX_WEB_SEARCH_OUTPUT_BYTES,
+  parseWebFetchOutput,
   parseWebSearchOutput,
-  serializeWebSearchOutput,
 } from './web-search';
 
 describe('web search output', () => {
@@ -9,7 +8,6 @@ describe('web search output', () => {
     expect(
       parseWebSearchOutput(
         JSON.stringify({
-          provider: 'FreeSerp',
           query: 'example',
           untrusted: true,
           results: [
@@ -26,22 +24,42 @@ describe('web search output', () => {
     ).toBeNull();
   });
 
-  it('rejects output above its explicit safety cap', () => {
-    expect(() =>
-      serializeWebSearchOutput({
-        provider: 'FreeSerp',
-        query: 'example',
-        untrusted: true,
-        results: [
-          {
-            title: 'x'.repeat(MAX_WEB_SEARCH_OUTPUT_BYTES),
-            url: 'https://example.com',
-            snippet: null,
-            publishedAt: null,
-            source: 'example.com',
-          },
-        ],
-      }),
-    ).toThrow('12 KB');
+  it('reads raw gateway results for source cards', () => {
+    expect(parseWebSearchOutput(JSON.stringify({
+      query: 'example',
+      results: [{
+        title: 'Example article',
+        url: 'https://example.com/article',
+        snippet: 'Current information.',
+        published_date: '2026-09-12',
+      }],
+    }))).toEqual({
+      query: 'example',
+      untrusted: true,
+      results: [{
+        title: 'Example article',
+        url: 'https://example.com/article',
+        snippet: 'Current information.',
+        publishedAt: '2026-09-12',
+        source: 'example.com',
+      }],
+    });
   });
+
+  it('keeps fetched text untrusted and preserves unknown truncation', () => {
+    expect(parseWebFetchOutput(JSON.stringify({
+      url: 'https://example.com/article',
+      title: null,
+      content_type: null,
+      content: 'Readable text.',
+    }))).toEqual({
+      url: 'https://example.com/article',
+      title: null,
+      contentType: null,
+      content: 'Readable text.',
+      truncated: null,
+      untrusted: true,
+    });
+  });
+
 });

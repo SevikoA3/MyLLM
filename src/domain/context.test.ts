@@ -74,6 +74,26 @@ describe('context budget', () => {
     expect(small.remainingPercent).toBe(0);
   });
 
+  it('reserves the encoded image payload in the context estimate', () => {
+    const plain = budget({ instructions: '', input: [{ role: 'user', content: '' }] });
+    const withImage = budget({
+      instructions: '',
+      input: [{
+        role: 'user',
+        content: '',
+        attachments: [{
+          id: 'image_1',
+          name: 'image.png',
+          mimeType: 'image/png',
+          byteSize: 300,
+          uri: 'file:///documents/attachments/image_1.png',
+        }],
+      }],
+    });
+
+    expect(withImage.inputTokensEstimate).toBeGreaterThan(plain.inputTokensEstimate + 100);
+  });
+
   it('memakai usage provider terakhir sebagai calibration hint tanpa mengubah occupancy', () => {
     const plain = budget();
     const calibrated = budget({ providerInputTokens: 2_000 });

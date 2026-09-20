@@ -31,24 +31,20 @@ export function ContextPill({
   cacheHitPercent = null,
   policy = DEFAULT_CONTEXT_POLICY,
   autoCompact = true,
-  autoApproveTools = false,
   compacting = false,
   canCompact = false,
   onCompact = () => undefined,
   onToggleAutoCompact = () => undefined,
-  onToggleAutoApproveTools = () => undefined,
 }: {
   budget: ContextBudgetResult;
   metrics?: TurnMetrics | null;
   cacheHitPercent?: number | null;
   policy?: ContextPolicy;
   autoCompact?: boolean;
-  autoApproveTools?: boolean;
   compacting?: boolean;
   canCompact?: boolean;
   onCompact?: () => void;
   onToggleAutoCompact?: (enabled: boolean) => void;
-  onToggleAutoApproveTools?: (enabled: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const fillColor = contextColor(budget.usedPercent);
@@ -163,21 +159,6 @@ export function ContextPill({
               </Text>
             </View>
 
-            <View style={{ gap: 4 }}>
-              <ControlRow label="Auto-approve read-only tools">
-                <Switch
-                  accessibilityLabel="Auto-approve read-only tools"
-                  accessibilityHint="Skip approval for read-only tools. Write and dangerous tools still require approval."
-                  value={autoApproveTools}
-                  trackColor={{ false: theme.colors.border, true: theme.colors.secondary }}
-                  thumbColor={theme.colors.text}
-                  onValueChange={onToggleAutoApproveTools}
-                />
-              </ControlRow>
-              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta, lineHeight: 14 }}>
-                Write and dangerous tools always require approval.
-              </Text>
-            </View>
 
             {budget.usedPercent !== null && budget.usedPercent >= policy.hardStopPercent && (
               <Text accessibilityRole="alert" style={{ color: theme.colors.danger, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>

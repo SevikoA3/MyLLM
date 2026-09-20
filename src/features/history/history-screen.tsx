@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { ConversationCursor, ConversationSummary, TurnStatus } from '../../domain/conversation';
 import { conversationRepository } from '../../services/persistence/conversation-store';
+import { deleteStagedImages } from '../../services/attachments/images';
 
 const PAGE_SIZE = 20;
 
@@ -136,7 +137,7 @@ export default function HistoryScreen() {
     if (deleteTarget === null) {
       return;
     }
-    await conversationRepository.remove(deleteTarget.id);
+    await conversationRepository.remove(deleteTarget.id, deleteStagedImages);
     setDeleteTarget(null);
     await loadFirst();
   }, [deleteTarget, loadFirst]);

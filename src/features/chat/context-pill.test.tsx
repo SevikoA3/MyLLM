@@ -60,16 +60,4 @@ describe('ContextPill', () => {
     expect(view.queryByText(/Input ~1,000 tokens/)).toBeNull();
   });
 
-  it('toggles read-only tool auto approval', async () => {
-    const onToggle = jest.fn();
-    const view = await render(
-      <ContextPill budget={result()} onToggleAutoApproveTools={onToggle} />,
-    );
-
-    fireEvent.press(view.getByLabelText('Context usage, 19 percent'));
-    await waitFor(() => expect(view.getByLabelText('Auto-approve read-only tools')).toBeTruthy());
-    fireEvent(view.getByLabelText('Auto-approve read-only tools'), 'valueChange', true);
-
-    expect(onToggle).toHaveBeenCalledWith(true);
-  });
 });

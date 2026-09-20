@@ -64,6 +64,18 @@ test('request history memuat user dan assistant completed secara berurutan', asy
   ]);
 });
 
+test('staged image survives a process restart and remains in request history', async () => {
+  const state = setup();
+  const attachment = imageAttachment('image_1', 'file:///documents/attachments/image_1.png');
+  const { conversationId } = await start(state.repository, 'turn_1', null, '', [attachment]);
+
+  const restarted = createConversationRepository(async () => state.database, () => 200);
+  assert.deepEqual(await restarted.loadRequestHistory(conversationId), [
+    { role: 'user', content: '', attachments: [attachment] },
+  ]);
+  assert.deepEqual(await restarted.loadImageAttachments(), [attachment]);
+});
+
 test('delete conversation membersihkan turn, item, usage, dan timing lewat cascade', async () => {
   const state = setup();
   const { conversationId } = await start(state.repository, 'turn_1', null, 'hapus saya');
@@ -72,6 +84,20 @@ test('delete conversation membersihkan turn, item, usage, dan timing lewat casca
   for (const table of ['conversations', 'turns', 'items', 'tool_calls', 'usage', 'timing']) {
     assert.equal(state.raw.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0);
   }
+});
+
+test('delete only removes staged images no other conversation references', async () => {
+  const state = setup();
+  const attachment = imageAttachment('image_1', 'file:///documents/attachments/image_1.png');
+  const first = await start(state.repository, 'turn_1', null, 'first', [attachment]);
+  const second = await start(state.repository, 'turn_2', null, 'second', [attachment]);
+  const removed = [];
+
+  await state.repository.remove(first.conversationId, (images) => removed.push(...images));
+  assert.deepEqual(removed, []);
+
+  await state.repository.remove(second.conversationId, (images) => removed.push(...images));
+  assert.deepEqual(removed, [attachment]);
 });
 
 test('pagination stabil memakai updatedAt dan ID', async () => {
@@ -167,6 +193,10 @@ test('tool call menyimpan approval dan result, lalu dedupe call ID', async () =>
   assert.deepEqual(completed.result, { callId: 'call_1', output: '{"time":"10:00"}', isError: false });
   assert.equal(duplicate.id, 'tool_1');
   assert.deepEqual(duplicate.result, completed.result);
+  const loaded = await state.repository.loadConversation(
+    state.raw.prepare('SELECT conversation_id FROM turns WHERE id = ?').get('turn_tool').conversation_id,
+  );
+  assert.deepEqual(loaded.toolActivities.assistant_turn_tool, [completed]);
 });
 
 test('in-flight tool call becomes interrupted after restart', async () => {
@@ -267,13 +297,14 @@ function setup(path = ':memory:') {
   return { raw, database, repository: createConversationRepository(async () => database, () => 100) };
 }
 
-function start(repository, turnId, conversationId, prompt) {
+function start(repository, turnId, conversationId, prompt, attachments = []) {
   return repository.startTurn({
     conversationId,
     turnId,
     userItemId: `user_${turnId}`,
     assistantItemId: `assistant_${turnId}`,
     prompt,
+    attachments,
     endpointId: 'endpoint_1',
     modelId: 'model-exact',
     previousResponseId: null,
@@ -281,6 +312,16 @@ function start(repository, turnId, conversationId, prompt) {
     outputCeiling: 1024,
     autoCompact: true,
   });
+}
+
+function imageAttachment(id, uri) {
+  return {
+    id,
+    name: 'image.png',
+    mimeType: 'image/png',
+    byteSize: 100,
+    uri,
+  };
 }
 
 function summary() {

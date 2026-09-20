@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import { MessageBubble, ReasoningSelector, ToolApprovalModal, ToolProgress, WebSearchSourceCards } from './chat-screen';
+import { MessageBubble, ReasoningSelector, ToolApprovalControl, ToolProgress, WebSearchSourceCards, WebToolSourceCards } from './chat-screen';
 
 describe('MessageBubble', () => {
   it('uses compact markdown headings and the reference transcript shape', async () => {
@@ -13,6 +13,7 @@ describe('MessageBubble', () => {
           text: '# A compact heading\n\n- A list item\n\n`inline code`',
           status: 'completed',
           reasoningSummary: null,
+          attachments: [],
         }}
       />,
     );
@@ -40,6 +41,7 @@ describe('ReasoningSelector', () => {
     );
 
     expect(view.getByText('auto')).toBeTruthy();
+    expect(view.getByLabelText('Thinking, auto')).toHaveStyle({ borderRadius: 4 });
     fireEvent.press(view.getByLabelText('Thinking, auto'));
     await waitFor(() => expect(view.getByText('high')).toBeTruthy());
 
@@ -50,36 +52,21 @@ describe('ReasoningSelector', () => {
   });
 });
 
-describe('ToolApprovalModal', () => {
-  it('shows call details and resolves one approval', async () => {
+describe('ToolApprovalControl', () => {
+  it('changes read-only tool approval before a chat request', async () => {
     const onResolve = jest.fn();
     const view = await render(
-      <ToolApprovalModal
-        activity={{
-          id: 'tool_1',
-          callId: 'call_1',
-          name: 'get_current_time',
-          argumentsJson: '{"timezone":"Asia/Jakarta"}',
-          target: 'Device clock',
-          sideEffect: 'Reads device time.',
-          status: 'awaiting_approval',
-          approval: 'pending',
-          result: null,
-        }}
-        onResolve={onResolve}
-      />,
+      <ToolApprovalControl enabled={false} disabled={false} onToggle={onResolve} />,
     );
 
-    expect(view.getByText('get_current_time')).toBeTruthy();
-    expect(view.getByText('{"timezone":"Asia/Jakarta"}')).toBeTruthy();
-    fireEvent.press(view.getByLabelText('Reject tool call'));
+    fireEvent.press(view.getByLabelText('Tool approval, read-only tools require approval'));
 
-    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(true));
   });
 });
 
 describe('ToolProgress', () => {
-  it('keeps tool details collapsed until selected', async () => {
+  it('keeps tool arguments and result in an accordion', async () => {
     const view = await render(
       <ToolProgress
         calls={[{
@@ -91,32 +78,55 @@ describe('ToolProgress', () => {
           sideEffect: 'Reads device time.',
           status: 'completed',
           approval: 'not_required',
-          result: { callId: 'call_1', output: '{}', isError: false },
+          result: { callId: 'call_1', output: '{"time":"10:00"}', isError: false },
         }]}
       />,
     );
 
     expect(view.queryByText('{"timezone":"Asia/Jakarta"}')).toBeNull();
-    fireEvent.press(view.getByLabelText('Tool usage, get_current_time, Tool completed'));
+    expect(view.queryByText('{"time":"10:00"}')).toBeNull();
+    fireEvent.press(view.getByLabelText('Tool request, get_current_time, Tool completed'));
     await waitFor(() => expect(view.getByText('{"timezone":"Asia/Jakarta"}')).toBeTruthy());
+    expect(view.getByText('{"time":"10:00"}')).toBeTruthy();
+  });
+
+  it('resolves approval from its tool request bubble', async () => {
+    const onResolve = jest.fn();
+    const view = await render(
+      <ToolProgress
+        onResolve={onResolve}
+        calls={[{
+          id: 'tool_1',
+          callId: 'call_1',
+          name: 'get_current_time',
+          argumentsJson: '{"timezone":"Asia/Jakarta"}',
+          target: 'Device clock',
+          sideEffect: 'Reads device time.',
+          status: 'awaiting_approval',
+          approval: 'pending',
+          result: null,
+        }]}
+      />,
+    );
+
+    fireEvent.press(view.getByLabelText('Approve tool request'));
+
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(true));
   });
 });
 
 describe('WebSearchSourceCards', () => {
-  it('shows normalized untrusted sources', async () => {
+  it('shows raw gateway sources', async () => {
     const view = await render(
       <WebSearchSourceCards
         output={JSON.stringify({
-          provider: 'FreeSerp',
           query: 'example',
-          untrusted: true,
           results: [
             {
               title: 'Example article',
               url: 'https://example.com/article',
               snippet: 'Current information.',
-              publishedAt: '2026-09-12',
-              source: 'example.com',
+              published_date: '2026-09-12',
             },
           ],
         })}
@@ -125,5 +135,23 @@ describe('WebSearchSourceCards', () => {
 
     expect(view.getByLabelText('Open source Example article')).toBeTruthy();
     expect(view.getByText('Untrusted web content')).toBeTruthy();
+  });
+
+  it('shows a fetched source with its truncation state', async () => {
+    const view = await render(
+      <WebToolSourceCards
+        name="web_fetch"
+        output={JSON.stringify({
+          url: 'https://example.com/article',
+          title: 'Example article',
+          content_type: 'text/html',
+          content: 'Readable page text.',
+          truncated: true,
+        })}
+      />,
+    );
+
+    expect(view.getByLabelText('Open source Example article')).toBeTruthy();
+    expect(view.getByText('example.com · truncated')).toBeTruthy();
   });
 });

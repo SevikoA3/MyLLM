@@ -250,7 +250,7 @@ async function executeTool(
   input: AgentLoopInput,
   signal: AbortSignal,
 ): Promise<ToolResult> {
-  const outcome = await executeWithTimeout(definition, argumentsValue, signal);
+  const outcome = await executeWithTimeout(definition, argumentsValue, signal, definition.timeoutMs ?? TOOL_TIMEOUT_MS);
   if (outcome.kind === 'cancelled') {
     return complete(activity, toolError(activity.callId, 'Tool execution was cancelled.'), 'cancelled', activity.approval, input);
   }
@@ -276,6 +276,7 @@ async function executeWithTimeout(
   definition: NonNullable<ReturnType<ToolRegistry['find']>>,
   argumentsValue: Record<string, unknown>,
   signal: AbortSignal,
+  timeoutMs: number,
 ): Promise<
   | { kind: 'completed'; output: string }
   | { kind: 'failed'; message: string }
@@ -301,7 +302,7 @@ async function executeWithTimeout(
       timer = setTimeout(() => {
         controller.abort();
         resolve({ kind: 'timed_out' });
-      }, TOOL_TIMEOUT_MS);
+      }, timeoutMs);
     });
     const outcome = await Promise.race([execution, timeout]);
     return signal.aborted ? { kind: 'cancelled' } : outcome;

@@ -119,7 +119,16 @@ function estimateInputTokens(
   const serialized = JSON.stringify({ instructions, input });
   const bytes = new TextEncoder().encode(serialized).byteLength;
   const itemCount = input.length + (instructions.length > 0 ? 1 : 0);
-  return Math.ceil(bytes / CONTEXT_TOKEN_BYTES_DIVISOR) + itemCount * CONTEXT_ITEM_OVERHEAD_TOKENS;
+  const imageDataUrlBytes = input.reduce(
+    (total, message) =>
+      total + (message.attachments ?? []).reduce(
+        (attachmentTotal, attachment) => attachmentTotal + Math.ceil((attachment.byteSize * 4) / 3),
+        0,
+      ),
+    0,
+  );
+  return Math.ceil((bytes + imageDataUrlBytes) / CONTEXT_TOKEN_BYTES_DIVISOR)
+    + itemCount * CONTEXT_ITEM_OVERHEAD_TOKENS;
 }
 
 function positiveInteger(value: number | null): value is number {
