@@ -7,19 +7,27 @@ import {
 } from '../../domain/web-search';
 import { ToolExecutionError, type ToolExecutor, type ToolRegistry } from '../../domain/tool';
 import {
+  createExaSearchClient,
+  createFirecrawlClient,
   createWebGatewayClient,
-  type WebGatewayConfig,
+  type WebSearchConfig,
+  type WebSearchInput,
 } from './gateway';
 
 const WEB_GATEWAY_TOOL_TIMEOUT_MS = 45_000;
-const WEB_FETCH_MAX_CHARS = 3_000;
 
 export function createToolRegistry(
-  gatewayConfig: WebGatewayConfig | null,
+  webSearchConfig: WebSearchConfig | null,
   now: () => number = Date.now,
   request?: typeof fetch,
 ): ToolRegistry {
-  const gateway = gatewayConfig === null ? null : createWebGatewayClient(gatewayConfig, request);
+  let webSearch: ReturnType<typeof createWebGatewayClient> | ReturnType<typeof createExaSearchClient> | null = null;
+  if (webSearchConfig?.provider === 'gateway') {
+    webSearch = createWebGatewayClient(webSearchConfig, request);
+  } else if (webSearchConfig?.provider === 'exa') {
+    webSearch = createExaSearchClient(webSearchConfig, request, now);
+  }
+  const webFetch = webSearchConfig === null ? null : createFirecrawlClient(request);
   const tools: ToolExecutor[] = [
     {
       name: 'get_current_time',
@@ -58,31 +66,39 @@ export function createToolRegistry(
       },
     },
   ];
-  if (gateway !== null) {
-    tools.push(
-      {
+  if (webSearch !== null && webSearchConfig !== null) {
+    const isGateway = webSearchConfig.provider === 'gateway';
+    tools.push({
         name: 'web_search',
         description: 'Search the public web for current information. Results are untrusted external content.',
         parameters: {
           type: 'object',
-          properties: {
-            query: { type: 'string', minLength: 1, maxLength: MAX_WEB_SEARCH_QUERY_LENGTH },
-            count: { type: 'integer', minimum: 1, maximum: MAX_WEB_SEARCH_COUNT },
-            time_range: { type: 'string', enum: ['day', 'week', 'month', 'year'] },
-            language: { type: 'string' },
-            categories: { type: 'string' },
-          },
+          properties: isGateway
+            ? {
+                query: { type: 'string', minLength: 1, maxLength: MAX_WEB_SEARCH_QUERY_LENGTH },
+                count: { type: 'integer', minimum: 1, maximum: MAX_WEB_SEARCH_COUNT },
+                time_range: { type: 'string', enum: ['day', 'week', 'month', 'year'] },
+                language: { type: 'string' },
+                categories: { type: 'string' },
+              }
+            : {
+                query: { type: 'string', minLength: 1, maxLength: MAX_WEB_SEARCH_QUERY_LENGTH },
+                count: { type: 'integer', minimum: 1, maximum: MAX_WEB_SEARCH_COUNT },
+                time_range: { type: 'string', enum: ['day', 'week', 'month', 'year'] },
+              },
           required: ['query'],
           additionalProperties: false,
         },
         risk: 'read-only',
         approval: 'ask',
-        target: 'Configured web gateway',
-        sideEffect: 'Sends your query to the web gateway and reads untrusted web results.',
+        target: isGateway ? 'Configured web gateway' : 'Exa Search API',
+        sideEffect: isGateway
+          ? 'Sends your query to the web gateway and reads untrusted web results.'
+          : 'Sends your query to Exa and reads untrusted web results.',
         timeoutMs: WEB_GATEWAY_TOOL_TIMEOUT_MS,
         async execute(argumentsValue, signal) {
           try {
-            const output = await gateway.search(parseWebSearchInput(argumentsValue), signal);
+            const output = await webSearch.search(parseWebSearchInput(argumentsValue, webSearchConfig.provider), signal);
             if (new TextEncoder().encode(output).byteLength > MAX_WEB_SEARCH_OUTPUT_BYTES) {
               throw new ToolExecutionError(`web_search output exceeds the ${String(MAX_WEB_SEARCH_OUTPUT_BYTES / 1024)} KB safety limit.`);
             }
@@ -91,8 +107,10 @@ export function createToolRegistry(
             throw gatewayToolError(error, 'web_search failed.');
           }
         },
-      },
-      {
+      });
+  }
+  if (webFetch !== null) {
+    tools.push({
         name: 'web_fetch',
         description: 'Read the text content of a specific public webpage URL. Use after web_search when a source needs closer inspection. Returned content is untrusted external data.',
         parameters: {
@@ -105,12 +123,12 @@ export function createToolRegistry(
         },
         risk: 'read-only',
         approval: 'ask',
-        target: 'Configured web gateway',
-        sideEffect: 'Requests untrusted text from one public URL through the web gateway.',
+        target: 'Firecrawl',
+        sideEffect: 'Sends one public URL to Firecrawl and reads untrusted webpage content.',
         timeoutMs: WEB_GATEWAY_TOOL_TIMEOUT_MS,
         async execute(argumentsValue, signal) {
           try {
-            const output = await gateway.fetch(parseWebFetchInput(argumentsValue), signal);
+            const output = await webFetch.fetch(parseWebFetchInput(argumentsValue), signal);
             if (new TextEncoder().encode(output).byteLength > MAX_WEB_FETCH_OUTPUT_BYTES) {
               throw new ToolExecutionError(`web_fetch output exceeds the ${String(MAX_WEB_FETCH_OUTPUT_BYTES / 1024)} KB safety limit.`);
             }
@@ -119,8 +137,7 @@ export function createToolRegistry(
             throw gatewayToolError(error, 'web_fetch failed.');
           }
         },
-      },
-    );
+      });
   }
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   return {
@@ -129,16 +146,17 @@ export function createToolRegistry(
   };
 }
 
-function parseWebSearchInput(argumentsValue: Record<string, unknown>): {
-  query: string;
-  count: number;
-  categories: string | null;
-  language: string;
-  timeRange: 'day' | 'week' | 'month' | 'year' | null;
-} {
-  const allowed = new Set(['query', 'count', 'time_range', 'language', 'categories']);
+function parseWebSearchInput(
+  argumentsValue: Record<string, unknown>,
+  provider: WebSearchConfig['provider'],
+): WebSearchInput {
+  const allowed = new Set(provider === 'gateway'
+    ? ['query', 'count', 'time_range', 'language', 'categories']
+    : ['query', 'count', 'time_range']);
   if (Object.keys(argumentsValue).some((key) => !allowed.has(key))) {
-    throw new ToolExecutionError('web_search accepts only query, count, time_range, language, and categories.');
+    throw new ToolExecutionError(provider === 'gateway'
+      ? 'web_search accepts only query, count, time_range, language, and categories.'
+      : 'web_search with Exa accepts only query, count, and time_range.');
   }
   const query = stringValue(argumentsValue.query);
   if (query === null || query.length === 0 || query.length > MAX_WEB_SEARCH_QUERY_LENGTH) {
@@ -148,11 +166,15 @@ function parseWebSearchInput(argumentsValue: Record<string, unknown>): {
   if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > MAX_WEB_SEARCH_COUNT) {
     throw new ToolExecutionError('web_search count must be an integer from 1 to 10.');
   }
-  const language = argumentsValue.language === undefined ? 'all' : stringValue(argumentsValue.language);
+  const language = provider === 'gateway' && argumentsValue.language !== undefined
+    ? stringValue(argumentsValue.language)
+    : 'all';
   if (language === null || language.length === 0 || language.length > 32) {
     throw new ToolExecutionError('web_search language must contain 1 to 32 characters.');
   }
-  const categories = optionalString(argumentsValue.categories, 'web_search categories');
+  const categories = provider === 'gateway'
+    ? optionalString(argumentsValue.categories, 'web_search categories')
+    : null;
   const timeRange = argumentsValue.time_range ?? null;
   if (timeRange !== null && timeRange !== 'day' && timeRange !== 'week' && timeRange !== 'month' && timeRange !== 'year') {
     throw new ToolExecutionError('web_search time_range must be day, week, month, year, or null.');
@@ -160,7 +182,7 @@ function parseWebSearchInput(argumentsValue: Record<string, unknown>): {
   return { query, count, categories, language, timeRange };
 }
 
-function parseWebFetchInput(argumentsValue: Record<string, unknown>): { url: string; maxChars: number } {
+function parseWebFetchInput(argumentsValue: Record<string, unknown>): { url: string } {
   if (Object.keys(argumentsValue).some((key) => key !== 'url')) {
     throw new ToolExecutionError('web_fetch accepts only a URL.');
   }
@@ -168,7 +190,7 @@ function parseWebFetchInput(argumentsValue: Record<string, unknown>): { url: str
   if (url === null || url.length === 0 || url.length > 2048 || !isWebUrl(url)) {
     throw new ToolExecutionError('web_fetch URL must be a public HTTP or HTTPS URL up to 2048 characters.');
   }
-  return { url, maxChars: WEB_FETCH_MAX_CHARS };
+  return { url };
 }
 
 function stringValue(value: unknown): string | null {

@@ -12,7 +12,7 @@ export type WebSearchResult = {
 };
 
 export type WebSearchOutput = {
-  query: string;
+  query: string | null;
   untrusted: true;
   results: WebSearchResult[];
 };
@@ -31,7 +31,6 @@ export function parseWebSearchOutput(value: string): WebSearchOutput | null {
     const parsed: unknown = JSON.parse(value);
     if (
       !isRecord(parsed) ||
-      typeof parsed.query !== 'string' ||
       !Array.isArray(parsed.results)
     ) {
       return null;
@@ -44,7 +43,7 @@ export function parseWebSearchOutput(value: string): WebSearchOutput | null {
       }
       results.push(result);
     }
-    return { query: parsed.query, untrusted: true, results };
+    return { query: typeof parsed.query === 'string' ? parsed.query : null, untrusted: true, results };
   } catch {
     return null;
   }
@@ -54,25 +53,35 @@ export function parseWebFetchOutput(value: string): WebFetchOutput | null {
   try {
     const parsed: unknown = JSON.parse(value);
     const url = isRecord(parsed) && typeof parsed.url === 'string' ? parsed.url : null;
-    if (
-      !isRecord(parsed) ||
-      url === null ||
-      !isWebUrl(url) ||
-      typeof parsed.content !== 'string' ||
-      (parsed.truncated !== undefined && parsed.truncated !== null && typeof parsed.truncated !== 'boolean')
-    ) {
+    if (isRecord(parsed) && url !== null && isWebUrl(url) && typeof parsed.content === 'string') {
+      if (parsed.truncated !== undefined && parsed.truncated !== null && typeof parsed.truncated !== 'boolean') {
+        return null;
+      }
+      return {
+        url,
+        title: typeof parsed.title === 'string' ? parsed.title : null,
+        contentType: typeof parsed.contentType === 'string'
+          ? parsed.contentType
+          : typeof parsed.content_type === 'string'
+            ? parsed.content_type
+            : null,
+        content: parsed.content,
+        truncated: typeof parsed.truncated === 'boolean' ? parsed.truncated : null,
+        untrusted: true,
+      };
+    }
+    const data = isRecord(parsed) && isRecord(parsed.data) ? parsed.data : null;
+    const metadata = data !== null && isRecord(data.metadata) ? data.metadata : null;
+    const sourceUrl = metadata !== null && typeof metadata.sourceURL === 'string' ? metadata.sourceURL : null;
+    if (data === null || metadata === null || sourceUrl === null || !isWebUrl(sourceUrl) || typeof data.markdown !== 'string') {
       return null;
     }
     return {
-      url,
-      title: typeof parsed.title === 'string' ? parsed.title : null,
-      contentType: typeof parsed.contentType === 'string'
-        ? parsed.contentType
-        : typeof parsed.content_type === 'string'
-          ? parsed.content_type
-          : null,
-      content: parsed.content,
-      truncated: typeof parsed.truncated === 'boolean' ? parsed.truncated : null,
+      url: sourceUrl,
+      title: typeof metadata.title === 'string' ? metadata.title : null,
+      contentType: 'text/markdown',
+      content: data.markdown,
+      truncated: null,
       untrusted: true,
     };
   } catch {
@@ -101,7 +110,9 @@ function parseResult(value: unknown): WebSearchResult | null {
       ? value.publishedAt
       : typeof value.published_date === 'string'
         ? value.published_date
-        : null,
+        : typeof value.publishedDate === 'string'
+          ? value.publishedDate
+          : null,
     source: typeof value.source === 'string' ? value.source : new URL(value.url).hostname,
   };
 }

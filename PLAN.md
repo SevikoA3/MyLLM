@@ -989,41 +989,43 @@ Keputusan pemilik proyek:
 
 - Aplikasi memakai private Search Gateway yang dikonfigurasi pengguna dengan URL HTTPS dan bearer token.
 - Pengguna memilih SearXNG engine di Settings. Nilai default `bing` dikirim sebagai parameter `engines` pada setiap search dan tidak dapat diubah model.
-- Gateway menangani authentication, limit input, SSRF, redirect, download limit, dan ekstraksi HTML. Aplikasi tidak menghubungi SearXNG atau URL hasil secara langsung.
+- Pengguna dapat memilih private Search Gateway atau Exa direct untuk `web_search`. Exa memakai `POST https://api.exa.ai/search` dan API key dari SecureStore.
+- Exa dan private Search Gateway menangani `web_search`. `web_fetch` memakai Firecrawl Keyless melalui `POST https://api.firecrawl.dev/v2/scrape`, tanpa API key. Tidak ada test request Exa karena search dapat billable.
+- Gateway menangani authentication dan limit input untuk search. Firecrawl mengambil serta mengekstrak halaman; aplikasi tidak menghubungi SearXNG atau URL hasil secara langsung.
 - Token disimpan di SecureStore. URL, status enabled, dan token tidak pernah dimasukkan ke model context, diagnostics, atau tool output.
 - Tool menerima maksimal 10 hasil, raw response dibatasi 64 KB, output model 12 KB, dan tidak melakukan retry sendiri.
-- `web_fetch` meminta maksimal 3.000 karakter agar hasilnya muat pada cap tool output 12 KB. Gateway tetap memberi penanda `truncated`.
-- Error HTTP, rate limit, timeout, dan response invalid dikirim kembali sebagai structured tool error tanpa detail gateway.
+- Error HTTP, rate limit, timeout, dan response invalid dikirim kembali sebagai structured tool error tanpa detail provider.
 
 ### Web search steps
 
 - [x] Implementasikan client private Search Gateway konkret tanpa provider abstraction.
 - [x] Simpan URL HTTPS dan status enabled di storage aplikasi, serta bearer token di SecureStore.
 - [x] Simpan SearXNG engine pada Settings dengan default `bing` dan migrasikan setting gateway lama ke nilai default itu.
-- [x] Tool input: query, count maksimal 10, time_range, language, dan categories optional.
+- [x] Tambahkan pilihan Exa direct untuk `web_search`, dengan API key terpisah di SecureStore.
+- [x] Tool input gateway: query, count maksimal 10, time_range, language, dan categories optional. Exa menerima query, count, dan time_range; filter gateway ditolak, tidak diabaikan diam-diam.
 - [x] Validate query length, count, time_range, language, categories, dan URL fetch.
 - [x] Batasi raw response 64 KB dan output 12 KB tanpa truncation diam-diam.
-- [x] Teruskan JSON respons search dan fetch gateway secara mentah ke model tanpa parsing atau normalisasi.
+- [x] Teruskan JSON respons search gateway atau Exa, serta fetch Firecrawl, secara mentah ke model tanpa parsing atau normalisasi.
 - [x] Perlakukan seluruh hasil sebagai untrusted external content; UI hanya membaca field source card yang diperlukan.
 - [x] Tampilkan source cards di UI.
 - [x] Tetapkan `web_search` dan `web_fetch` read-only dengan approval `ask`; hasil tidak dapat mengubah policy.
 - [x] Persist query metadata dan result summary melalui audit `tool_calls`, tanpa secret.
-- [x] Tambahkan Web Tools settings, test connection `GET /health`, dan source card untuk hasil fetch.
+- [x] Tambahkan Web Tools settings, test connection `GET /health` untuk gateway search, dan source card untuk hasil fetch.
 
 ### web_fetch decision
 
-expo/fetch tidak memberi aplikasi kontrol penuh atas DNS resolution dan redirect IP validation. Karena itu aplikasi hanya dapat melakukan fetch lewat gateway tepercaya:
+expo/fetch tidak memberi aplikasi kontrol penuh atas DNS resolution dan redirect IP validation. Karena itu aplikasi tidak melakukan fetch langsung ke URL tujuan:
 
-- [x] `web_fetch` hanya memanggil `POST /fetch` pada gateway. Gateway memvalidasi DNS, private ranges, redirect, MIME, timeout, dan size.
+- [x] `web_fetch` hanya memanggil `POST https://api.firecrawl.dev/v2/scrape` dengan URL HTTP(S), format Markdown, dan tanpa credential. Firecrawl Keyless menjadi service fetch tepercaya.
 - [x] Aplikasi tidak mengklaim JS-only fetch sebagai SSRF-safe dan tidak membuat generic HTTP proxy.
-- [x] `web_fetch` hanya menerima URL HTTP(S), meneruskan token sebagai bearer header, dan mengembalikan text sebagai untrusted data.
+- [x] `web_fetch` hanya menerima URL HTTP(S), tidak meneruskan token, dan mengembalikan text sebagai untrusted data.
 - [x] Aplikasi tidak menghubungi SearXNG, Jina Reader, atau tujuan fetch secara langsung.
 
 ### Exit gate
 
-Search dan fetch bekerja melalui satu gateway nyata, hasil memiliki source, output dibatasi, dan prompt injection tidak dapat melewati tool policy.
+Search bekerja melalui gateway atau Exa, fetch melalui Firecrawl Keyless, hasil memiliki source, output dibatasi, dan prompt injection tidak dapat melewati tool policy.
 
-Status: Phase 14 extended on 20 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, and `npm run test:web-tools` passed. Android verification remains manual.
+Status: Phase 14 extended on 20 September 2026. Gateway and Exa search plus Firecrawl Keyless fetch passed `npm run typecheck`, `npx eslint .`, `npm run test:ci`, and `npm run test:web-tools`. Android verification remains manual.
 
 ## 22. Phase 15: Image dan file attachment
 
@@ -1432,6 +1434,7 @@ Project dianggap MVP selesai setelah Phase 11. Project dianggap P1 selesai setel
 - OpenAI Responses compact: https://developers.openai.com/api/reference/java/resources/responses/methods/compact
 - AmanAI API reference: https://ai.amanai.dev/docs/reference/
 - AmanAI models: https://ai.amanai.dev/docs/models/
+- Exa Search: https://exa.ai/docs/reference/search
 
 Jika dokumentasi library berubah saat executor mulai, pilih stable release yang saling kompatibel, update lockfile, dan catat versi aktual. Jangan pindah ke beta atau canary hanya untuk mendapatkan fitur yang belum diperlukan.
 

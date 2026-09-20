@@ -44,17 +44,6 @@ before(async () => {
       }));
       return;
     }
-    if (request.method === 'POST' && request.url === '/fetch') {
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({
-        url: 'https://example.com/source',
-        title: 'Gateway article',
-        content_type: 'text/html',
-        content: 'Readable extracted text.',
-        truncated: false,
-      }));
-      return;
-    }
     response.writeHead(404).end();
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -65,18 +54,17 @@ before(async () => {
 after(() => server?.close());
 
 const { createToolRegistry } = await import('../.tests-build/services/tools/registry.js');
-const { testWebGateway } = await import('../.tests-build/services/tools/gateway.js');
+const { createFirecrawlClient, testWebGateway } = await import('../.tests-build/services/tools/gateway.js');
 
-test('gateway search, fetch, and health use the production client contract', async () => {
+test('gateway search and health use the production client contract', async () => {
   await testWebGateway(baseUrl);
-  const registry = createToolRegistry({ baseUrl, token: TOKEN, engines: 'bing' });
+  const registry = createToolRegistry({ provider: 'gateway', baseUrl, token: TOKEN, engines: 'bing' });
   const signal = new AbortController().signal;
   const search = await registry.find('web_search').execute({
     query: 'open ai & safety',
     count: 1,
     time_range: 'week',
   }, signal);
-  const fetched = await registry.find('web_fetch').execute({ url: 'https://example.com/source' }, signal);
 
   assert.deepEqual(JSON.parse(search), {
     query: 'open ai & safety',
@@ -87,10 +75,29 @@ test('gateway search, fetch, and health use the production client contract', asy
       published_date: '2026-09-20',
     }],
   });
-  assert.equal(JSON.parse(fetched).content, 'Readable extracted text.');
   assert.equal(requests[0].authorization, undefined);
   assert.match(requests[1].url, /q=open\+ai\+%26\+safety/);
   assert.match(requests[1].url, /engines=bing/);
   assert.equal(requests[1].authorization, `Bearer ${TOKEN}`);
-  assert.deepEqual(JSON.parse(requests[2].body), { url: 'https://example.com/source', max_chars: 3000 });
+});
+
+test('Firecrawl Keyless fetch uses the production request contract', async () => {
+  let requestUrl;
+  let requestInit;
+  const client = createFirecrawlClient(async (url, init) => {
+    requestUrl = url;
+    requestInit = init;
+    return new Response(JSON.stringify({ success: true, data: { markdown: 'Readable extracted text.' } }));
+  });
+
+  const fetched = await client.fetch({ url: 'https://example.com/source' }, new AbortController().signal);
+
+  assert.equal(JSON.parse(fetched).data.markdown, 'Readable extracted text.');
+  assert.equal(requestUrl, 'https://api.firecrawl.dev/v2/scrape');
+  assert.equal(requestInit.headers.authorization, undefined);
+  assert.deepEqual(JSON.parse(requestInit.body), {
+    url: 'https://example.com/source',
+    formats: ['markdown'],
+    onlyMainContent: true,
+  });
 });

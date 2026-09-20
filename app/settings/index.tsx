@@ -15,8 +15,8 @@ import { clearTransferCache } from '../../src/services/persistence/catalog-trans
 import { clearStagedImages } from '../../src/services/attachments/images';
 import { conversationRepository } from '../../src/services/persistence/conversation-store';
 import { endpointStore } from '../../src/services/persistence/endpoint-store';
-import { WEB_TOOLS_CREDENTIAL_ID, webToolsStore } from '../../src/services/persistence/web-tools-store';
-import { createWebToolsSettings, normalizeGatewayUrl } from '../../src/domain/web-tools';
+import { webToolsCredentialId, webToolsStore } from '../../src/services/persistence/web-tools-store';
+import { createWebToolsSettings, normalizeGatewayUrl, type WebSearchProvider } from '../../src/domain/web-tools';
 import { testWebGateway } from '../../src/services/tools/gateway';
 
 const colors = {
@@ -63,6 +63,7 @@ export default function SettingsScreen() {
   const [clearing, setClearing] = useState(false);
   const [webToolsReady, setWebToolsReady] = useState(false);
   const [webToolsEnabled, setWebToolsEnabled] = useState(false);
+  const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProvider>('gateway');
   const [gatewayUrl, setGatewayUrl] = useState('');
   const [gatewayEngines, setGatewayEngines] = useState('bing');
   const [gatewayToken, setGatewayToken] = useState('');
@@ -72,12 +73,11 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      webToolsStore.load(),
-      credentialStore.read(WEB_TOOLS_CREDENTIAL_ID),
-    ]).then(([settings, token]) => {
+    void webToolsStore.load().then(async (settings) => {
+      const token = await credentialStore.read(webToolsCredentialId(settings.provider));
       if (!active) return;
       setWebToolsEnabled(settings.enabled);
+      setWebSearchProvider(settings.provider);
       setGatewayUrl(settings.baseUrl ?? '');
       setGatewayEngines(settings.engines);
       setGatewayTokenSaved(token !== null && token.trim().length > 0);
@@ -89,6 +89,19 @@ export default function SettingsScreen() {
     });
     return () => { active = false; };
   }, []);
+
+  async function selectWebSearchProvider(provider: WebSearchProvider) {
+    setNotice(null);
+    setWebSearchProvider(provider);
+    setGatewayToken('');
+    try {
+      const token = await credentialStore.read(webToolsCredentialId(provider));
+      setGatewayTokenSaved(token !== null && token.trim().length > 0);
+    } catch {
+      setGatewayTokenSaved(false);
+      setNotice('Web tools credentials could not be loaded.');
+    }
+  }
 
   async function exportDiagnostics() {
     setExporting(true);
@@ -123,6 +136,7 @@ export default function SettingsScreen() {
     try {
       settings = createWebToolsSettings({
         enabled: webToolsEnabled,
+        provider: webSearchProvider,
         baseUrl: gatewayUrl.trim().length === 0 ? null : gatewayUrl,
         engines: gatewayEngines,
       });
@@ -131,17 +145,21 @@ export default function SettingsScreen() {
       return;
     }
     if (settings.enabled && gatewayToken.trim().length === 0 && !gatewayTokenSaved) {
-      Alert.alert('Gateway token required', 'Enter a bearer token before enabling web tools.');
+      Alert.alert(
+        webSearchProvider === 'exa' ? 'Exa API key required' : 'Gateway token required',
+        webSearchProvider === 'exa' ? 'Enter an Exa API key before enabling web search.' : 'Enter a bearer token before enabling web tools.',
+      );
       return;
     }
     setSavingWebTools(true);
     try {
       if (gatewayToken.trim().length > 0) {
-        await credentialStore.save(WEB_TOOLS_CREDENTIAL_ID, gatewayToken.trim());
+        await credentialStore.save(webToolsCredentialId(settings.provider), gatewayToken.trim());
         setGatewayToken('');
         setGatewayTokenSaved(true);
       }
       await webToolsStore.save(settings);
+      setWebSearchProvider(settings.provider);
       setGatewayUrl(settings.baseUrl ?? '');
       setGatewayEngines(settings.engines);
       setNotice('Web tools settings saved.');
@@ -312,9 +330,13 @@ export default function SettingsScreen() {
           <View style={{ gap: 10, borderRadius: 4, backgroundColor: colors.surface, padding: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <View style={{ flex: 1, gap: 3 }}>
-                <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>Enable web search and fetch</Text>
+                <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>
+                  Enable web search and fetch
+                </Text>
                 <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
-                  Requests go only to your configured HTTPS gateway.
+                  {webSearchProvider === 'gateway'
+                    ? 'Search requests go only to your configured HTTPS gateway.'
+                    : 'Search requests go directly to api.exa.ai.'} Web fetch sends page URLs to Firecrawl Keyless.
                 </Text>
               </View>
               <Switch
@@ -334,6 +356,28 @@ export default function SettingsScreen() {
           </View>
 
           <View style={{ gap: 6 }}>
+            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>WEB SEARCH PROVIDER</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <SettingsAction
+                  label="GATEWAY"
+                  disabled={!webToolsReady || savingWebTools}
+                  onPress={() => void selectWebSearchProvider('gateway')}
+                  tone={webSearchProvider === 'gateway' ? 'primary' : 'secondary'}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <SettingsAction
+                  label="EXA"
+                  disabled={!webToolsReady || savingWebTools}
+                  onPress={() => void selectWebSearchProvider('exa')}
+                  tone={webSearchProvider === 'exa' ? 'primary' : 'secondary'}
+                />
+              </View>
+            </View>
+          </View>
+
+          {webSearchProvider === 'gateway' && <View style={{ gap: 6 }}>
             <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>GATEWAY URL</Text>
             <TextInput
               accessibilityLabel="Gateway URL"
@@ -347,28 +391,32 @@ export default function SettingsScreen() {
               value={gatewayUrl}
               style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
             />
-          </View>
+          </View>}
 
           <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>GATEWAY TOKEN</Text>
+            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>
+              {webSearchProvider === 'exa' ? 'EXA API KEY' : 'GATEWAY TOKEN'}
+            </Text>
             <TextInput
-              accessibilityLabel="Gateway token"
+              accessibilityLabel={webSearchProvider === 'exa' ? 'Exa API key' : 'Gateway token'}
               autoCapitalize="none"
               autoCorrect={false}
               editable={webToolsReady && !savingWebTools}
               onChangeText={setGatewayToken}
-              placeholder={gatewayTokenSaved ? 'Saved securely. Enter a new token to replace it.' : 'Bearer token'}
+              placeholder={gatewayTokenSaved
+                ? 'Saved securely. Enter a new value to replace it.'
+                : webSearchProvider === 'exa' ? 'Exa API key' : 'Bearer token'}
               placeholderTextColor={colors.outline}
               secureTextEntry
               value={gatewayToken}
               style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
             />
             <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
-              The token is stored securely and is never included in diagnostics or tool output.
+              The credential is stored securely and is never included in diagnostics or tool output.
             </Text>
           </View>
 
-          <View style={{ gap: 6 }}>
+          {webSearchProvider === 'gateway' && <View style={{ gap: 6 }}>
             <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>SEARXNG ENGINES</Text>
             <TextInput
               accessibilityLabel="SearXNG engines"
@@ -384,17 +432,23 @@ export default function SettingsScreen() {
             <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
               Comma-separated engine names for your SearXNG instance. Default: bing.
             </Text>
-          </View>
+          </View>}
+
+          {webSearchProvider === 'exa' && (
+            <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
+              No connection test is sent because an Exa search request may be billable.
+            </Text>
+          )}
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}>
+            {webSearchProvider === 'gateway' && <View style={{ flex: 1 }}>
               <SettingsAction
                 label={testingGateway ? 'TESTING...' : 'TEST CONNECTION'}
                 disabled={!webToolsReady || testingGateway || savingWebTools}
                 onPress={() => void testGateway()}
                 tone="secondary"
               />
-            </View>
+            </View>}
             <View style={{ flex: 1 }}>
               <SettingsAction
                 label={savingWebTools ? 'SAVING...' : 'SAVE WEB TOOLS'}

@@ -154,4 +154,25 @@ describe('WebSearchSourceCards', () => {
     expect(view.getByLabelText('Open source Example article')).toBeTruthy();
     expect(view.getByText('example.com · truncated')).toBeTruthy();
   });
+
+  it('shows a Firecrawl fetched source', async () => {
+    const view = await render(
+      <WebToolSourceCards
+        name="web_fetch"
+        output={JSON.stringify({
+          success: true,
+          data: {
+            markdown: 'Readable page text.',
+            metadata: {
+              title: 'Example article',
+              sourceURL: 'https://example.com/article',
+            },
+          },
+        })}
+      />,
+    );
+
+    expect(view.getByLabelText('Open source Example article')).toBeTruthy();
+    expect(view.getByText('Readable page text.')).toBeTruthy();
+  });
 });

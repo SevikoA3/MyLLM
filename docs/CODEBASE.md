@@ -2,7 +2,7 @@
 
 Peta struktur folder, tanggung jawab file, dan dependency antar layer. Dipakai supaya executor dan agent tidak perlu membaca seluruh repository untuk menemukan tempat sebuah perubahan.
 
-Status: Phase 15 implementation and automated checks completed 20 September 2026. Image input is limited to declared Responses-capable models; Android endpoint and memory verification remain manual.
+Status: Phase 15 implementation and automated checks completed 20 September 2026. Web search supports private gateway or direct Exa, and web fetch uses Firecrawl Keyless; image input is limited to declared Responses-capable models; Android endpoint and memory verification remain manual.
 
 Cara memperbarui dokumen ini ada di bagian 35 PLAN.md.
 
@@ -119,8 +119,8 @@ myllm/
         local-compaction.ts         local summary request, retry satu kali, validation, dan compaction usage
         local-compaction.test.ts
       tools/
-        gateway.ts                  concrete private gateway client untuk health, search, dan fetch
-        registry.ts                 app-owned get_current_time serta gateway web_search dan web_fetch tool
+        gateway.ts                  client gateway dan Exa untuk search, serta Firecrawl Keyless untuk fetch
+        registry.ts                 app-owned get_current_time, web_search, dan web_fetch Firecrawl
         registry.test.ts
       attachments/
         image-input.ts              baca image staged menjadi data URL pada saat request Responses
@@ -189,7 +189,7 @@ Folder yang muncul di struktur target tetapi belum ada: `modules/`. Buat hanya s
 | `app/settings/models.tsx` | Re-export layar picker | `features/models/models-screen` |
 | `app/settings/model.tsx` | Re-export detail dan override model | `features/models/model-detail-screen` |
 | `app/settings/models-json.tsx` | Re-export editor JSON override | `features/models/models-json-screen` |
-| `app/settings/index.tsx` | Settings, private web gateway URL and token, health check, safe diagnostic export, and clear-all-data confirmation | `domain/web-tools`, `services/tools/gateway`, `services/persistence/*`, `services/credentials/store` |
+| `app/settings/index.tsx` | Settings, web search provider choice, gateway URL/token or Exa API key, gateway health check, safe diagnostic export, and clear-all-data confirmation | `domain/web-tools`, `services/tools/gateway`, `services/persistence/*`, `services/credentials/store` |
 | `app/history.tsx` | Re-export layar history | `features/history/history-screen` |
 | `app/chat/[conversationId].tsx` | Re-export chat untuk membuka conversation tersimpan atau route `new` | `features/chat/chat-screen` |
 
@@ -209,8 +209,8 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `context.ts` | `ContextPolicySchema`, default policy, `buildContextBudget` | Menghitung effective input termasuk perkiraan data URL image, output reserve, safety margin, occupancy, dan calibration hint tanpa I/O. |
 | `compaction.ts` | `CompactionSummarySchema`, prefix selector, prompt, parser, `buildCompactedContext` | Menjaga summary sebagai data untrusted, attachment lama untuk replay, dan boundary turn tanpa menghapus transcript. |
 | `tool.ts` | ToolDefinition, ToolCall, ToolResult, policy, JSON validation, dan activity states | Unknown tool menghasilkan structured error; write dan dangerous selalu butuh approval. |
-| `web-search.ts` | WebSearchOutput, WebFetchOutput, URL guard, parser source card, dan cap output | Hanya URL HTTP(S) dapat masuk source card; seluruh output web ditandai untrusted. |
-| `web-tools.ts` | WebToolsSettings, schema dan normalisasi URL serta SearXNG engine private gateway | Gateway harus HTTPS, tanpa query atau fragment; enabled memerlukan URL dan engine default `bing`. |
+| `web-search.ts` | WebSearchOutput, WebFetchOutput, URL guard, parser source card gateway, Exa, dan Firecrawl, serta cap output | Hanya URL HTTP(S) dapat masuk source card; seluruh output web ditandai untrusted. |
+| `web-tools.ts` | WebToolsSettings, pilihan provider, dan normalisasi URL serta SearXNG engine private gateway | Gateway harus HTTPS, tanpa query atau fragment; enabled gateway memerlukan URL dan engine default `bing`. |
 | `attachment.ts` | Schema, allowlist, limit, parser, dan error copy image attachment | PNG, JPEG, WebP; max 8 MB per image, 12 MB per message, dan empat image. |
 | `conversation.ts` | `ChatMessage`, input history, attachment, status turn, summary, cursor, dan `titleFromPrompt` | Status mengunci sending, streaming, terminal, dan interrupted. |
 | `usage.ts` | `NormalizedUsage`, `TurnMetrics`, normalisasi field Responses, cache bucket, TTFT, TPS, dan session summary | Field usage yang hilang tetap null; cached input tidak dijumlahkan ulang. |
@@ -226,7 +226,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `setup/error-copy.ts` | `describe`, `modelSummary`, `ErrorCopy` | `domain/error`, `domain/model` |
 | `chat/chat-screen.tsx` | Dark operational chat shell, model and diagnostic bars, image composer/preview, inline tool-request bubbles with accordion results and per-call approval, web source cards, streaming, retry, dan context controls | `domain/conversation`, `domain/context`, `domain/tool`, `domain/usage`, `domain/web-search`, `features/chat/use-chat`, `features/setup/use-active-endpoint` |
 | `chat/context-pill.tsx` | Context usage modal, cache hit, dan auto-compact | `domain/context`, `domain/usage` |
-| `chat/use-chat.ts` | Orkestrasi conversation, declared image support, staging cleanup, compaction, model snapshot, persistence, metrics, cancellation, tool policy, dan AgentLoop | Memuat audit tool per assistant message agar bubble transcript tetap ada setelah chat dibuka kembali. |
+| `chat/use-chat.ts` | Orkestrasi conversation, declared image support, staging cleanup, compaction, model snapshot, persistence, metrics, cancellation, provider web search, tool policy, dan AgentLoop | Memuat audit tool per assistant message agar bubble transcript tetap ada setelah chat dibuka kembali. |
 | `chat/agent-loop.ts` | Bounded model-tool loop, policy, approval callback, output cap, timeout, cancellation, dan dedupe | Tool dapat menetapkan timeout spesifik tanpa mengubah cap output global. |
 | `history/history-screen.tsx` | History local console dengan keyset pagination, filter title/model/status, buka chat, rename, dan delete attachment orphan | `domain/conversation`, `services/attachments/images`, `services/persistence/conversation-store` |
 | `history/history-screen.test.ts` | Mengunci mapping status conversation history | `history/history-screen` |
@@ -244,7 +244,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 
 | File | Isi | Bergantung pada |
 |---|---|---|
-| `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.`, registry untuk clear-all | API key provider dan bearer token gateway disimpan lewat modul native lazy. |
+| `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.`, registry untuk clear-all | API key provider, Exa, dan bearer token gateway disimpan lewat modul native lazy. |
 | `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
 | `transport/contract.ts` | Canonical request, tool definition/exchange, internal stream events, normalized result metadata, and `Transport` contract | `domain/conversation`, `domain/endpoint`, `domain/error`, `domain/tool` |
 | `transport/responses.ts` | `responsesTransport`, canonical input dan mapping `input_image` data URL, POST streaming, events, timing, retry, dan cancellation | `domain/attachment`, `domain/endpoint`, `domain/error`, `domain/sse`, `services/attachments/image-input`, `expo/fetch` |
@@ -256,10 +256,10 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `persistence/catalog-files.ts` | `fileCatalogStorage`, `readBundledDefaults`, dan clear cache di document directory | `expo-file-system`, `assets/model-defaults.json` |
 | `persistence/catalog-transfer.ts` | `pickOverridesJson`, `shareOverridesJson`, dan clear export temp file | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
 | `persistence/clear-all.ts` | Orkestrasi clear-all data dengan dependency injection agar dapat diuji tanpa native module | Menghapus attachment dan setting web tools bersama credential, endpoint, conversation, dan cache. |
-| `persistence/web-tools-store.ts` | `webToolsStore` untuk URL, enabled, dan SearXNG engine gateway | `domain/web-tools`, `persistence/endpoint-store` |
+| `persistence/web-tools-store.ts` | `webToolsStore`, migrasi provider gateway, dan pemetaan credential ID gateway atau Exa | `domain/web-tools`, `persistence/endpoint-store` |
 | `persistence/conversation-store.ts` | `conversationRepository`, turn attachment dan image reference, tool audit/dedupe dan replay transcript, recovery, compaction, pagination, metrics, rename, delete, clear database | `domain/attachment`, `domain/conversation`, `domain/compaction`, `domain/tool`, `domain/usage`, `expo-sqlite` |
-| `tools/gateway.ts` | Client HTTPS konkret untuk `GET /health`, `GET /search`, dan `POST /fetch` | `domain/endpoint`, `domain/web-search`, `transport/body`, `expo/fetch` |
-| `tools/registry.ts` | Registry `get_current_time`, `web_search`, dan `web_fetch` | Gateway URL/token masuk sebagai konfigurasi request, bukan definition model. |
+| `tools/gateway.ts` | Client HTTPS konkret gateway untuk `GET /health` dan `GET /search`, Exa `POST /search`, serta Firecrawl Keyless `POST /v2/scrape` | `domain/endpoint`, `domain/web-search`, `transport/body`, `expo/fetch` |
+| `tools/registry.ts` | Registry `get_current_time`, `web_search`, dan `web_fetch` melalui Firecrawl Keyless | Provider dan credential search masuk sebagai konfigurasi request, bukan definition model. |
 | `attachments/images.ts` | Pemilih image, staging app-private, cleanup orphan, dan clear-all | `domain/attachment`, `expo-file-system`, `expo-image-picker` |
 | `attachments/image-input.ts` | Memvalidasi lalu membaca image staged menjadi data URL pada batas send Responses | `domain/attachment`, `expo-file-system` |
 | `diagnostics/diagnostic-ring.ts` | Ring NDJSON lokal 2 MB yang hanya menyimpan metadata request aman | `expo-file-system` |
@@ -316,7 +316,7 @@ Metrics: `conversationRepository.loadTurnMetrics` membaca usage dan timing per t
 
 Request history: `conversationRepository.loadRequestHistory` mengambil user item dan assistant item completed secara berurutan. `use-chat.ts` mengirim hasilnya sebagai Responses `input`, tanpa menggantungkan recall pada `previous_response_id` remote. Conversation ID yang sama dikirim sebagai `prompt_cache_key` agar endpoint kompatibel dapat mempertahankan cache affinity.
 
-Web tools: Settings menyimpan URL gateway HTTPS, enabled state, dan SearXNG engine di storage aplikasi, sedangkan bearer token berada di SecureStore. Engine default `bing` dapat diganti memakai nama engine instance SearXNG dan diteruskan sebagai parameter `engines` pada setiap search. Setiap request chat membuat `toolRegistry` yang hanya mengekspos `web_search` dan `web_fetch` saat ketiganya tersedia. `gateway.ts` memanggil `GET /search` atau `POST /fetch` dengan bearer token, tidak menghubungi SearXNG atau URL hasil secara langsung, membatasi raw response 64 KB dan output model 12 KB. Hasil `web_search` dan `web_fetch` diteruskan sebagai JSON gateway mentah tanpa normalisasi; `chat-screen.tsx` hanya membaca field yang perlu untuk source card dan menampilkannya sebagai untrusted content. `GET /health` tersedia dari Settings tanpa token untuk test connection.
+Web tools: Settings menyimpan pilihan provider, URL gateway HTTPS, enabled state, dan SearXNG engine di storage aplikasi, sedangkan bearer token gateway dan API key Exa berada di SecureStore dengan credential ID terpisah. Gateway meneruskan `web_search` dengan engine default `bing` melalui `GET /search`; aplikasi tidak menghubungi SearXNG atau URL hasil secara langsung. Exa mengekspos `web_search` melalui `POST https://api.exa.ai/search`, memakai `x-api-key`, serta memetakan `time_range` ke `startPublishedDate`; tidak ada health test karena search dapat billable. Semua provider search mengaktifkan `web_fetch` melalui Firecrawl Keyless `POST https://api.firecrawl.dev/v2/scrape` tanpa credential, dengan URL halaman dikirim ke Firecrawl dan hasil Markdown. Semua jalur membatasi raw response 64 KB dan output model 12 KB. Hasil diteruskan sebagai JSON mentah tanpa normalisasi; `chat-screen.tsx` hanya membaca field source card dan menampilkannya sebagai untrusted content. `GET /health` tersedia untuk gateway tanpa token.
 
 Local compaction: preflight menghitung effective context. Saat trigger tercapai, `local-compaction.ts` meminta JSON summary lewat request stateless, memvalidasi schema, dan menyimpan hasil serta usage di `compactions`; transcript asli tetap utuh. Request history berikutnya memakai summary sebagai user/data context dengan label untrusted dan recent turns setelah source range. Hard stop menghentikan send sebelum turn baru dibuat.
 
@@ -329,7 +329,7 @@ Local compaction: preflight menghitung effective context. Saat trigger tercapai,
 | Context meter | 9 | Implementasi pure domain, hook debounce, dan pill selesai; verifikasi Android/manual masih menunggu. |
 | Auto-compact | 10 | Implementasi migration, local summary, preflight, replay, manual action, toggle, dan hard stop selesai; verifikasi Android/manual masih menunggu. |
 | MVP hardening | 11 | Sebagian selesai: hardening transport, accessibility dasar, backup, dan error detail sudah ada. Clear-all-data, diagnostic ring, E2E, serta gate Android/internal build masih belum ada. |
-| Web tools | 14 | Private gateway search dan fetch selesai; verifikasi Android/manual masih menunggu. |
+| Web tools | 14 | Private gateway atau Exa search, plus Firecrawl Keyless fetch selesai; verifikasi Android/manual masih menunggu. |
 | Attachment Android gate | 15 | Implementasi dan test otomatis selesai; satu image flow endpoint nyata dan pemeriksaan memory pada device masih menunggu. |
 
 ## 6. Aturan saat menambah berkas

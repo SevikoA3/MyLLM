@@ -38,7 +38,8 @@ import {
   type SendResponseResult,
 } from '../../services/transport/protocol';
 import { createToolRegistry } from '../../services/tools/registry';
-import { WEB_TOOLS_CREDENTIAL_ID, webToolsStore } from '../../services/persistence/web-tools-store';
+import { type WebSearchConfig } from '../../services/tools/gateway';
+import { webToolsCredentialId, webToolsStore } from '../../services/persistence/web-tools-store';
 import { runAgentLoop, type ToolCallPersistence } from './agent-loop';
 
 const UI_BATCH_MS = 50;
@@ -571,12 +572,18 @@ export function useChat(
             ? conversationRepository
             : undefined;
         const webTools = await webToolsStore.load();
-        const gatewayToken = webTools.enabled
-          ? await credentialStore.read(WEB_TOOLS_CREDENTIAL_ID)
+        const webSearchToken = webTools.enabled
+          ? await credentialStore.read(webToolsCredentialId(webTools.provider))
           : null;
-        const registry = webTools.enabled && webTools.baseUrl !== null && gatewayToken !== null && gatewayToken.trim().length > 0
-          ? createToolRegistry({ baseUrl: webTools.baseUrl, token: gatewayToken.trim(), engines: webTools.engines })
-          : createToolRegistry(null);
+        let webSearchConfig: WebSearchConfig | null = null;
+        if (webTools.enabled && webSearchToken !== null && webSearchToken.trim().length > 0) {
+          webSearchConfig = webTools.provider === 'exa'
+            ? { provider: 'exa', token: webSearchToken.trim() }
+            : webTools.baseUrl === null
+              ? null
+              : { provider: 'gateway', baseUrl: webTools.baseUrl, token: webSearchToken.trim(), engines: webTools.engines };
+        }
+        const registry = createToolRegistry(webSearchConfig);
         const result = await runAgentLoop({
           profile,
           apiKey,

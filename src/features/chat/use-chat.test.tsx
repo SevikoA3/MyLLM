@@ -49,7 +49,7 @@ const mockLoadImageAttachments = jest.fn(async () => []);
 const mockStageImage = jest.fn(async (_attachments: unknown) => ({ kind: 'cancelled' as const }));
 const mockDeleteStagedImages = jest.fn();
 const mockDeleteUnreferencedStagedImages = jest.fn();
-const mockLoadWebTools = jest.fn(async () => ({ enabled: false, baseUrl: null, engines: 'bing' }));
+const mockLoadWebTools = jest.fn(async () => ({ enabled: false, provider: 'gateway', baseUrl: null, engines: 'bing' }));
 
 jest.mock('../../services/credentials/store', () => ({
   credentialStore: { read: () => mockCredentialRead() },
@@ -96,7 +96,7 @@ jest.mock('../../services/attachments/images', () => ({
 }));
 
 jest.mock('../../services/persistence/web-tools-store', () => ({
-  WEB_TOOLS_CREDENTIAL_ID: 'web_tools_gateway',
+  webToolsCredentialId: () => 'web_tools_gateway',
   webToolsStore: { load: () => mockLoadWebTools() },
 }));
 

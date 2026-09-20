@@ -16,16 +16,17 @@ describe('webToolsStore', () => {
     const { store, items } = fakeKeyValueStore();
     const settings = createWebToolsStore(store);
 
-    await settings.save({ enabled: true, baseUrl: 'https://gateway.example.com/', engines: 'bing,brave' });
+    await settings.save({ enabled: true, provider: 'gateway', baseUrl: 'https://gateway.example.com/', engines: 'bing,brave' });
 
-    expect(await settings.load()).toEqual({ enabled: true, baseUrl: 'https://gateway.example.com', engines: 'bing,brave' });
+    expect(await settings.load()).toEqual({ enabled: true, provider: 'gateway', baseUrl: 'https://gateway.example.com', engines: 'bing,brave' });
     expect(items.get('myllm.webTools')).not.toContain('Bearer');
   });
 
   it('uses disabled defaults for absent or malformed settings', async () => {
-    expect(await createWebToolsStore(fakeKeyValueStore().store).load()).toEqual({ enabled: false, baseUrl: null, engines: 'bing' });
+    expect(await createWebToolsStore(fakeKeyValueStore().store).load()).toEqual({ enabled: false, provider: 'gateway', baseUrl: null, engines: 'bing' });
     expect(await createWebToolsStore(fakeKeyValueStore({ 'myllm.webTools': '{bad json' }).store).load()).toEqual({
       enabled: false,
+      provider: 'gateway',
       baseUrl: null,
       engines: 'bing',
     });
@@ -36,8 +37,19 @@ describe('webToolsStore', () => {
       'myllm.webTools': JSON.stringify({ enabled: true, baseUrl: 'https://gateway.example.com' }),
     }).store).load()).toEqual({
       enabled: true,
+      provider: 'gateway',
       baseUrl: 'https://gateway.example.com',
       engines: 'bing',
     });
+  });
+
+  it('stores Exa selection without a gateway URL', async () => {
+    const { store, items } = fakeKeyValueStore();
+    const settings = createWebToolsStore(store);
+
+    await settings.save({ enabled: true, provider: 'exa', baseUrl: null, engines: 'bing' });
+
+    expect(await settings.load()).toEqual({ enabled: true, provider: 'exa', baseUrl: null, engines: 'bing' });
+    expect(items.get('myllm.webTools')).not.toContain('web-tools-exa');
   });
 });

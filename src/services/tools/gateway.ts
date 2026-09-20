@@ -6,14 +6,24 @@ import { readResponseText } from '../transport/body';
 const MAX_GATEWAY_RESPONSE_BYTES = 64 * 1024;
 const WEB_GATEWAY_TIMEOUT_MS = 40_000;
 const WEB_GATEWAY_HEALTH_TIMEOUT_MS = 10_000;
+const EXA_SEARCH_URL = 'https://api.exa.ai/search';
+const FIRECRAWL_SCRAPE_URL = 'https://api.firecrawl.dev/v2/scrape';
 
 export type WebGatewayConfig = {
+  provider: 'gateway';
   baseUrl: string;
   token: string;
   engines: string;
 };
 
-export type GatewaySearchInput = {
+export type ExaSearchConfig = {
+  provider: 'exa';
+  token: string;
+};
+
+export type WebSearchConfig = WebGatewayConfig | ExaSearchConfig;
+
+export type WebSearchInput = {
   query: string;
   count: number;
   categories: string | null;
@@ -21,9 +31,8 @@ export type GatewaySearchInput = {
   timeRange: 'day' | 'week' | 'month' | 'year' | null;
 };
 
-export type GatewayFetchInput = {
+export type FirecrawlFetchInput = {
   url: string;
-  maxChars: number;
 };
 
 export function createWebGatewayClient(
@@ -35,7 +44,7 @@ export function createWebGatewayClient(
     Accept: 'application/json',
   };
   return {
-    async search(input: GatewaySearchInput, signal: AbortSignal): Promise<string> {
+    async search(input: WebSearchInput, signal: AbortSignal): Promise<string> {
       const params = new URLSearchParams({
         q: input.query,
         count: String(input.count),
@@ -51,21 +60,58 @@ export function createWebGatewayClient(
         signal,
         'web_search',
         WEB_GATEWAY_TIMEOUT_MS,
+        'gateway',
       );
       return readGatewayText(response, 'web_search');
     },
-    async fetch(input: GatewayFetchInput, signal: AbortSignal): Promise<string> {
+  };
+}
+
+export function createExaSearchClient(
+  config: ExaSearchConfig,
+  request: typeof fetch = expoFetch,
+  now: () => number = Date.now,
+) {
+  const headers = {
+    'x-api-key': config.token,
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  };
+  return {
+    async search(input: WebSearchInput, signal: AbortSignal): Promise<string> {
       const response = await requestGateway(
         request,
-        joinEndpointPath(config.baseUrl, '/fetch'),
+        EXA_SEARCH_URL,
         {
           method: 'POST',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: input.url, max_chars: input.maxChars }),
+          headers,
+          body: JSON.stringify(exaSearchBody(input, now())),
+        },
+        signal,
+        'web_search',
+        WEB_GATEWAY_TIMEOUT_MS,
+        'Exa',
+      );
+      return readGatewayText(response, 'web_search');
+    },
+  };
+}
+
+export function createFirecrawlClient(request: typeof fetch = expoFetch) {
+  return {
+    async fetch(input: FirecrawlFetchInput, signal: AbortSignal): Promise<string> {
+      const response = await requestGateway(
+        request,
+        FIRECRAWL_SCRAPE_URL,
+        {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: input.url, formats: ['markdown'], onlyMainContent: true }),
         },
         signal,
         'web_fetch',
         WEB_GATEWAY_TIMEOUT_MS,
+        'Firecrawl',
       );
       return readGatewayText(response, 'web_fetch');
     },
@@ -83,6 +129,7 @@ export async function testWebGateway(
     new AbortController().signal,
     'Gateway health check',
     WEB_GATEWAY_HEALTH_TIMEOUT_MS,
+    'gateway',
   );
   const payload = await readGatewayJson(response, 'Gateway health check');
   if (!isRecord(payload) || payload.status !== 'ok') {
@@ -97,6 +144,7 @@ async function requestGateway(
   signal: AbortSignal,
   operation: string,
   timeoutMs: number,
+  service: string,
 ): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
@@ -110,7 +158,7 @@ async function requestGateway(
   try {
     const response = await request(url, { ...init, redirect: 'manual', signal: controller.signal });
     if (!response.ok) {
-      throw new Error(gatewayHttpError(operation, response.status));
+      throw new Error(gatewayHttpError(operation, response.status, service));
     }
     return response;
   } catch (error) {
@@ -122,6 +170,17 @@ async function requestGateway(
     clearTimeout(timer);
     signal.removeEventListener('abort', abort);
   }
+}
+
+function exaSearchBody(input: WebSearchInput, now: number): Record<string, string | number> {
+  const body: Record<string, string | number> = { query: input.query, numResults: input.count };
+  if (input.timeRange !== null) {
+    const days = { day: 1, week: 7, month: 30, year: 365 }[input.timeRange];
+    const start = new Date(now);
+    start.setUTCDate(start.getUTCDate() - days);
+    body.startPublishedDate = start.toISOString();
+  }
+  return body;
 }
 
 async function readGatewayJson(response: Response, operation: string): Promise<unknown> {
@@ -140,14 +199,14 @@ async function readGatewayText(response: Response, operation: string): Promise<s
   return body.text;
 }
 
-function gatewayHttpError(operation: string, status: number): string {
+function gatewayHttpError(operation: string, status: number, service: string): string {
   if (status === 401) return `${operation} authentication failed.`;
   if (status === 413) return `${operation} content is too large.`;
   if (status === 415) return `${operation} content type is unsupported.`;
   if (status === 429) return `${operation} is rate limited.`;
   if (status === 504) return `${operation} timed out.`;
-  if (status === 502) return `${operation} gateway is unavailable.`;
-  return `${operation} gateway returned HTTP ${String(status)}.`;
+  if (status === 502) return `${operation} ${service} is unavailable.`;
+  return `${operation} ${service} returned HTTP ${String(status)}.`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
