@@ -169,6 +169,8 @@ export function createConversationRepository(
 ) {
   let databasePromise: Promise<SQLiteDatabase> | null = null;
   let initialized: Promise<void> | null = null;
+  // ponytail: satu antrean write; pecah hanya jika profile menunjukkan bottleneck.
+  let writeQueue = Promise.resolve();
 
   async function database(): Promise<SQLiteDatabase> {
     databasePromise ??= resolveDatabase();
@@ -181,12 +183,27 @@ export function createConversationRepository(
   }
 
   async function clear(): Promise<void> {
-    if (databasePromise !== null) {
-      await (await databasePromise).closeAsync();
-    }
-    await deleteDatabase();
-    databasePromise = null;
-    initialized = null;
+    await enqueueWrite(async () => {
+      if (databasePromise !== null) {
+        await (await databasePromise).closeAsync();
+      }
+      await deleteDatabase();
+      databasePromise = null;
+      initialized = null;
+    });
+  }
+
+  function enqueueWrite<T>(task: () => Promise<T>): Promise<T> {
+    const result = writeQueue.then(task, task);
+    writeQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  function write(task: (transaction: SQLiteDatabase) => Promise<void>): Promise<void> {
+    return enqueueWrite(async () => {
+      const db = await database();
+      await db.withExclusiveTransactionAsync(task);
+    });
   }
 
   async function migrateAndRecover(): Promise<void> {
@@ -197,24 +214,24 @@ export function createConversationRepository(
       throw new Error('The conversation database was created by a newer app version.');
     }
     if ((version?.user_version ?? 0) === 0) {
-      await db.withExclusiveTransactionAsync(async (transaction) => {
+      await write(async (transaction) => {
         await transaction.execAsync(MIGRATION_V1);
         await transaction.execAsync('PRAGMA user_version = 1');
       });
     }
     if ((version?.user_version ?? 0) < 2) {
-      await db.withExclusiveTransactionAsync(async (transaction) => {
+      await write(async (transaction) => {
         await transaction.execAsync(MIGRATION_V2);
         await transaction.execAsync('PRAGMA user_version = 2');
       });
     }
     if ((version?.user_version ?? 0) < 3) {
-      await db.withExclusiveTransactionAsync(async (transaction) => {
+      await write(async (transaction) => {
         await transaction.execAsync(MIGRATION_V3);
         await transaction.execAsync('PRAGMA user_version = 3');
       });
     }
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       await transaction.runAsync(
         `UPDATE turns SET status = 'interrupted', completed_at = ?
          WHERE status IN ('sending', 'streaming')`,
@@ -238,10 +255,9 @@ export function createConversationRepository(
 
   async function startTurn(input: StartTurnInput): Promise<{ conversationId: string }> {
     await initialize();
-    const db = await database();
     const timestamp = now();
     let conversationId = input.conversationId ?? newId('conv', timestamp);
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       const existing =
         input.conversationId === null
           ? null
@@ -327,8 +343,7 @@ export function createConversationRepository(
 
   async function restartTurn(turnId: string, assistantItemId: string): Promise<void> {
     await initialize();
-    const db = await database();
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       const timestamp = now();
       await transaction.runAsync(
         `UPDATE turns SET status = 'sending', response_id = NULL, started_at = ?, completed_at = NULL
@@ -355,9 +370,8 @@ export function createConversationRepository(
     reasoningSummary: string | null,
   ): Promise<void> {
     await initialize();
-    const db = await database();
     const timestamp = now();
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       await transaction.runAsync(
         `UPDATE items SET status = 'streaming', content_json = ?, updated_at = ? WHERE id = ?`,
         [contentJson(text, reasoningSummary), timestamp, assistantItemId],
@@ -373,9 +387,8 @@ export function createConversationRepository(
 
   async function finishTurn(input: FinishTurnInput): Promise<void> {
     await initialize();
-    const db = await database();
     const timestamp = now();
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       await transaction.runAsync(
         `UPDATE items SET status = ?, content_json = ?, updated_at = ? WHERE id = ?`,
         [
@@ -414,9 +427,8 @@ export function createConversationRepository(
 
   async function recordToolCall(input: StoredToolCall): Promise<ToolActivity> {
     await initialize();
-    const db = await database();
     let saved: ToolActivity | null = null;
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       const existing = await transaction.getFirstAsync<ToolCallRow>(
         `SELECT id, turn_id, call_id, name, arguments_json, target, side_effect, status, approval, result_json
          FROM tool_calls WHERE turn_id = ? AND call_id = ?`,
@@ -456,9 +468,8 @@ export function createConversationRepository(
 
   async function updateToolCall(input: ToolCallUpdate): Promise<ToolActivity> {
     await initialize();
-    const db = await database();
     let saved: ToolActivity | null = null;
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       await transaction.runAsync(
         `UPDATE tool_calls SET status = ?, approval = ?, result_json = ?, updated_at = ? WHERE id = ?`,
         [
@@ -665,18 +676,19 @@ export function createConversationRepository(
 
   async function setAutoCompact(conversationId: string, enabled: boolean): Promise<void> {
     await initialize();
-    await (await database()).runAsync(
-      'UPDATE conversations SET auto_compact = ?, updated_at = ? WHERE id = ?',
-      [enabled ? 1 : 0, now(), conversationId],
-    );
+    await write(async (transaction) => {
+      await transaction.runAsync(
+        'UPDATE conversations SET auto_compact = ?, updated_at = ? WHERE id = ?',
+        [enabled ? 1 : 0, now(), conversationId],
+      );
+    });
   }
 
   async function beginCompaction(input: BeginCompactionInput): Promise<string | null> {
     await initialize();
-    const db = await database();
     const timestamp = now();
     let id: string | null = null;
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       const running = await transaction.getFirstAsync<{ id: string }>(
         `SELECT id FROM compactions WHERE conversation_id = ? AND status = 'running' LIMIT 1`,
         [input.conversationId],
@@ -711,11 +723,10 @@ export function createConversationRepository(
 
   async function completeCompaction(input: CompleteCompactionInput): Promise<void> {
     await initialize();
-    const db = await database();
     const timestamp = now();
     const usageJson = input.usage === null ? null : JSON.stringify(input.usage);
     const normalized = normalizeUsage(input.usage);
-    await db.withExclusiveTransactionAsync(async (transaction) => {
+    await write(async (transaction) => {
       const row = await transaction.getFirstAsync<{ conversation_id: string }>(
         `SELECT conversation_id FROM compactions WHERE id = ? AND status = 'running'`,
         [input.id],
@@ -747,11 +758,13 @@ export function createConversationRepository(
 
   async function failCompaction(id: string, status: 'failed' | 'interrupted' = 'failed'): Promise<void> {
     await initialize();
-    await (await database()).runAsync(
-      `UPDATE compactions SET status = ?, completed_at = ?
-       WHERE id = ? AND status = 'running'`,
-      [status, now(), id],
-    );
+    await write(async (transaction) => {
+      await transaction.runAsync(
+        `UPDATE compactions SET status = ?, completed_at = ?
+         WHERE id = ? AND status = 'running'`,
+        [status, now(), id],
+      );
+    });
   }
 
   async function loadTurnMetrics(conversationId: string): Promise<TurnMetrics[]> {
@@ -817,10 +830,12 @@ export function createConversationRepository(
 
   async function rename(id: string, title: string): Promise<void> {
     await initialize();
-    await (await database()).runAsync(
-      'UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?',
-      [title.trim(), now(), id],
-    );
+    await write(async (transaction) => {
+      await transaction.runAsync(
+        'UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?',
+        [title.trim(), now(), id],
+      );
+    });
   }
 
   async function remove(
@@ -828,21 +843,22 @@ export function createConversationRepository(
     removeFiles: (attachments: ImageAttachment[]) => void = () => undefined,
   ): Promise<void> {
     await initialize();
-    const db = await database();
-    const deletedRows = await db.getAllAsync<{ content_json: string }>(
-      "SELECT i.content_json FROM items i JOIN turns t ON t.id = i.turn_id WHERE t.conversation_id = ? AND i.role = 'user'",
-      [id],
-    );
-    const deleted = deletedRows.flatMap((row) => parseContent(row.content_json).attachments);
-    await db.runAsync('DELETE FROM conversations WHERE id = ?', [id]);
-    const retainedRows = await db.getAllAsync<{ content_json: string }>(
-      "SELECT content_json FROM items WHERE role = 'user'",
-    );
+    let deleted: ImageAttachment[] = [];
+    let retained: ImageAttachment[] = [];
+    await write(async (transaction) => {
+      const deletedRows = await transaction.getAllAsync<{ content_json: string }>(
+        "SELECT i.content_json FROM items i JOIN turns t ON t.id = i.turn_id WHERE t.conversation_id = ? AND i.role = 'user'",
+        [id],
+      );
+      deleted = deletedRows.flatMap((row) => parseContent(row.content_json).attachments);
+      await transaction.runAsync('DELETE FROM conversations WHERE id = ?', [id]);
+      const retainedRows = await transaction.getAllAsync<{ content_json: string }>(
+        "SELECT content_json FROM items WHERE role = 'user'",
+      );
+      retained = retainedRows.flatMap((row) => parseContent(row.content_json).attachments);
+    });
     removeFiles(
-      orphanedImageAttachments(
-        deleted,
-        retainedRows.flatMap((row) => parseContent(row.content_json).attachments),
-      ),
+      orphanedImageAttachments(deleted, retained),
     );
   }
 

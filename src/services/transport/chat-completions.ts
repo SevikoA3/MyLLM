@@ -142,9 +142,12 @@ async function send(
         kind: result.ok ? 'response-completed' : result.cancelled ? 'request-cancelled' : 'response-failed',
         endpointId: profile.id,
         modelId: input.modelId,
+        toolName: null,
         attempt: attempts,
         httpStatus: result.ok ? null : result.error.httpStatus,
         errorCategory: result.ok ? null : result.error.category,
+        errorDetail: result.ok || result.error.httpStatus !== null ? null : result.error.message,
+        providerCode: result.ok ? null : result.error.providerCode,
         requestId: result.ok ? null : result.error.requestId,
       });
       return outcome;

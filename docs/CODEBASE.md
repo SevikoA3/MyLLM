@@ -80,7 +80,7 @@ myllm/
         context-pill.test.tsx
         use-chat.ts                 state chat memory, context budget debounce, preflight local compaction, hard stop, toggle, metrics, stateless history replay, batching delta, cancellation, protocol request orchestration
         use-chat.test.tsx
-        agent-loop.ts               bounded request-tool-result loop, approval, caps, timeout, cancellation, and dedupe
+        agent-loop.ts               bounded request-tool-result loop, approval, caps, timeout, cancellation, dedupe, dan diagnostic failure
         agent-loop.test.ts
       history/
         history-screen.tsx          local console history, filter, inline rename, bottom-sheet delete, New chat
@@ -105,7 +105,7 @@ myllm/
         store.ts                    API key di Keystore dan registry credential untuk clear-all
         store.test.ts
       diagnostics/
-        diagnostic-ring.ts         ring diagnostik lokal 2 MB tanpa content atau credential
+        diagnostic-ring.ts         ring diagnostik lokal 2 MB dan console error aman tanpa content atau credential
         diagnostic-transfer.ts     export ring diagnostik aman melalui share sheet
       transport/
         models.ts                   GET /models dengan timeout dan tanpa redirect
@@ -127,7 +127,7 @@ myllm/
         images.ts                   pilih dan stage image ke storage privat, cleanup orphan, dan clear-all
         images.test.ts
       persistence/
-        conversation-store.ts       migration SQLite, history, tool audit, metrics, recovery, dan compaction
+        conversation-store.ts       migration SQLite, write queue, history, tool audit, metrics, recovery, dan compaction
         endpoint-store.ts           profile endpoint dan activeModelId di kv-store
         endpoint-store.test.ts
         settings-store.ts           activeModelId untuk endpoint aktif
@@ -227,7 +227,7 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `chat/chat-screen.tsx` | Dark operational chat shell, model and diagnostic bars, image composer/preview, inline tool-request bubbles with accordion results and per-call approval, web source cards, streaming, retry, dan context controls | `domain/conversation`, `domain/context`, `domain/tool`, `domain/usage`, `domain/web-search`, `features/chat/use-chat`, `features/setup/use-active-endpoint` |
 | `chat/context-pill.tsx` | Context usage modal, cache hit, dan auto-compact | `domain/context`, `domain/usage` |
 | `chat/use-chat.ts` | Orkestrasi conversation, declared image support, staging cleanup, compaction, model snapshot, persistence, metrics, cancellation, provider web search, tool policy, dan AgentLoop | Memuat audit tool per assistant message agar bubble transcript tetap ada setelah chat dibuka kembali. |
-| `chat/agent-loop.ts` | Bounded model-tool loop, policy, approval callback, output cap, timeout, cancellation, dan dedupe | Tool dapat menetapkan timeout spesifik tanpa mengubah cap output global. |
+| `chat/agent-loop.ts` | Bounded model-tool loop, policy, approval callback, output cap, timeout, cancellation, dedupe, dan diagnostic failure | `domain/error`, `domain/tool`, `services/diagnostics/diagnostic-ring`, `transport/contract`. Hanya metadata kegagalan tool yang dicatat. |
 | `history/history-screen.tsx` | History local console dengan keyset pagination, filter title/model/status, buka chat, rename, dan delete attachment orphan | `domain/conversation`, `services/attachments/images`, `services/persistence/conversation-store` |
 | `history/history-screen.test.ts` | Mengunci mapping status conversation history | `history/history-screen` |
 | `models/models-screen.tsx` | Layar picker: daftar, refresh, pilih model aktif, tambah model exact ID, dan tautan editor | `domain/catalog-merge`, `services/persistence/endpoint-store`, `features/setup/use-active-endpoint`, `models/model-badges`, `models/use-model-catalog` |
@@ -245,10 +245,10 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | File | Isi | Bergantung pada |
 |---|---|---|
 | `credentials/store.ts` | `createCredentialStore` di atas `expo-secure-store`, prefix key `myllm.credential.`, registry untuk clear-all | API key provider, Exa, dan bearer token gateway disimpan lewat modul native lazy. |
-| `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti | `domain/endpoint`, `domain/error`, `domain/model-list` |
+| `transport/models.ts` | `discoverModels`, `modelsUrl`, timeout 15 detik, redirect tidak diikuti, dan diagnostic kegagalan discovery | `domain/endpoint`, `domain/error`, `domain/model-list`, `diagnostics/diagnostic-ring` |
 | `transport/contract.ts` | Canonical request, tool definition/exchange, internal stream events, normalized result metadata, and `Transport` contract | `domain/conversation`, `domain/endpoint`, `domain/error`, `domain/tool` |
-| `transport/responses.ts` | `responsesTransport`, canonical input dan mapping `input_image` data URL, POST streaming, events, timing, retry, dan cancellation | `domain/attachment`, `domain/endpoint`, `domain/error`, `domain/sse`, `services/attachments/image-input`, `expo/fetch` |
-| `transport/chat-completions.ts` | `chatCompletionsTransport`, canonical messages/tool mapping, configured output, reasoning, SSE delta, usage, timing, retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `expo/fetch` |
+| `transport/responses.ts` | `responsesTransport`, canonical input dan mapping `input_image` data URL, POST streaming, events, timing, retry, dan cancellation | `domain/attachment`, `domain/endpoint`, `domain/error`, `domain/sse`, `services/attachments/image-input`, `diagnostics/diagnostic-ring`, `expo/fetch` |
+| `transport/chat-completions.ts` | `chatCompletionsTransport`, canonical messages/tool mapping, configured output, reasoning, SSE delta, usage, timing, retry, and cancellation | `domain/endpoint`, `domain/error`, `domain/sse`, `domain/system-prompt`, `diagnostics/diagnostic-ring`, `expo/fetch` |
 | `transport/protocol.ts` | Explicit protocol routing, Auto Responses-first fallback for 404/405/501 before output, successful protocol cache, and diagnostic event forwarding | `transport/contract`, `transport/responses`, `transport/chat-completions`, `persistence/endpoint-store` |
 | `persistence/endpoint-store.ts` | Profile, activeModelId, and per-endpoint protocol cache di `expo-sqlite/kv-store` | `domain/endpoint` |
 | `persistence/settings-store.ts` | `loadActiveModelId` dan penulisan model aktif | `persistence/endpoint-store` |
@@ -257,12 +257,12 @@ Route hanya menyusun screen dan dependency. Logic tetap berada di `features`.
 | `persistence/catalog-transfer.ts` | `pickOverridesJson`, `shareOverridesJson`, dan clear export temp file | `expo-document-picker`, `expo-file-system`, `expo-sharing` |
 | `persistence/clear-all.ts` | Orkestrasi clear-all data dengan dependency injection agar dapat diuji tanpa native module | Menghapus attachment dan setting web tools bersama credential, endpoint, conversation, dan cache. |
 | `persistence/web-tools-store.ts` | `webToolsStore`, migrasi provider gateway, dan pemetaan credential ID gateway atau Exa | `domain/web-tools`, `persistence/endpoint-store` |
-| `persistence/conversation-store.ts` | `conversationRepository`, turn attachment dan image reference, tool audit/dedupe dan replay transcript, recovery, compaction, pagination, metrics, rename, delete, clear database | `domain/attachment`, `domain/conversation`, `domain/compaction`, `domain/tool`, `domain/usage`, `expo-sqlite` |
+| `persistence/conversation-store.ts` | `conversationRepository`, write queue SQLite, turn attachment dan image reference, tool audit/dedupe dan replay transcript, recovery, compaction, pagination, metrics, rename, delete, clear database | `domain/attachment`, `domain/conversation`, `domain/compaction`, `domain/tool`, `domain/usage`, `expo-sqlite`. Semua mutation repository diproses berurutan agar transaksi eksklusif tidak saling mengunci. |
 | `tools/gateway.ts` | Client HTTPS konkret gateway untuk `GET /health` dan `GET /search`, Exa `POST /search`, serta Firecrawl Keyless `POST /v2/scrape` | `domain/endpoint`, `domain/web-search`, `transport/body`, `expo/fetch` |
 | `tools/registry.ts` | Registry `get_current_time`, `web_search`, dan `web_fetch` melalui Firecrawl Keyless | Provider dan credential search masuk sebagai konfigurasi request, bukan definition model. |
 | `attachments/images.ts` | Pemilih image, staging app-private, cleanup orphan, dan clear-all | `domain/attachment`, `expo-file-system`, `expo-image-picker` |
 | `attachments/image-input.ts` | Memvalidasi lalu membaca image staged menjadi data URL pada batas send Responses | `domain/attachment`, `expo-file-system` |
-| `diagnostics/diagnostic-ring.ts` | Ring NDJSON lokal 2 MB yang hanya menyimpan metadata request aman | `expo-file-system` |
+| `diagnostics/diagnostic-ring.ts` | Ring NDJSON lokal 2 MB dan console log yang hanya menyimpan atau mencetak metadata aman, termasuk category, detail lokal tanpa HTTP response, status HTTP, provider code, dan request ID | `domain/error`, `expo-file-system` |
 | `diagnostics/diagnostic-transfer.ts` | Export metadata ring ke JSON melalui share sheet | `diagnostic-ring`, `expo-file-system`, `expo-sharing` |
 | `context/local-compaction.ts` | Memilih prefix turn, meminta summary terstruktur, retry tanpa output, validasi, dan menyimpan usage compaction terpisah | `domain/compaction`, `domain/context`, `persistence/conversation-store`, `transport/protocol` |
 
@@ -302,13 +302,13 @@ Menambah modul yang dipakai contract test berarti menambah entry di `ENTRIES` pa
 
 ## 4. Alur yang sudah berjalan
 
-Onboarding: `app/setup.tsx` menormalkan base URL, menampilkan preview URL final, lalu memanggil `connectAndDiscover` di `features/setup/onboarding.ts`. Fungsi itu membuat profile tanpa secret, memanggil `discoverModels` di `services/transport/models.ts`, menulis API key ke Keystore lewat `credentialStore`, dan menulis profile ke kv-store lewat `endpointStore`. Setelah berhasil, `seedCatalogCache` menulis snapshot live ke berkas katalog.
+Onboarding: `app/setup.tsx` menormalkan base URL, menampilkan preview URL final, lalu memanggil `connectAndDiscover` di `features/setup/onboarding.ts`. Fungsi itu membuat profile tanpa secret, memanggil `discoverModels` di `services/transport/models.ts`, menulis API key ke Keystore lewat `credentialStore`, dan menulis profile ke kv-store lewat `endpointStore`. Kegagalan discovery dicatat sebagai metadata diagnostik aman. Setelah berhasil, `seedCatalogCache` menulis snapshot live ke berkas katalog.
 
 Katalog: `useModelCatalog` merakit repository dari `createCatalogRepository` dengan `fileCatalogStorage` dan `readBundledDefaults`. `discoverModels` menormalisasi payload provider satu kali, lalu repository menyimpan `ModelRecord` itu tanpa normalisasi ulang. `mergeCatalog` menggabungkan bundled, live, override, dan riwayat menjadi `MergedModel`. Picker dapat menambah model custom dan membuka detail. Detail menyimpan metadata serta request override. Editor JSON memvalidasi dan menampilkan preview sebelum replace atomik; import tidak menyentuh file aktif sebelum save, sedangkan export hanya memakai schema override.
 
 Gerbang masuk: `app/index.tsx` memakai `useActiveEndpoint`, yang membaca profile dari kv-store. Fresh install mengembalikan null dan diarahkan ke `app/setup.tsx`.
 
-Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` memuat conversation terakhir atau ID route dari SQLite. Composer image hanya tampil untuk model dengan modality `image` dan protocol Responses eksplisit, sehingga modality unknown memerlukan override model. PNG, JPEG, dan WebP divalidasi lalu disalin ke staging app-private. Saat send, image staged menjadi Responses `input_image` data URL; Chat Completions dan generic file upload tidak ditawarkan. Startup membersihkan staging orphan; new chat, delete conversation, dan clear-all menghapus image yang tidak lagi direferensikan.
+Chat: `chat-screen.tsx` membaca endpoint aktif dan `useChat` memuat conversation terakhir atau ID route dari SQLite. Mutation conversation diproses antrean tunggal sebelum transaksi eksklusif supaya streaming, tool, dan UI tidak saling mengunci. Composer image hanya tampil untuk model dengan modality `image` dan protocol Responses eksplisit, sehingga modality unknown memerlukan override model. PNG, JPEG, dan WebP divalidasi lalu disalin ke staging app-private. Saat send, image staged menjadi Responses `input_image` data URL; Chat Completions dan generic file upload tidak ditawarkan. Startup membersihkan staging orphan; new chat, delete conversation, dan clear-all menghapus image yang tidak lagi direferensikan.
 
 History: `history-screen.tsx` membaca `conversationRepository.list` dengan keyset pagination `(updatedAt, id)`. Conversation dapat dibuka, diubah judulnya, atau dihapus dengan confirmation. Foreign key cascade membersihkan turn, item, usage, dan timing; file image hanya dihapus bila tidak direferensikan conversation lain.
 

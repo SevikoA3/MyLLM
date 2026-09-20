@@ -16,6 +16,7 @@ import {
 } from '../../domain/tool';
 import { createAppError } from '../../domain/error';
 import type { EndpointProfile } from '../../domain/endpoint';
+import { recordDiagnostic } from '../../services/diagnostics/diagnostic-ring';
 import type {
   ResponseStreamEvent,
   SendResponseInput,
@@ -76,30 +77,31 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<SendResponseR
         { signal: controller.signal, onEvent: input.onEvent },
       );
       if (!result.ok) {
-        return timedOut ? loopFailure(result, input.profile, 'Tool loop timed out.', 'timeout') : result;
+        return timedOut ? loopFailure(result, input.profile, input.request.modelId, 'Tool loop timed out.', 'timeout') : result;
       }
       latest = result;
       if (result.response.toolCalls.length === 0) {
         return result;
       }
       if (round === MAX_TOOL_ROUNDS - 1) {
-        return loopFailure(result, input.profile, 'Tool loop reached its 8 round limit.', 'request');
+        return loopFailure(result, input.profile, input.request.modelId, 'Tool loop reached its 8 round limit.', 'request');
       }
       const exchange = await executeRound(result.response.toolCalls, round, input, controller.signal);
       if (controller.signal.aborted) {
         return loopFailure(
           result,
           input.profile,
+          input.request.modelId,
           timedOut ? 'Tool loop timed out.' : 'The request was stopped.',
           timedOut ? 'timeout' : 'cancelled',
         );
       }
       exchanges.push(exchange);
       if ((input.now ?? Date.now)() - startedAt >= TOOL_LOOP_TIMEOUT_MS) {
-        return loopFailure(result, input.profile, 'Tool loop timed out.', 'timeout');
+        return loopFailure(result, input.profile, input.request.modelId, 'Tool loop timed out.', 'timeout');
       }
     }
-    return latest ?? impossibleFailure(input.profile);
+    return latest ?? impossibleFailure(input.profile, input.request.modelId);
   } finally {
     clearTimeout(timeout);
     input.signal?.removeEventListener('abort', abort);
@@ -341,15 +343,44 @@ async function complete(
   input: AgentLoopInput,
 ): Promise<ToolResult> {
   await update(activity, { status, approval, result }, input);
+  if (status === 'failed' || status === 'timed_out' || status === 'interrupted') {
+    void recordDiagnostic({
+      kind: 'tool-failed',
+      endpointId: input.profile.id,
+      modelId: input.request.modelId,
+      toolName: input.registry.find(activity.name)?.name ?? null,
+      attempt: 1,
+      httpStatus: null,
+      errorCategory: `tool-${status}`,
+      errorDetail: null,
+      providerCode: null,
+      requestId: activity.callId,
+    });
+  }
   return result;
 }
 
 function loopFailure(
   result: Extract<SendResponseResult, { ok: true }> | Extract<SendResponseResult, { ok: false }>,
   profile: EndpointProfile,
+  modelId: string,
   message: string,
   category: 'cancelled' | 'request' | 'timeout',
 ): SendResponseResult {
+  if (category !== 'cancelled') {
+    void recordDiagnostic({
+      kind: 'agent-loop-failed',
+      endpointId: profile.id,
+      modelId,
+      toolName: null,
+      attempt: result.attempts,
+      httpStatus: null,
+      errorCategory: category,
+      errorDetail: message,
+      providerCode: null,
+      requestId: null,
+    });
+  }
   const response = result.ok ? result.response : result.partial;
   return {
     ok: false,
@@ -371,7 +402,19 @@ function loopFailure(
   };
 }
 
-function impossibleFailure(profile: EndpointProfile): SendResponseResult {
+function impossibleFailure(profile: EndpointProfile, modelId: string): SendResponseResult {
+  void recordDiagnostic({
+    kind: 'agent-loop-failed',
+    endpointId: profile.id,
+    modelId,
+    toolName: null,
+    attempt: 0,
+    httpStatus: null,
+    errorCategory: 'unknown',
+    errorDetail: 'Tool loop ended without a model response.',
+    providerCode: null,
+    requestId: null,
+  });
   return {
     ok: false,
     error: createAppError({

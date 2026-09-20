@@ -1,12 +1,17 @@
 import { createEndpointProfile } from '../../domain/endpoint';
 import type { ToolActivity, ToolExecutor, ToolRegistry } from '../../domain/tool';
 import type { SendResponseResult, StreamToolCall, Transport } from '../../services/transport/contract';
+import { recordDiagnostic } from '../../services/diagnostics/diagnostic-ring';
 import {
   MAX_TOOL_ROUNDS,
   TOOL_TIMEOUT_MS,
   runAgentLoop,
   type ToolCallPersistence,
 } from './agent-loop';
+
+jest.mock('../../services/diagnostics/diagnostic-ring', () => ({
+  recordDiagnostic: jest.fn(async () => undefined),
+}));
 
 const profile = createEndpointProfile({
   id: 'endpoint_1',
@@ -101,6 +106,10 @@ function start(
 }
 
 describe('runAgentLoop', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('sends structured result to next model request', async () => {
     const execute = jest.fn(async () => '{"time":"10:00"}');
     const client = transport([
@@ -138,6 +147,30 @@ describe('runAgentLoop', () => {
       expect.objectContaining({ callId: 'bad_json', isError: true }),
       expect.objectContaining({ callId: 'unknown', isError: true }),
     ]);
+  });
+
+  it('records tool failure metadata without the tool output', async () => {
+    const client = transport([
+      success([{ callId: 'call_1', name: 'get_current_time', arguments: '{}' }], null),
+      success(),
+    ]);
+
+    await start(client, registry(async () => {
+      throw new Error('Provider response must not be logged.');
+    }));
+
+    expect(recordDiagnostic).toHaveBeenCalledWith({
+      kind: 'tool-failed',
+      endpointId: 'endpoint_1',
+      modelId: 'model_1',
+      toolName: 'get_current_time',
+      attempt: 1,
+      httpStatus: null,
+      errorCategory: 'tool-failed',
+      errorDetail: null,
+      providerCode: null,
+      requestId: 'call_1',
+    });
   });
 
   it('asks once and returns rejection to the model', async () => {
