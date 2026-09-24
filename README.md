@@ -1,131 +1,121 @@
-# MyLLM
+<div align="center">
+  <img src="assets/images/icon.png" width="120" alt="MyLLM app icon" />
+  <h1>MyLLM</h1>
+  <p>An Android chat client for your own OpenAI-compatible endpoints.</p>
+</div>
 
-Aplikasi Android chat client untuk custom OpenAI-compatible endpoint.
+MyLLM connects directly to endpoints that implement the OpenAI Responses API, Chat Completions API, or both. It keeps endpoint credentials in Android secure storage, stores conversation history locally, and gives you control over models, context, tools, and endpoint compatibility.
 
-Implementasi Phase 6 selesai. Aplikasi memiliki endpoint onboarding, model catalog, Responses streaming, Stop, SQLite history, dan recovery partial response. Gate manual Android untuk process-kill recovery masih menunggu.
+> [!NOTE]
+> MyLLM is under active development. Automated checks cover the implemented Phase 17 scope, while Android device verification and release packaging remain manual.
 
-## Perintah
+## Features
 
-| Perintah | Fungsi |
-|---|---|
-| `npm start` | Menjalankan Metro dev server |
-| `npm run android` | Menjalankan app pada device atau emulator Android |
-| `npx eslint .` | ESLint langsung tanpa menjalankan Expo |
-| `npm run typecheck` | `tsc --noEmit` dengan TypeScript strict |
-| `npm test` | Jest dalam watch mode |
-| `npm run test:ci` | Jest sekali jalan untuk CI |
-| `npm run test:server` | Contract test fake endpoint lewat `node --test` |
-| `npm run test:transport` | Contract test transport model discovery terhadap fake endpoint |
-| `npm run test:onboarding` | Smoke test alur connect dan discover terhadap fake endpoint |
-| `npm run test:responses` | Contract test Responses API streaming terhadap fake endpoint |
-| `npm run test:conversations` | Contract test SQLite conversation dan recovery |
-| `npm run smoke:models` | Refresh katalog nyata memakai endpoint lokal di `.env` |
-| `npm run smoke:responses` | Dua turn Responses API nyata memakai endpoint lokal di `.env` |
-| `npm run doctor` | `npx expo-doctor`, manual oleh pemilik proyek |
+- Multiple endpoint profiles with separate credentials, model selections, and protocol settings.
+- Model discovery through `GET /models`, searchable catalogs, per-model overrides, and exact model ID preservation.
+- Streaming text and reasoning through Responses or Chat Completions, with explicit protocol selection or conservative automatic fallback.
+- Local SQLite history with pagination, rename, delete, retry, interrupted-response recovery, and conversation import/export.
+- Context estimates, provider usage metrics, manual compaction, and configurable automatic compaction.
+- Approval-based function tools for device time, web search through Exa or a private SearXNG gateway, and web fetch through Firecrawl Keyless.
+- PNG, JPEG, and WebP image input for models that explicitly declare Responses image support.
+- Optional endpoint account usage view when the profile has a documented usage path.
+- Redacted diagnostic export and credential-free endpoint profile import/export.
 
-## Domain dan fake endpoint
+## Requirements
 
-`src/domain/endpoint.ts` memuat `EndpointProfile`, normalisasi base URL, penggabungan path, dan pembuatan header auth. `src/domain/model-list.ts` memuat schema GET /models dan normalizer yang mengubah field hilang menjadi null atau unknown, bukan false atau nol. `src/domain/error.ts` memuat AppError terstruktur beserta redaksi secret.
+- Node.js 24, as pinned in [`.nvmrc`](.nvmrc)
+- npm 11 or newer
+- JDK 17
+- Android Studio, an Android SDK, and either a device or emulator
+- An OpenAI-compatible endpoint and API key
 
-- HTTPS selalu diterima. Cleartext HTTP hanya diterima untuk host loopback pada build development sehingga contract test dapat memakai fake endpoint lokal. Release menolak cleartext HTTP.
-- Nilai default `chatOutputCap` 8192 berasal dari dokumentasi Chat Completions AmanAI dan dipakai pada Phase 12.
-- `nativeContextManagement` bernilai unknown sampai endpoint benar-benar diuji, sehingga compaction lokal menjadi perilaku awal.
+## Getting started
 
-## Onboarding endpoint
-
-Fresh install membuka `app/setup.tsx`, bukan chat kosong. Alurnya:
-
-1. Base URL dinormalisasi, lalu URL final GET /models ditampilkan sebagai preview sebelum request dikirim.
-2. Tombol `Connect & discover models` memanggil endpoint dengan timeout 15 detik dan `AbortController`.
-3. Credential hanya dikirim ke origin yang tertulis di profile, dan redirect tidak diikuti.
-4. Setelah endpoint mengembalikan model, API key ditulis ke Keystore lewat `expo-secure-store` dan profile tanpa secret ditulis ke `expo-sqlite/kv-store`.
-
-Secret hanya berada di Keystore. Profil endpoint, activeModelId, dan pesan error tidak pernah memuat API key. Kegagalan connect tidak menyisakan profile maupun credential, dan field API key dikosongkan setelah setiap percobaan submit.
-
-Model picker menyimpan model ID exact sebagai model aktif. Chat membaca nilai itu tepat sebelum request.
-
-## Chat streaming
-
-Tab Chat menyimpan user turn dan assistant placeholder ke SQLite sebelum request, lalu mengirim model exact, system instructions v1, input user, `stream: true`, dan `max_output_tokens` 1024. Delta text dan reasoning muncul incremental serta di-flush ke SQLite sekitar 50 ms. Send berubah menjadi Stop; output parsial tetap terlihat setelah Stop, disconnect, atau process restart. Completed response memakai markdown. History mendukung pagination, buka conversation, rename, delete confirmation, New chat, dan retry turn terakhir yang terputus.
-
-## Contract test Node
-
-## Batas pemeriksaan agent
-
-Agent tidak menjalankan Expo, bundler, `expo-doctor`, prebuild, emulator, device check, Gradle, atau build APK/AAB. Agent hanya menjalankan TypeScript, ESLint langsung, Jest, dan contract test Node. Pemeriksaan Expo dan build Android dilakukan manual oleh pemilik proyek.
-
-All user-facing UI copy, accessibility labels, and new Markdown instructions must use English.
-
-Contract test transport, onboarding, dan Responses menjalankan kode produksi hasil kompilasi TypeScript, bukan tiruan:
+Clone the repository and install dependencies:
 
 ```sh
-npm run test:transport
-npm run test:onboarding
-npm run test:responses
+git clone https://github.com/SevikoA3/MyLLM.git
+cd MyLLM
+npm ci
 ```
 
-`tools/build-tests.mjs` mengompilasi modul domain, transport, dan onboarding ke `.tests-build/` sebagai ESM, mengganti penanda `__DEV__`, lalu menambahkan ekstensi import agar dapat dimuat Node. Folder hasil kompilasi tidak di-commit. Native module SecureStore dan SQLite dimuat secara lazy supaya modul yang memakainya tetap dapat diuji di luar React Native.
-
-Fake endpoint dijalankan terpisah dari Jest karena server tidak membutuhkan environment React Native:
-
-```sh
-node tools/fake-oai-server.mjs
-curl -H 'Authorization: Bearer fake-key' http://127.0.0.1:3999/v1/models
-curl -X POST -H 'Authorization: Bearer fake-key' -H 'content-type: application/json' \
-  -d '{"model":"amanai/glm-5.3","input":"halo","stream":true}' \
-  http://127.0.0.1:3999/v1/responses
-```
-
-Scenario lain dapat diminta lewat path, misalnya `/v1/scenario/models-401`, `/v1/scenario/models-empty`, `/v1/scenario/models-invalid-json`, atau `/v1/scenario/models-slow`, atau lewat header `X-Scenario`. Server hanya memakai API key palsu; jangan mengisi credential nyata ke fixture.
-
-## Development build
-
-Phase 0 menargetkan development build, bukan Expo Go, agar native module pada fase berikutnya (secure store, SQLite, file system) dapat dipakai. Native folder tidak di-commit; folder `android` dan `ios` dihasilkan oleh Continuous Native Generation.
+Create and install the Android development build:
 
 ```sh
 npx expo run:android
 ```
 
-Jalankan ulang perintah ini setiap kali native dependency atau app config berubah.
-
-## Styling
-
-Tailwind CSS dipakai lewat NativeWind v5 RC di atas `react-native-css`. Catatan penting untuk versi ini:
-
-- `nativewind` dan `react-native-css` harus dipin pada pasangan `5.0.0-rc.0` dan `3.1.0-rc.0`.
-- `tailwindcss` dipin pada `4.1.12`. Tailwind v4.3 tidak kompatibel dengan paket `@tailwindcss/postcss` yang dipin NativeWind.
-- `lightningcss` dipaksa ke `1.30.1` lewat field `overrides` di package.json. Tanpa pin ini build dapat gagal dengan deserialization error pada `global.css`.
-- `global.css` mengimpor lapisan theme, preflight, dan utilities secara terpisah. Jangan diganti dengan satu `@import "tailwindcss"` karena urutan cascade-nya berbeda.
-- Kelas Tailwind masuk ke bundle lewat Metro, jadi tidak perlu menjalankan Tailwind CLI secara terpisah.
-
-Setelah mengubah konfigurasi styling, pemilik proyek dapat menjalankan Metro tanpa cache:
+For later development sessions, start Metro or open the installed Android development build:
 
 ```sh
-npx expo start --clear
+npm start
+# or
+npm run android
 ```
 
-## Generated toolchain
+On first launch:
 
-| Item | Versi |
+1. Enter a profile name, endpoint base URL, and API key.
+2. Choose Responses, Chat Completions, or Auto protocol mode.
+3. Review advanced route settings if the endpoint does not use the standard paths.
+4. Connect to validate the endpoint and discover its models.
+5. Select a model from the Catalog tab and start a chat.
+
+The base URL normally includes the provider API prefix, such as `https://api.example.com/v1`. Credentials are entered in the app and must not be added to `.env` or any `EXPO_PUBLIC_*` variable.
+
+## Validation
+
+Run the core automated checks:
+
+```sh
+npm run typecheck
+npx eslint .
+npm run test:ci
+```
+
+Node contract tests exercise compiled production modules against local test boundaries:
+
+| Command | Coverage |
 |---|---|
-| Node.js | 24.14.0 (LTS, dicatat di `.nvmrc`) |
-| npm | 11.x |
-| Expo SDK | 57.0.23 |
-| React Native | 0.86.3 |
-| React | 19.2.3 |
-| Expo Router | 57.0.21 |
-| Reanimated | 4.5.1 dengan react-native-worklets 0.10.1 |
-| React Native SVG | 15.15.4 |
-| NativeWind | 5.0.0-rc.0 |
-| Tailwind CSS | 4.1.12 |
-| Jest | jest-expo 57.0.5 |
-| JDK | 17 |
-| compileSdk dan targetSdk | 36 (default template Expo SDK 57, hanya terlihat setelah prebuild) |
-| minSdk | Default Expo SDK 57. Override ke 26 belum ditambahkan karena menambah dependency `expo-build-properties` hanya untuk satu nilai konfigurasi. |
-| Application ID | `com.seviko.myllm` (placeholder internal, wajib dikonfirmasi sebelum distribusi) |
+| `npm run test:server` | Fake OpenAI-compatible server |
+| `npm run test:transport` | Model discovery transport |
+| `npm run test:onboarding` | Connect and discovery flow |
+| `npm run test:responses` | Responses streaming |
+| `npm run test:chat` | Chat Completions streaming |
+| `npm run test:protocol` | Explicit and automatic protocol routing |
+| `npm run test:web-tools` | Web search and fetch boundaries |
+| `npm run test:usage` | Endpoint account usage |
+| `npm run test:conversations` | SQLite history, recovery, and portability |
+| `npm run test:fields` | Model field normalization |
 
-Expo SDK 57 sudah memakai React Native New Architecture dan Hermes secara default, sehingga tidak ada konfigurasi tambahan untuk keduanya.
+## Project structure
 
-## Environment
+```text
+app/                Expo Router routes, setup, and settings screens
+src/domain/         Schemas, types, and pure application logic
+src/features/       Chat, history, model, and setup UI flows
+src/services/       Network, persistence, credentials, tools, and file I/O
+src/ui/             Shared visual tokens and components
+test/               Jest tests and Node contract tests
+tools/              Contract build, fake server, and smoke-test scripts
+graphify-out/       Generated codebase graph and report
+```
 
-`.env.example` sengaja kosong. Jangan membuat variabel `EXPO_PUBLIC_*` untuk credential karena nilai tersebut ikut ter-bundle ke dalam APK.
+Feature modules coordinate domain logic, services, and shared UI. Domain modules do not perform I/O. See [`PLAN.md`](PLAN.md) for product decisions and phase gates, [`DESIGN.md`](DESIGN.md) for the visual direction, and [`AGENTS.md`](AGENTS.md) for repository rules.
+
+## Security model
+
+- API keys are stored through Expo SecureStore and referenced by endpoint profiles.
+- Requests do not follow redirects, and credentials are sent only to the configured endpoint origin.
+- Release builds require HTTPS. Development builds allow cleartext HTTP only for loopback hosts.
+- Diagnostics redact sensitive text. Endpoint exports exclude credentials.
+- Command execution is disabled.
+- Conversation history is stored in local SQLite without SQLCipher encryption.
+
+## Current limits
+
+- Android is the primary target.
+- Generation runs only while the app is in the foreground.
+- Image input is limited to four supported images, 8 MB per image, and 12 MB per message.
+- Generic file uploads, video input, background generation, and shell execution are not implemented.
+- Account usage is shown only when an endpoint profile declares a compatible usage path.

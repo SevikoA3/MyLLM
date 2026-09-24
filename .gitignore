@@ -47,3 +47,6 @@ coverage/
 
 # runtime data aplikasi (bukan source)
 /data/
+
+# Graphify working cache
+/graphify-out/cache/
