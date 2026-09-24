@@ -5,7 +5,6 @@ import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -19,6 +18,8 @@ import { ModelOverrideSchema, type ModelOverride } from '../../domain/catalog';
 import type { CatalogSource, MergedModel } from '../../domain/catalog-merge';
 import { effectiveMaxOutput, protocolOutputCap, reasoningChoices } from '../../domain/model-config';
 import type { CapabilityState, InputModality } from '../../domain/model';
+import { colors, fonts, interaction } from '../../ui/tokens';
+import { BottomSheet } from '../../ui/bottom-sheet';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { useModelCatalog } from './use-model-catalog';
 
@@ -38,29 +39,6 @@ type Form = {
   reasoningEffort: string;
   outputLimit: string;
 };
-
-const colors = {
-  background: '#0b1326',
-  surfaceLowest: '#060e20',
-  surfaceLow: '#131b2e',
-  surface: '#171f33',
-  surfaceHigh: '#222a3d',
-  border: '#334155',
-  outline: '#86948a',
-  text: '#dae2fd',
-  muted: '#bbcabf',
-  primary: '#10b981',
-  primaryText: '#020617',
-  secondary: '#06b6d4',
-  warning: '#f59e0b',
-  error: '#ef4444',
-} as const;
-
-const fonts = {
-  heading: 'Inter_600SemiBold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
-} as const;
 
 export default function ModelDetailScreen() {
   const { modelId } = useLocalSearchParams<{ modelId?: string }>();
@@ -130,8 +108,8 @@ export default function ModelDetailScreen() {
                 onPress={() => router.back()}
                 hitSlop={4}
                 style={({ pressed }) => ({
-                  width: 40,
-                  height: 40,
+                  width: interaction.compactTouchTarget,
+                  height: interaction.compactTouchTarget,
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: 8,
@@ -513,7 +491,7 @@ function Field({
           accessibilityLabel={'Reset ' + label}
           onPress={onReset}
           hitSlop={8}
-          style={{ minHeight: 32, justifyContent: 'center' }}>
+          style={{ minHeight: interaction.compactTouchTarget, justifyContent: 'center' }}>
           <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>RESET</Text>
         </Pressable>
       </View>
@@ -564,7 +542,7 @@ function Choice({
               onPress={() => onChange(entry)}
               hitSlop={8}
               style={({ pressed }) => ({
-                minHeight: 32,
+                minHeight: interaction.compactTouchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
                 paddingHorizontal: 8,
@@ -604,18 +582,11 @@ function ResetSheet({
   onConfirm: () => void;
 }) {
   return (
-    <Modal
-      transparent
-      animationType="slide"
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      navigationBarTranslucent
+    <BottomSheet
       visible={visible}
+      dismissLabel="Dismiss reset confirmation"
       onRequestClose={onCancel}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.45)' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss reset confirmation" onPress={onCancel} style={{ flex: 1 }} />
         <View
-          accessibilityViewIsModal
           style={{
             gap: 16,
             paddingHorizontal: 16,
@@ -655,8 +626,7 @@ function ResetSheet({
             </View>
           </View>
         </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -668,7 +638,7 @@ function SheetButton({ label, danger = false, onPress }: { label: string; danger
       onPress={onPress}
       hitSlop={4}
       style={({ pressed }) => ({
-        minHeight: 40,
+        minHeight: interaction.compactTouchTarget,
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 4,

@@ -3,15 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { colors, fonts } from '../../src/ui/tokens';
+
 import { useActiveEndpoint } from '../../src/features/setup/use-active-endpoint';
 import { credentialStore } from '../../src/services/credentials/store';
 import { fetchAccountUsage, type AccountUsage } from '../../src/services/transport/usage';
-
-const colors = {
-  background: '#0b1326', surface: '#171f33', surfaceHigh: '#222a3d', border: '#3c4a42',
-  text: '#dae2fd', muted: '#bbcabf', primary: '#4edea3', secondary: '#4cd7f6', error: '#ffb4ab',
-} as const;
-const fonts = { heading: 'Inter_600SemiBold', mono: 'JetBrainsMono_400Regular', monoMedium: 'JetBrainsMono_500Medium' } as const;
 
 export default function UsageScreen() {
   const { status, profile } = useActiveEndpoint();

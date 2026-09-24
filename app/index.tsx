@@ -5,24 +5,7 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useActiveEndpoint } from '../src/features/setup/use-active-endpoint';
-
-const colors = {
-  background: '#0b1326',
-  surfaceLowest: '#060e20',
-  surfaceLow: '#131b2e',
-  surfaceHigh: '#222a3d',
-  border: '#86948a',
-  text: '#dae2fd',
-  muted: '#bbcabf',
-  primary: '#4edea3',
-  secondary: '#4cd7f6',
-} as const;
-
-const fonts = {
-  heading: 'Inter_600SemiBold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
-} as const;
+import { colors, fonts } from '../src/ui/tokens';
 
 export default function EntryScreen() {
   const { status, profile } = useActiveEndpoint();

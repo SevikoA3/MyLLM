@@ -9,10 +9,11 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import '../global.css';
+import { colors, fonts, radius, typography } from '../src/ui/tokens';
 
 export { ErrorBoundary } from 'expo-router';
 
-void setBackgroundColorAsync('#0b1326');
+void setBackgroundColorAsync(colors.background);
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -29,7 +30,7 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0b1326' } }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="setup" />
         <Stack.Screen name="(tabs)" />
@@ -44,15 +45,15 @@ export default function RootLayout() {
 
 function BootstrapScreen() {
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: '#0b1326' }}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 16 }}>
-        <View style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 24, backgroundColor: '#222a3d' }}>
-          <SymbolView name={{ ios: 'terminal.fill', android: 'terminal' }} size={24} tintColor="#4edea3" />
+        <View style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.surfaceHigh }}>
+          <SymbolView name={{ ios: 'terminal.fill', android: 'terminal' }} size={24} tintColor={colors.primary} />
         </View>
-        <ActivityIndicator accessibilityLabel="Loading MyLLM" color="#4edea3" />
-        <Text style={{ color: '#dae2fd', fontSize: 14, fontWeight: '600' }}>Preparing MyLLM</Text>
-        <Text style={{ color: '#bbcabf', fontSize: 11 }}>Loading interface resources.</Text>
+        <ActivityIndicator accessibilityLabel="Loading MyLLM" color={colors.primary} />
+        <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.body }}>Preparing MyLLM</Text>
+        <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: typography.label }}>Loading interface resources.</Text>
       </View>
     </SafeAreaView>
   );

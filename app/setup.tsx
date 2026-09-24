@@ -11,26 +11,9 @@ import { useActiveEndpoint } from '../src/features/setup/use-active-endpoint';
 import { modelsUrl } from '../src/services/transport/models';
 import { seedCatalogCache } from '../src/services/persistence/catalog-seed';
 import { fileCatalogStorage, readBundledDefaults } from '../src/services/persistence/catalog-files';
+import { colors, fonts } from '../src/ui/tokens';
 
 type Edits = Partial<SetupInput>;
-
-const colors = {
-  background: '#0b1326',
-  panel: '#131b2e',
-  panelLowest: '#060e20',
-  control: '#1e293b',
-  controlActive: '#222a3d',
-  border: '#3c4a42',
-  outline: '#86948a',
-  text: '#dae2fd',
-  muted: '#bbcabf',
-  primary: '#4edea3',
-  primaryText: '#003824',
-  secondary: '#4cd7f6',
-  warning: '#ffb95f',
-  errorBackground: '#93000a',
-  errorText: '#ffdad6',
-} as const;
 
 const cardStyle = {
   gap: 12,
@@ -39,12 +22,6 @@ const cardStyle = {
   borderWidth: 1,
   borderColor: colors.border,
   backgroundColor: colors.panel,
-} as const;
-
-const fonts = {
-  heading: 'Inter_600SemiBold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
 } as const;
 
 export default function SetupScreen() {

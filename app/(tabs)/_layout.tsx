@@ -1,12 +1,7 @@
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-const colors = {
-  background: '#060e20',
-  border: '#334155',
-  muted: '#bbcabf',
-  primary: '#10b981',
-} as const;
+import { colors, fonts } from '../../src/ui/tokens';
 
 export default function TabLayout() {
   return (
@@ -23,14 +18,14 @@ export default function TabLayout() {
           shadowOpacity: 0,
         },
         tabBarLabelStyle: {
-          fontFamily: 'JetBrainsMono_500Medium',
+          fontFamily: fonts.monoMedium,
           fontSize: 10,
           letterSpacing: 0.4,
           marginBottom: 4,
         },
         tabBarItemStyle: { minHeight: 44, paddingVertical: 2 },
         tabBarIconStyle: { marginTop: 4 },
-        sceneStyle: { backgroundColor: '#0b1326' },
+        sceneStyle: { backgroundColor: colors.background },
       }}>
       <Tabs.Screen
         name="index"

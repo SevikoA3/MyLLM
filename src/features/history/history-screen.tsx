@@ -7,7 +7,6 @@ import {
   Alert,
   FlatList,
   type ListRenderItemInfo,
-  Modal,
   Pressable,
   Text,
   TextInput,
@@ -19,31 +18,10 @@ import type { ConversationCursor, ConversationSummary, TurnStatus } from '../../
 import { conversationRepository } from '../../services/persistence/conversation-store';
 import { pickConversation, shareConversation } from '../../services/persistence/catalog-transfer';
 import { deleteStagedImages } from '../../services/attachments/images';
+import { colors, fonts, interaction } from '../../ui/tokens';
+import { BottomSheet } from '../../ui/bottom-sheet';
 
 const PAGE_SIZE = 20;
-
-const colors = {
-  background: '#0b1326',
-  surfaceLowest: '#060e20',
-  surfaceLow: '#131b2e',
-  surface: '#171f33',
-  surfaceHigh: '#222a3d',
-  border: '#334155',
-  outline: '#86948a',
-  text: '#dae2fd',
-  muted: '#bbcabf',
-  primary: '#10b981',
-  primaryText: '#020617',
-  secondary: '#06b6d4',
-  warning: '#f59e0b',
-  error: '#ef4444',
-} as const;
-
-const fonts = {
-  heading: 'Inter_600SemiBold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
-} as const;
 
 type HistoryStatus = {
   label: string;
@@ -581,7 +559,7 @@ function SmallButton({ label, tone = 'secondary', onPress }: { label: string; to
       onPress={onPress}
       hitSlop={4}
       style={({ pressed }) => ({
-        minHeight: 36,
+        minHeight: interaction.compactTouchTarget,
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 12,
@@ -614,7 +592,7 @@ function EmptyHistory({ filtered, onPress }: { filtered: boolean; onPress: () =>
         onPress={onPress}
         hitSlop={4}
         style={({ pressed }) => ({
-          minHeight: 40,
+          minHeight: interaction.touchTarget,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
@@ -644,18 +622,11 @@ function DeleteSheet({
   onConfirm: () => void;
 }) {
   return (
-    <Modal
-      transparent
-      animationType="slide"
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      navigationBarTranslucent
+    <BottomSheet
       visible={conversation !== null}
+      dismissLabel="Dismiss delete confirmation"
       onRequestClose={onCancel}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.45)' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss delete confirmation" onPress={onCancel} style={{ flex: 1 }} />
         <View
-          accessibilityViewIsModal
           style={{
             gap: 16,
             paddingHorizontal: 16,
@@ -689,7 +660,7 @@ function DeleteSheet({
               accessibilityLabel="Confirm Delete"
               onPress={onConfirm}
               style={({ pressed }) => ({
-                minHeight: 36,
+                minHeight: interaction.compactTouchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
                 paddingHorizontal: 12,
@@ -701,7 +672,6 @@ function DeleteSheet({
             </Pressable>
           </View>
         </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }

@@ -2,7 +2,7 @@ import { Link, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useActiveEndpoint } from '../../src/features/setup/use-active-endpoint';
@@ -18,31 +18,8 @@ import { endpointStore } from '../../src/services/persistence/endpoint-store';
 import { webToolsCredentialId, webToolsStore } from '../../src/services/persistence/web-tools-store';
 import { createWebToolsSettings, normalizeGatewayUrl, type WebSearchProvider } from '../../src/domain/web-tools';
 import { testWebGateway } from '../../src/services/tools/gateway';
-
-const colors = {
-  background: '#0b1326',
-  surfaceLowest: '#060e20',
-  surfaceLow: '#131b2e',
-  surface: '#171f33',
-  surfaceHigh: '#222a3d',
-  border: '#86948a',
-  outline: '#86948a',
-  text: '#dae2fd',
-  muted: '#bbcabf',
-  primary: '#4edea3',
-  secondary: '#4cd7f6',
-  warning: '#ffb95f',
-  error: '#ffb4ab',
-  errorBackground: '#93000a',
-  errorText: '#ffdad6',
-  errorButtonText: '#690005',
-} as const;
-
-const fonts = {
-  heading: 'Inter_600SemiBold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
-} as const;
+import { colors, fonts, typography } from '../../src/ui/tokens';
+import { BottomSheet } from '../../src/ui/bottom-sheet';
 
 const cardStyle = {
   gap: 12,
@@ -405,7 +382,7 @@ export default function SettingsScreen() {
               placeholder="https://gateway.example.com"
               placeholderTextColor={colors.outline}
               value={gatewayUrl}
-              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
+              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: 10 }}
             />
           </View>}
 
@@ -425,7 +402,7 @@ export default function SettingsScreen() {
               placeholderTextColor={colors.outline}
               secureTextEntry
               value={gatewayToken}
-              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
+              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: 10 }}
             />
             <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
               The credential is stored securely and is never included in diagnostics or tool output.
@@ -443,7 +420,7 @@ export default function SettingsScreen() {
               placeholder="bing"
               placeholderTextColor={colors.outline}
               value={gatewayEngines}
-              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: 12, paddingHorizontal: 10 }}
+              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: 10 }}
             />
             <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
               Comma-separated engine names for your SearXNG instance. Default: bing.
@@ -643,7 +620,7 @@ function SettingsLink({ href, icon, title, body }: {
 
 function Telemetry({ label }: { label: string }) {
   return (
-    <Text style={{ color: colors.muted, backgroundColor: colors.surfaceHigh, fontFamily: fonts.monoMedium, fontSize: 9, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}>
+    <Text style={{ color: colors.muted, backgroundColor: colors.surfaceHigh, fontFamily: fonts.monoMedium, fontSize: typography.meta, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}>
       {label}
     </Text>
   );
@@ -654,24 +631,19 @@ function StatusBadge({ label, tone }: { label: string; tone: 'primary' | 'second
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 4, backgroundColor: colors.surfaceHigh, paddingHorizontal: 6, paddingVertical: 4 }}>
       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: color }} />
-      <Text style={{ color, fontFamily: fonts.monoMedium, fontSize: 9, letterSpacing: 0.3 }}>{label}</Text>
+      <Text style={{ color, fontFamily: fonts.monoMedium, fontSize: typography.meta, letterSpacing: 0.3 }}>{label}</Text>
     </View>
   );
 }
 
 function ClearDataSheet({ visible, busy, onCancel, onConfirm }: { visible: boolean; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
   return (
-    <Modal
-      transparent
-      animationType="slide"
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      navigationBarTranslucent
+    <BottomSheet
       visible={visible}
+      dismissLabel="Dismiss delete confirmation"
+      dismissDisabled={busy}
       onRequestClose={busy ? () => undefined : onCancel}>
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.55)' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss delete confirmation" disabled={busy} onPress={onCancel} style={{ flex: 1 }} />
-        <View accessibilityViewIsModal style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surfaceLow, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
+        <View style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surfaceLow, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
           <View style={{ alignItems: 'center' }}>
             <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: colors.outline }} />
           </View>
@@ -697,8 +669,7 @@ function ClearDataSheet({ visible, busy, onCancel, onConfirm }: { visible: boole
             <View style={{ flex: 1 }}><SheetButton label={busy ? 'Deleting...' : 'Erase everything'} danger busy={busy} disabled={busy} onPress={onConfirm} /></View>
           </View>
         </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -718,7 +689,7 @@ function SheetButton({ label, danger = false, busy = false, disabled, onPress }:
         backgroundColor: danger ? colors.error : colors.surfaceHigh,
         opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
       })}>
-      <Text style={{ color: danger ? colors.errorButtonText : colors.text, fontFamily: fonts.heading, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: danger ? colors.errorButtonText : colors.text, fontFamily: fonts.heading, fontSize: typography.body }}>{label}</Text>
     </Pressable>
   );
 }

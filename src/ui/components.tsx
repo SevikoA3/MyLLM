@@ -39,19 +39,20 @@ export function PrimaryButton({
       accessibilityState={{ busy, disabled: inactive }}
       disabled={inactive}
       onPress={onPress}
-      style={{
+      style={({ pressed }) => ({
         minHeight: 48,
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: theme.spacing.screen,
         borderRadius: theme.radius.control,
         backgroundColor: inactive ? theme.colors.surface : theme.colors.accent,
-      }}>
+        opacity: inactive ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
+      })}>
       <Text
         style={{
           color: inactive ? theme.colors.textMuted : theme.colors.accentText,
           fontSize: theme.typography.body,
-          fontWeight: '700',
+          fontFamily: theme.fonts.heading,
         }}>
         {label}
       </Text>
@@ -74,7 +75,7 @@ export function LinkCard({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
-        style={{
+        style={({ pressed }) => ({
           minHeight: 48,
           justifyContent: 'center',
           gap: 2,
@@ -83,12 +84,13 @@ export function LinkCard({
           borderWidth: 1,
           borderColor: theme.colors.border,
           backgroundColor: theme.colors.surface,
-        }}>
-        <Text style={{ color: theme.colors.text, fontSize: theme.typography.body, fontWeight: '700' }}>
+          opacity: pressed ? theme.interaction.pressedOpacity : 1,
+        })}>
+        <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
           {label}
         </Text>
         {description !== undefined && (
-          <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
+          <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
             {description}
           </Text>
         )}
@@ -119,10 +121,10 @@ export function InfoBlock({
         borderColor: palette.border,
         backgroundColor: palette.background,
       }}>
-      <Text style={{ color: palette.title, fontSize: theme.typography.body, fontWeight: '700' }}>
+      <Text style={{ color: palette.title, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
         {title}
       </Text>
-      <Text style={{ color: palette.body, fontSize: theme.typography.body }}>{body}</Text>
+      <Text style={{ color: palette.body, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>{body}</Text>
     </View>
   );
 }
@@ -138,10 +140,10 @@ export function PlaceholderScreen({ title, body }: { title: string; body: string
           gap: theme.spacing.gap,
           padding: theme.spacing.screen,
         }}>
-        <Text style={{ color: theme.colors.text, fontSize: theme.typography.title, fontWeight: '700' }}>
+        <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.title }}>
           {title}
         </Text>
-        <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.body }}>{body}</Text>
+        <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>{body}</Text>
       </View>
     </Screen>
   );

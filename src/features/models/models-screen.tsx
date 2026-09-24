@@ -16,40 +16,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MergedModel } from '../../domain/catalog-merge';
 import { endpointStore } from '../../services/persistence/endpoint-store';
+import { colors, fonts, typography } from '../../ui/tokens';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { describeRefresh, formatTokens, modelBadges } from './model-badges';
 import { useModelCatalog } from './use-model-catalog';
 
 type BadgeTone = 'neutral' | 'accent' | 'warning';
-
-const colors = {
-  background: '#0b1326',
-  surfaceLowest: '#060e20',
-  surfaceLow: '#131b2e',
-  surface: '#171f33',
-  surfaceHigh: '#222a3d',
-  control: '#1e293b',
-  controlActive: '#0f172a',
-  border: '#334155',
-  outline: '#86948a',
-  text: '#dae2fd',
-  muted: '#bbcabf',
-  primary: '#10b981',
-  primaryText: '#020617',
-  secondary: '#06b6d4',
-  warning: '#f59e0b',
-  warningBackground: '#5b3a08',
-  warningText: '#ffddb8',
-  error: '#ef4444',
-  errorBackground: '#450a0a',
-  errorText: '#fecaca',
-} as const;
-
-const fonts = {
-  heading: 'Inter_600SemiBold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
-} as const;
 
 const cardStyle = {
   gap: 12,
@@ -658,7 +630,7 @@ function SmallButton({
         backgroundColor: primary ? colors.primary : colors.surface,
         opacity: disabled ? 0.45 : pressed ? 0.7 : 1,
       })}>
-      <Text style={{ color: primary ? colors.primaryText : colors.text, fontFamily: fonts.heading, fontSize: 12 }}>
+      <Text style={{ color: primary ? colors.primaryText : colors.text, fontFamily: fonts.heading, fontSize: typography.body }}>
         {label}
       </Text>
     </Pressable>

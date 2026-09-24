@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createEndpointProfile, type EndpointProfile } from '../../src/domain/endpoint';
@@ -11,12 +11,8 @@ import { deleteCatalogForEndpoint } from '../../src/services/persistence/catalog
 import { pickEndpointProfiles, shareEndpointProfiles } from '../../src/services/persistence/catalog-transfer';
 import { conversationRepository } from '../../src/services/persistence/conversation-store';
 import { endpointStore } from '../../src/services/persistence/endpoint-store';
-
-const colors = {
-  background: '#0b1326', surface: '#171f33', surfaceHigh: '#222a3d', border: '#3c4a42',
-  text: '#dae2fd', muted: '#bbcabf', primary: '#4edea3', secondary: '#4cd7f6', warning: '#ffb95f', error: '#ffb4ab',
-} as const;
-const fonts = { heading: 'Inter_600SemiBold', mono: 'JetBrainsMono_400Regular', monoMedium: 'JetBrainsMono_500Medium' } as const;
+import { colors, fonts, typography } from '../../src/ui/tokens';
+import { BottomSheet } from '../../src/ui/bottom-sheet';
 type DeleteTarget = { profile: EndpointProfile; conversationCount: number };
 
 export default function EndpointProfilesScreen() {
@@ -133,7 +129,7 @@ export default function EndpointProfilesScreen() {
         <View style={{ gap: 4 }}><Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>PORTABLE CONFIGURATION</Text><Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 22 }}>Endpoint Profiles</Text><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>Switch profiles or transfer configuration without credentials.</Text></View>
         {loading ? <ActivityIndicator color={colors.primary} /> : profiles.map((profile) => (
           <View key={profile.id} style={{ gap: 10, borderWidth: 1, borderColor: profile.id === activeId ? colors.primary : colors.border, borderRadius: 8, backgroundColor: colors.surface, padding: 12 }}>
-            <View style={{ gap: 3 }}><Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 15 }}>{profile.name}</Text><Text selectable style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>{profile.baseUrl}</Text><Text style={{ color: profile.id === activeId ? colors.primary : colors.secondary, fontFamily: fonts.monoMedium, fontSize: 9 }}>{profile.id === activeId ? 'ACTIVE' : 'AVAILABLE'} {'//'} {profile.protocol.toUpperCase()}</Text></View>
+            <View style={{ gap: 3 }}><Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 15 }}>{profile.name}</Text><Text selectable style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>{profile.baseUrl}</Text><Text style={{ color: profile.id === activeId ? colors.primary : colors.secondary, fontFamily: fonts.monoMedium, fontSize: typography.meta }}>{profile.id === activeId ? 'ACTIVE' : 'AVAILABLE'} {'//'} {profile.protocol.toUpperCase()}</Text></View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Action label={profile.id === activeId ? 'ACTIVE' : 'SWITCH'} disabled={profile.id === activeId || busyId !== null} onPress={() => void select(profile)} />
               <Action label="DELETE" danger disabled={busyId !== null} onPress={() => void prepareDelete(profile)} />
@@ -149,9 +145,21 @@ export default function EndpointProfilesScreen() {
 }
 
 function Action({ label, disabled, danger = false, onPress }: { label: string; disabled: boolean; danger?: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => ({ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: danger ? '#93000a' : colors.surfaceHigh, opacity: disabled ? 0.45 : pressed ? 0.75 : 1 })}><Text style={{ color: danger ? colors.error : colors.primary, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text></Pressable>;
+return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => ({ flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: danger ? colors.errorBackground : colors.surfaceHigh, opacity: disabled ? 0.45 : pressed ? 0.75 : 1 })}><Text style={{ color: danger ? colors.error : colors.primary, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text></Pressable>;
 }
 
 function DeletePolicySheet({ target, busy, onCancel, onKeep, onDelete }: { target: DeleteTarget | null; busy: boolean; onCancel: () => void; onKeep: () => void; onDelete: () => void }) {
-  return <Modal transparent animationType="slide" visible={target !== null} onRequestClose={onCancel}><View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' }}><View style={{ gap: 12, borderTopWidth: 1, borderColor: colors.border, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surface, padding: 16 }}><Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18 }}>Delete endpoint?</Text><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>{String(target?.conversationCount ?? 0)} conversations use this endpoint. Kept conversations remain readable but cannot send until a matching endpoint is connected.</Text><Action label="KEEP CONVERSATIONS" disabled={busy} onPress={onKeep} /><Action label="DELETE ENDPOINT AND CONVERSATIONS" danger disabled={busy} onPress={onDelete} /><Action label="CANCEL" disabled={busy} onPress={onCancel} /></View></View></Modal>;
+  return (
+    <BottomSheet visible={target !== null} dismissLabel="Dismiss endpoint delete confirmation" dismissDisabled={busy} onRequestClose={onCancel}>
+      <View style={{ gap: 12, borderTopWidth: 1, borderColor: colors.border, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surface, padding: 16 }}>
+        <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18 }}>Delete endpoint?</Text>
+        <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>
+          {String(target?.conversationCount ?? 0)} conversations use this endpoint. Kept conversations remain readable but cannot send until a matching endpoint is connected.
+        </Text>
+        <Action label="KEEP CONVERSATIONS" disabled={busy} onPress={onKeep} />
+        <Action label="DELETE ENDPOINT AND CONVERSATIONS" danger disabled={busy} onPress={onDelete} />
+        <Action label="CANCEL" disabled={busy} onPress={onCancel} />
+      </View>
+    </BottomSheet>
+  );
 }

@@ -1,209 +1,162 @@
----
-name: MyLLM
-colors:
-  surface: '#0b1326'
-  surface-dim: '#0b1326'
-  surface-bright: '#31394d'
-  surface-container-lowest: '#060e20'
-  surface-container-low: '#131b2e'
-  surface-container: '#171f33'
-  surface-container-high: '#222a3d'
-  surface-container-highest: '#2d3449'
-  on-surface: '#dae2fd'
-  on-surface-variant: '#bbcabf'
-  inverse-surface: '#dae2fd'
-  inverse-on-surface: '#283044'
-  outline: '#86948a'
-  outline-variant: '#3c4a42'
-  surface-tint: '#4edea3'
-  primary: '#4edea3'
-  on-primary: '#003824'
-  primary-container: '#10b981'
-  on-primary-container: '#00422b'
-  inverse-primary: '#006c49'
-  secondary: '#4cd7f6'
-  on-secondary: '#003640'
-  secondary-container: '#03b5d3'
-  on-secondary-container: '#00424e'
-  tertiary: '#ffb95f'
-  on-tertiary: '#472a00'
-  tertiary-container: '#e29100'
-  on-tertiary-container: '#523200'
-  error: '#ffb4ab'
-  on-error: '#690005'
-  error-container: '#93000a'
-  on-error-container: '#ffdad6'
-  primary-fixed: '#6ffbbe'
-  primary-fixed-dim: '#4edea3'
-  on-primary-fixed: '#002113'
-  on-primary-fixed-variant: '#005236'
-  secondary-fixed: '#acedff'
-  secondary-fixed-dim: '#4cd7f6'
-  on-secondary-fixed: '#001f26'
-  on-secondary-fixed-variant: '#004e5c'
-  tertiary-fixed: '#ffddb8'
-  tertiary-fixed-dim: '#ffb95f'
-  on-tertiary-fixed: '#2a1700'
-  on-tertiary-fixed-variant: '#653e00'
-  background: '#0b1326'
-  on-background: '#dae2fd'
-  surface-variant: '#2d3449'
-typography:
-  headline-lg:
-    fontFamily: Inter
-    fontSize: 32px
-    fontWeight: '600'
-    lineHeight: 40px
-    letterSpacing: -0.02em
-  headline-lg-mobile:
-    fontFamily: Inter
-    fontSize: 26px
-    fontWeight: '600'
-    lineHeight: 32px
-    letterSpacing: -0.02em
-  headline-md:
-    fontFamily: Inter
-    fontSize: 22px
-    fontWeight: '600'
-    lineHeight: 28px
-    letterSpacing: -0.01em
-  headline-sm:
-    fontFamily: Inter
-    fontSize: 18px
-    fontWeight: '500'
-    lineHeight: 24px
-  body-lg:
-    fontFamily: JetBrains Mono
-    fontSize: 15px
-    fontWeight: '400'
-    lineHeight: 24px
-  body-md:
-    fontFamily: JetBrains Mono
-    fontSize: 13px
-    fontWeight: '400'
-    lineHeight: 20px
-  body-sm:
-    fontFamily: JetBrains Mono
-    fontSize: 11px
-    fontWeight: '400'
-    lineHeight: 16px
-  label-lg:
-    fontFamily: Inter
-    fontSize: 13px
-    fontWeight: '600'
-    lineHeight: 18px
-    letterSpacing: 0.01em
-  label-md:
-    fontFamily: JetBrains Mono
-    fontSize: 11px
-    fontWeight: '500'
-    lineHeight: 16px
-    letterSpacing: 0.02em
-  label-sm:
-    fontFamily: JetBrains Mono
-    fontSize: 10px
-    fontWeight: '500'
-    lineHeight: 14px
-    letterSpacing: 0.04em
-rounded:
-  sm: 0.125rem
-  DEFAULT: 0.25rem
-  md: 0.375rem
-  lg: 0.5rem
-  xl: 0.75rem
-  full: 9999px
-spacing:
-  gutter: 0.75rem
-  margin: 1rem
-  space-xs: 0.25rem
-  space-sm: 0.5rem
-  space-md: 0.75rem
-  space-lg: 1rem
-  space-xl: 1.5rem
----
+# MyLLM Design System
 
-## Brand & Style
+`src/ui/tokens.ts` is the visual source of truth for MyLLM. This document defines how those tokens are applied. Every UI change must follow this contract. Do not create local color palettes, font maps, radius scales, motion timings, or competing component standards.
 
-This design system delivers a high-precision, utilitarian Android operational interface built for machine learning engineers, infrastructure operators, and technical power users. The experience prioritizes rigorous observability, deterministic output validation, and exact hardware metrics over decorative styling.
+## Design Read
 
-### Design Principles
-- **Absolute Determinism:** Ambiguity is treated as an error state. Data values strictly differentiate between null, unavailable, zero, and active inference (`NaN` ≠ `0` ≠ `—`).
-- **Tactile Density:** Information architecture conforms to Android system idioms (tactile feedback states, predictable bottom sheets, persistent top app bars) while sustaining the screen density required for telemetry inspection.
-- **Instrument Precision:** Surfaces act as monitor terminals. Subtle 1px structural dividers, high-contrast monospace readouts, and disciplined status pings replace subjective ornamentation.
+MyLLM is an operational Android client for people who inspect endpoints, models, conversations, context usage, and request telemetry. The interface must make state and technical values easy to scan during long sessions. Its character is precise, restrained, and dense without becoming cramped.
 
-## Colors
+| Dial | Value | Meaning |
+|---|---:|---|
+| ENERGY | 1 | Calm surfaces and one clear action per view. Status color carries meaning. |
+| RHYTHM | 1 | Stable spacing and predictable rows support fast scanning. |
+| MOTION | 1 | Motion only explains a state change, such as opening or closing a sheet. |
 
-The color system operates on an obsidian/slate dark-mode foundation designed to preserve eye comfort during late-night debugging while maximizing token contrast.
+The identity motif is an Inter structural hierarchy paired with JetBrains Mono technical readouts on flat, keyed dark surfaces. The fixed dark theme supports sustained inspection of model output and telemetry. Emerald marks the main action and healthy state because those two meanings should be found first.
 
-### Palette Roles
-- **Primary (`#10B981` Emerald):** Represents healthy execution states, successful handshakes, active inference streams, confirmed model contexts, and primary commit actions.
-- **Secondary (`#06B6D4` Cyan):** Denotes secondary streaming protocols, active context windows, payload size telemetry, and cold network transfers.
-- **Tertiary (`#F59E0B` Amber):** Reserved for non-blocking warnings, fallback model triggers, context window truncation, parameter overrides, and unverified SSL certificates.
-- **Error (`#EF4444` Crimson):** Critical failures, endpoint connection drops, context length exhaustion, and schema validation crashes.
-- **Neutral Canvas (`#020617` to `#1E293B`):** Multi-tier obsidian base layers provide structural hierarchy without heavy shadows. Text defaults to `#F8FAFC` for primary alphanumeric readouts and `#94A3B8` for secondary telemetry labels.
-- **Provenance & Source Tints:**
-  - *Live Endpoint:* Emerald glow badge (`#10B981` at 15% opacity).
-  - *Local/Bundled:* Neutral slate badge (`#334155` at 40% opacity).
-  - *Override/Untrusted:* Amber outline badge (`#F59E0B` at 20% opacity).
+## Tokens
 
-## Typography
+Import values from `src/ui/tokens.ts`. Use `designSystem` when a component needs several token groups, or import individual groups when it needs only one or two.
 
-Typography establishes an intentional contrast between structural structural framing and pure computational readout.
+### Color roles
 
-- **Headings (Inter):** Applied to screen titles, modal headers, and top app bars. Inter keeps macro navigation clean, dense, and uncluttered.
-- **Body & Data Metrics (JetBrains Mono):** Applied across all conversation streams, JSON payloads, latency numbers (e.g., `42ms`), token counters (`1,024 / 8,192 ctx`), model identifiers (`meta-llama/Llama-3-70b-instruct`), and system validation tags.
-- **Numerical Formatting:** All numeric values must use tabular figures with zero slashed when displaying model weights, hashes, and hexadecimal memory addresses.
+| Role | Token | Use |
+|---|---|---|
+| App background | `colors.background` | Safe areas and screen background |
+| Deep canvas | `colors.canvas` or `colors.surfaceLowest` | Editors, code, composer wells, and recessed areas |
+| Low surface | `colors.surfaceLow` | Cards and grouped content |
+| Surface | `colors.surface` | Rows and neutral controls |
+| Raised surface | `colors.surfaceHigh` | Active controls, badges, and selected neutral areas |
+| Sheet | `colors.sheet` | Bottom sheet body |
+| Border | `colors.border` | One-pixel structural boundaries |
+| Outline | `colors.outline` | Placeholder text and low-emphasis outlines |
+| Primary text | `colors.text` | Titles and content |
+| Muted text | `colors.muted` or `colors.textMuted` | Supporting copy and metadata |
+| Emerald | `colors.primary` or `colors.accent` | Primary action, success, healthy connection, and active inference |
+| Cyan | `colors.secondary` | Informational state, links, and transfer activity |
+| Amber | `colors.warning` or `colors.tertiary` | Warning, override, interruption, and approaching limits |
+| Red | `colors.danger` or `colors.error` | Destructive action and failure |
+| Scrim | `colors.backdrop` | Modal backdrop only |
 
-## Layout & Spacing
+Use color as state, not decoration. A status dot must represent a real state. Do not add gradients, glow, decorative shadows, or page texture.
 
-Layout adheres to an 8dp computational grid with 4dp half-step sub-grid increments for dense data telemetry.
+### Typography
 
-### Android Canvas Architecture
-- **Safe Area Insets:** Strict padding accommodation for Android system navigation bars, gesture handles, status bars, and hardware camera cutouts.
-- **Top App Bar:** 56dp standard height holding model switcher pills, latency indicator, and connection status.
-- **Bottom Drawers & Sheets:** Modal bottom sheets snap at `45%` (inspection) and `90%` (full configuration) viewport heights.
-- **Density Tiering:** Data-heavy lists (token streams, request histories) utilize `space-xs` and `space-sm` internal padding to maximize line efficiency on narrow phone widths.
+Inter is the structural face because headings and actions need quick recognition. JetBrains Mono is the data face because identifiers, JSON, counts, and telemetry benefit from stable character widths.
 
-## Elevation & Depth
+| Role | Token | Family | Use |
+|---|---|---|---|
+| Display | `typography.display` | Inter Semibold | First-run or major screen title |
+| Title | `typography.title` | Inter Semibold | Screen and sheet title |
+| Subtitle | `typography.subtitle` | Inter Medium or Semibold | Section emphasis |
+| Component title | `typography.componentTitle` | Inter Semibold | Card and empty-state title |
+| Body | `typography.body` | JetBrains Mono | Body copy, inputs, and technical values |
+| Label | `typography.label` | JetBrains Mono Medium | Row labels and secondary values |
+| Meta | `typography.meta` | JetBrains Mono Medium | Badges, status, and telemetry |
 
-This design system uses flat, structural tonal surfaces combined with low-contrast keyline borders (1px solid `#334155` / `#1E293B`) rather than heavy blurred drop shadows. Depth matches native Android elevation levels via tint stepping:
+Do not use monospace as decoration. Use it when the content is technical or benefits from aligned characters. Keep labels concise and avoid wide tracking beyond compact status labels.
 
-- **Level 0 (Base Canvas):** `#020617` (Deep Obsidian).
-- **Level 1 (Card & Module Surface):** `#0B132B` with a 1px border of `#1E293B`.
-- **Level 2 (Active Controls & Input Bars):** `#1E293B` with high-contrast emerald focus borders.
-- **Level 3 (Bottom Sheets & Context Drawers):** `#0F172A` with a crisp `#334155` top-edge bevel and a 20% alpha black ambient backdrop scrim.
-- **Level 4 (Floating System Snackbars / Overlays):** `#1E293B` featuring an emerald accent rim (`#10B981`) and a 4dp vertical offset (`rgba(0, 0, 0, 0.45)`).
+### Spacing and shape
 
-## Shapes
+Use the 4 dp spacing rhythm in `spacing`: 4, 8, 12, 16, 24, and 32. Use 16 dp for normal screen gutters, 12 dp inside cards, 8 dp between related controls, and 4 dp between a label and its value. Whitespace must group related information and separate different tasks.
 
-Shapes reflect precision technical hardware. Soft corner geometries ensure components look engineered rather than decorative:
+| Shape | Token | Use |
+|---|---|---|
+| Micro | `radius.micro` | Sheet handles and compact geometry |
+| Control | `radius.control` | Buttons, inputs, badges, and rows |
+| Card | `radius.card` | Cards, modules, code blocks, and empty-state icons |
+| Sheet | `radius.sheet` | Top corners of bottom sheets |
+| Bubble | `radius.bubble` | Chat message bubbles only |
+| Pill | `radius.pill` | Progress tracks or controls whose function requires a capsule |
 
-- **Standard Elements (Buttons, Inputs, Metric Cells):** 4px (`0.25rem`) corner radius.
-- **Cards, Modules, and Code Blocks:** 8px (`0.5rem`) corner radius.
-- **Android Bottom Sheets:** Top-left and top-right radii locked at 12px (`0.75rem`), with flat bottom edges.
-- **Status Pills & Provenance Tags:** 2px or 4px micro-radii to maintain an industrial tag aesthetic.
+Circles, status dots, avatars, and progress tracks may use geometry-specific radii. Other components use the scale above. Flat surfaces and one-pixel borders communicate hierarchy without decorative elevation.
+
+## Layout
+
+- Screens use the app background, safe-area insets, a 16 dp horizontal gutter, and enough bottom padding for system navigation.
+- App bars present one title, current context when useful, and only actions that apply to the whole screen.
+- Tab bars use the same dark surface hierarchy and show emerald only for the active destination.
+- Lists use rows for repeated records. Cards group related settings or a single record with several fields.
+- Narrow screens remain the baseline. Wrap status and action rows instead of shrinking text or touch targets.
 
 ## Components
 
 ### Buttons
-- **Primary:** Background `#10B981`, text `#020617`, font `Inter` 600 weight. Zero shadow; sharp 1px border transition on touch feedback.
-- **Technical/Secondary:** Background `#1E293B`, border 1px solid `#334155`, text `#F8FAFC`. Provides monospaced accelerator hints (e.g., `[RUN]`).
-- **Destructive/Abort:** Outlined in `#EF4444`, background transparent; switches to filled `#EF4444` during an active inference interrupt.
 
-### Chips & Badges
-- **Provenance Tags:**
-  - `LIVE`: 1px solid `#10B981`, emerald text, glowing status dot indicator (4px circle).
-  - `OVERRIDE`: 1px solid `#F59E0B`, amber text, monospaced uppercase.
-  - `BUNDLED`: 1px solid `#475569`, slate muted text.
-- **Metrics Chips:** Key-value pairs enclosed in single pill wrappers (e.g., `TTFT: 240ms` or `TOK/S: 48.2`).
+| Type | Treatment |
+|---|---|
+| Primary | Emerald fill, dark text, Inter Semibold, no shadow |
+| Secondary | Raised dark surface, one-pixel border when distinction is needed, light or cyan text |
+| Destructive | Red fill for confirmation, or red text on a dark surface before confirmation |
+| Icon | Relevant platform symbol centered in a square target with an accessible label |
 
-### Input Fields & Prompt Consoles
-- **Terminal Inputs:** Dark surface (`#0F172A`), monospace input text, `#10B981` solid vertical block caret with optional blink rate toggle.
-- **Validation Footers:** Displays real-time context token meter (`342 / 4,096 tokens`) directly under the input boundary. Amber warnings appear at 85% capacity; red appears on context boundary overflow.
+Standard controls use `interaction.touchTarget` at 48 dp. Compact controls use `interaction.compactTouchTarget` at 44 dp. Pressed controls use `interaction.pressedOpacity`; disabled controls use `interaction.disabledOpacity` and expose disabled accessibility state. Button labels name the action, such as `Save web tools` or `Delete conversation`.
 
-### Bottom Sheets & Drawers
-- Handles are rendered as subtle 32x4px horizontal pills centered on sheet headers.
-- Contains segmented parameter sliders (Temperature, Top-P, Presence Penalty) displaying exact live float values (`0.72`) in JetBrains Mono.
+### Inputs
 
-### Untrusted External Content Callouts
-- Code payloads, markdown outputs, or tool calls returned by non-local endpoints render with an industrial warning bar on the left edge (2px solid `#06B6D4` or `#F59E0B`), accompanied by a monospace security badge: `UNTRUSTED LLM OUTPUT`.
+- Use a recessed or raised dark surface, body-size monospace text, and outline-colored placeholder text.
+- Use a one-pixel border when the input needs separation from its parent. Change that border to emerald while focused.
+- Use the emerald cursor and selection color. Preserve platform keyboard behavior and visible validation copy.
+- Keep labels outside the field. Explain format or consequences below the field with muted text.
+- Errors name what failed and the next corrective action. Never encode validity with color alone.
+
+### Cards, rows, badges, and status
+
+- Cards use `surfaceLow`, a one-pixel border, `radius.card`, and 12 dp internal padding.
+- Rows align their primary value first and place metadata or actions after it. Entire-row actions receive one accessible press target.
+- Badges use `surfaceHigh`, `radius.control`, meta text, and only enough padding to separate the label.
+- Status dots are 5 to 8 dp, have no glow or pulse, and always accompany a text label.
+- Emerald means healthy or active, cyan means informational, amber means caution, and red means failure or destructive intent.
+
+### Switches and selectors
+
+- Switch tracks use emerald when enabled and neutral surfaces when disabled. The row label remains readable in either state.
+- Radio and segmented choices use a 44 dp minimum target. Selected choices use emerald fill or border plus accessible checked state.
+- Show only choices supported by the active endpoint or model.
+
+### Bottom sheets and modals
+
+Use `src/ui/bottom-sheet.tsx` for every bottom sheet. The native `Modal` animation must remain disabled so the scrim does not move with the panel.
+
+- The backdrop fades independently using `motion.backdropIn` and `motion.backdropOut`.
+- The sheet translates vertically from and to the bottom using `motion.sheetIn` and `motion.sheetOut`.
+- The close animation completes before the modal unmounts.
+- The sheet uses `colors.sheet` or `colors.surfaceLow`, a top border, `radius.sheet` top corners, and a centered 32 by 4 dp handle.
+- Tapping the backdrop and using the Android back action close the sheet unless an irreversible operation is in progress.
+- The sheet exposes a modal accessibility boundary and every backdrop has a specific dismiss label.
+
+This motion separates two jobs: the fade establishes modal focus while the panel movement explains where the temporary controls live. No content inside the backdrop may slide.
+
+## Product states
+
+- Loading states name the resource being loaded when the wait occupies a screen.
+- Empty states explain why the collection is empty and offer the next valid action.
+- Error states identify the failed operation, preserve safe user input, and provide recovery when available.
+- Disabled states remain legible, expose accessibility state, and do not rely on opacity alone when the reason is unclear.
+- Warning and destructive confirmations state scope and permanence before the final action.
+
+## Chat
+
+- User and assistant messages use distinct surface roles and `radius.bubble`; live state is shown with text and emerald status.
+- The composer stays visually connected to the transcript and keeps attach and send controls at least 44 dp.
+- Markdown prioritizes readable body text. Tables scroll when necessary. Code uses a recessed canvas, monospace text, and no simulated terminal decoration.
+- Thinking summaries are collapsed by default and use amber as a semantic reasoning marker.
+- Context, token use, TTFT, throughput, and cache data use compact monospace labels. Unknown values remain unknown rather than becoming zero.
+- Tool approval and interruption states use explicit labels and actions.
+
+## Interaction and accessibility
+
+- Every interactive element has a real behavior, an accessibility role, and a label that describes the result.
+- Keep targets at 48 dp, or 44 dp for compact controls. Use hit slop only to extend an already clear visual target.
+- Do not rely on color alone. Pair status color with text, icon shape, checked state, or position.
+- Respect safe areas, text wrapping, dynamic content length, keyboard avoidance, and Android back behavior.
+- Do not add endless animation. State transitions run once and preserve content position after completion.
+- Test affected loading, empty, error, disabled, selected, pressed, focused, open, and closing states before delivery.
+
+## UI change checklist
+
+1. Read this document and inspect the existing component before editing.
+2. Reuse `src/ui/tokens.ts`, shared UI components, and the nearest established layout pattern.
+3. Check all states affected by the change, including accessibility state and narrow-screen wrapping.
+4. Confirm that colors, type sizes, spacing, radii, targets, and motion match this contract.
+5. Run the Anti Slop UI checklist, TypeScript, ESLint, relevant tests, and the repository delivery gate.

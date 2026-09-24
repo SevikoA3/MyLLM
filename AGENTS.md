@@ -6,7 +6,7 @@ Panduan kerja untuk agent yang mengerjakan repository MyLLM.
 
 | Dokumen | Isi | Kapan dibaca |
 |---|---|---|
-| `DESIGN.md` | Arah visual produk, tipografi, warna, dan perilaku komponen | Sebelum mengubah UI, layout, atau styling |
+| `DESIGN.md` | Mandatory visual contract for tokens, components, states, accessibility, and motion | Before changing UI, layout, styling, or animation |
 | `PLAN.md` | Kontrak executor, keputusan default, urutan fase, exit gate, definition of done | Sebelum mengerjakan fase apa pun |
 | `graphify-out/graph.json` | Navigation index for codebase structure and relationships | Before locating a change or tracing a flow |
 | `RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md` | Riset requirement dan keputusan teknis | Saat butuh alasan di balik sebuah keputusan |
@@ -14,7 +14,7 @@ Panduan kerja untuk agent yang mengerjakan repository MyLLM.
 
 When `graphify-out/graph.json` exists, start codebase exploration with `graphify query "<question about the codebase>"`. Use the returned paths to read the relevant source. The graph is a navigation index, not a source of truth, so verify important behavior and relationships in source. If the graph is missing, unhelpful, or stale, search narrowly with `rg` and `rg --files`.
 
-For UI changes, read `DESIGN.md`. Follow its direction without changing behavior specified by `PLAN.md`.
+For UI changes, read `DESIGN.md` before editing. It is the mandatory visual contract. Follow it without changing behavior specified by `PLAN.md`.
 
 ## 1A. Prioritas dokumen
 
@@ -120,7 +120,9 @@ Aturan test:
 
 - TypeScript strict, tanpa `any` implisit. Validasi boundary dengan zod seperti pada `domain/endpoint.ts` dan `domain/catalog.ts`.
 - Field yang hilang bernilai null atau unknown. Jangan mengisi default palsu.
-- Styling lewat kelas Tailwind dan NativeWind. Token visual ada di `src/ui/tokens.ts`.
+- Reuse `src/ui/tokens.ts` for colors, fonts, spacing, radii, typography, interaction sizes, and motion. Do not define local palettes, font maps, radius scales, animation timings, or competing component standards.
+- Reuse `src/ui/bottom-sheet.tsx` for bottom sheets. The backdrop must fade independently while the sheet translates from the bottom.
+- For UI changes, audit every affected loading, empty, error, disabled, selected, pressed, focused, open, and closing state. Run the Anti Slop UI checklist before delivery.
 - Jangan menambah dependency pada fase yang belum memerlukannya. Setelah menambah atau mengubah dependency, jalankan `npx expo-doctor` dan catat versi aktual jika berpengaruh pada bagian Generated toolchain README.md.
 - Pin `nativewind` pada `5.0.0-rc.0`, `react-native-css` pada `3.1.0-rc.0`, `tailwindcss` pada `4.1.12`, dan `lightningcss` pada `1.30.1`. Jangan mengganti `global.css` dengan satu `@import "tailwindcss"`.
 

@@ -16,32 +16,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { pickOverridesJson, shareOverridesJson } from '../../services/persistence/catalog-transfer';
 import type { OverridesPreview } from '../../services/persistence/catalog-store';
+import { colors, fonts, typography } from '../../ui/tokens';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { useModelCatalog } from './use-model-catalog';
-
-const colors = {
-  background: '#0b1326',
-  surfaceLowest: '#060e20',
-  surfaceLow: '#131b2e',
-  surface: '#171f33',
-  surfaceHigh: '#222a3d',
-  border: '#86948a',
-  text: '#dae2fd',
-  muted: '#bbcabf',
-  primary: '#4edea3',
-  primaryText: '#003824',
-  secondary: '#4cd7f6',
-  warning: '#ffb95f',
-  error: '#ffb4ab',
-  errorBackground: '#93000a',
-  errorText: '#ffdad6',
-} as const;
-
-const fonts = {
-  heading: 'Inter_600SemiBold',
-  mono: 'JetBrainsMono_400Regular',
-  monoMedium: 'JetBrainsMono_500Medium',
-} as const;
 
 export default function ModelsJsonScreen() {
   const { status, profile } = useActiveEndpoint();
@@ -200,7 +177,7 @@ export default function ModelsJsonScreen() {
                 minHeight: 360,
                 color: colors.text,
                 fontFamily: Platform.select({ android: 'monospace', default: fonts.mono }),
-                fontSize: 12,
+                fontSize: typography.body,
                 lineHeight: 18,
                 padding: 12,
               }}
@@ -260,7 +237,7 @@ function EndpointBadge({ label }: { label: string }) {
   return (
     <View style={{ maxWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 4, backgroundColor: colors.surfaceHigh, paddingHorizontal: 7, paddingVertical: 5 }}>
       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: colors.secondary }} />
-      <Text numberOfLines={1} style={{ flexShrink: 1, color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 9 }}>{label}</Text>
+      <Text numberOfLines={1} style={{ flexShrink: 1, color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: typography.meta }}>{label}</Text>
     </View>
   );
 }

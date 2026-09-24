@@ -11,7 +11,6 @@ import {
   KeyboardAvoidingView,
   type ListRenderItemInfo,
   Linking,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -28,36 +27,13 @@ import type { AppError } from '../../domain/error';
 import type { ToolActivity } from '../../domain/tool';
 import { parseWebFetchOutput, parseWebSearchOutput } from '../../domain/web-search';
 import { formatCount } from '../../domain/usage';
+import { designSystem } from '../../ui/tokens';
+import { BottomSheet } from '../../ui/bottom-sheet';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { useChat } from './use-chat';
 import { ContextPill } from './context-pill';
 
-const CHAT_THEME = {
-  colors: {
-    background: '#0b1326',
-    canvas: '#060e20',
-    sheet: '#0f172a',
-    surface: '#171f33',
-    surfaceLow: '#131b2e',
-    surfaceHigh: '#222a3d',
-    border: '#334155',
-    text: '#dae2fd',
-    textMuted: '#bbcabf',
-    accent: '#10b981',
-    accentText: '#020617',
-    secondary: '#06b6d4',
-    tertiary: '#f59e0b',
-    danger: '#ef4444',
-    warningBg: '#523200',
-    warningText: '#ffddb8',
-  },
-  radius: { micro: 2, control: 4, card: 8, sheet: 12, bubble: 16, pill: 9999 },
-  spacing: { screen: 16, gap: 8 },
-  typography: { title: 26, subtitle: 18, body: 13, meta: 10 },
-  fonts: { heading: 'Inter_600SemiBold', mono: 'JetBrainsMono_400Regular', monoMedium: 'JetBrainsMono_500Medium' },
-} as const;
-
-const theme = CHAT_THEME;
+const theme = designSystem;
 const chatMessageKey = (item: ChatMessage) => item.id;
 const chatListStyle = { flex: 1 } as const;
 
@@ -254,7 +230,7 @@ export default function ChatScreen() {
             style={({ pressed }) => ({
               flex: 1,
               minWidth: 0,
-              minHeight: 32,
+              minHeight: theme.interaction.compactTouchTarget,
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
@@ -281,8 +257,8 @@ export default function ChatScreen() {
               hitSlop={6}
               onPress={() => router.push('/history')}
               style={({ pressed }) => ({
-                width: 32,
-                height: 32,
+                width: theme.interaction.compactTouchTarget,
+                height: theme.interaction.compactTouchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: theme.radius.card,
@@ -307,8 +283,8 @@ export default function ChatScreen() {
                 }
               }}
               style={({ pressed }) => ({
-                width: 32,
-                height: 32,
+                width: theme.interaction.compactTouchTarget,
+                height: theme.interaction.compactTouchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: theme.radius.card,
@@ -480,7 +456,7 @@ export default function ChatScreen() {
                   disabled={chat.pending || chat.compacting || chat.attachments.length >= 4}
                   onPress={() => void chat.addImage()}
                   style={({ pressed }) => ({
-                    width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting || chat.attachments.length >= 4 ? 0.4 : pressed ? 0.7 : 1,
+                    width: theme.interaction.compactTouchTarget, height: theme.interaction.compactTouchTarget, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting || chat.attachments.length >= 4 ? 0.4 : pressed ? 0.7 : 1,
                   })}>
                   <SymbolView name={{ ios: 'paperclip', android: 'attach_file' }} size={18} tintColor={theme.colors.secondary} />
                 </Pressable>
@@ -491,7 +467,7 @@ export default function ChatScreen() {
                 value={draft}
                 onChangeText={setDraft}
                 placeholder={chat.readOnly ? 'Read-only conversation' : chat.activeModelId === null ? 'Choose a model to start...' : `Message ${chat.activeModelId}...`}
-                placeholderTextColor="#7f8ba8"
+                placeholderTextColor={theme.colors.outline}
                 editable={
                   !chat.pending &&
                   !chat.compacting &&
@@ -609,7 +585,7 @@ function CompactionSeparator() {
 function ChatInfoBlock({ title, body }: { title: string; body: string }) {
   return (
     <View style={{ gap: 6, padding: theme.spacing.screen, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.card, backgroundColor: theme.colors.surfaceLow }}>
-      <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: 16 }}>{title}</Text>
+      <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>{title}</Text>
       <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body, lineHeight: 20 }}>{body}</Text>
     </View>
   );
@@ -661,84 +637,67 @@ export function ReasoningSelector({
         </Text>
         <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={14} tintColor={theme.colors.textMuted} />
       </Pressable>
-      <Modal
+      <BottomSheet
         visible={open}
-        transparent
-        animationType="slide"
-        presentationStyle="overFullScreen"
-        statusBarTranslucent
-        navigationBarTranslucent
+        dismissLabel="Close thinking menu"
         onRequestClose={() => setOpen(false)}>
         <View
           style={{
-            flex: 1,
-            justifyContent: 'flex-end',
-            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            width: '100%',
+            alignSelf: 'center',
+            gap: 4,
+            padding: 16,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            borderTopLeftRadius: theme.radius.sheet,
+            borderTopRightRadius: theme.radius.sheet,
+            backgroundColor: theme.colors.sheet,
           }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close thinking menu"
-            onPress={() => setOpen(false)}
-            style={{ position: 'absolute', inset: 0 }}
-          />
-          <View
+          <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
+          <Text
             style={{
-              width: '100%',
-              alignSelf: 'center',
-              gap: 4,
-              padding: 16,
-              borderTopWidth: 1,
-              borderTopColor: theme.colors.border,
-              borderTopLeftRadius: theme.radius.sheet,
-              borderTopRightRadius: theme.radius.sheet,
-              backgroundColor: theme.colors.sheet,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              color: theme.colors.textMuted,
+              fontSize: theme.typography.meta,
+              fontWeight: '700',
             }}>
-            <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
-            <Text
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                color: theme.colors.textMuted,
-                fontSize: theme.typography.meta,
-                fontWeight: '700',
-              }}>
-              Thinking level
-            </Text>
-            {options.map((effort) => {
-              const active = effort === selected;
-              return (
-                <Pressable
-                  key={effort}
-                  accessibilityRole="radio"
-                  accessibilityLabel={'Thinking ' + effort}
-                  accessibilityState={{ checked: active, disabled }}
-                  disabled={disabled}
-                  onPress={() => choose(effort)}
-                  style={({ pressed }) => ({
-                    minHeight: 48,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingHorizontal: 12,
-                    borderRadius: theme.radius.control,
-                    backgroundColor: active ? theme.colors.background : 'transparent',
-                    opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
-                  })}>
-                  <Text
-                    style={{
-                      color: theme.colors.text,
-                      fontSize: theme.typography.body,
-                      fontWeight: active ? '700' : '500',
-                    }}>
-                    {effort}
-                  </Text>
-                  {active && <Text style={{ color: theme.colors.accent, fontWeight: '800' }}>✓</Text>}
-                </Pressable>
-              );
-            })}
-          </View>
+            Thinking level
+          </Text>
+          {options.map((effort) => {
+            const active = effort === selected;
+            return (
+              <Pressable
+                key={effort}
+                accessibilityRole="radio"
+                accessibilityLabel={'Thinking ' + effort}
+                accessibilityState={{ checked: active, disabled }}
+                disabled={disabled}
+                onPress={() => choose(effort)}
+                style={({ pressed }) => ({
+                  minHeight: 48,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 12,
+                  borderRadius: theme.radius.control,
+                  backgroundColor: active ? theme.colors.background : 'transparent',
+                  opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+                })}>
+                <Text
+                  style={{
+                    color: theme.colors.text,
+                    fontSize: theme.typography.body,
+                    fontWeight: active ? '700' : '500',
+                  }}>
+                  {effort}
+                </Text>
+                {active && <Text style={{ color: theme.colors.accent, fontWeight: '800' }}>✓</Text>}
+              </Pressable>
+            );
+          })}
         </View>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -778,7 +737,7 @@ export const MessageBubble = memo(function MessageBubble({ message, modelId = nu
             accessibilityLabel="Toggle thinking summary"
             accessibilityState={{ expanded: reasoningOpen }}
             onPress={() => setReasoningOpen((value) => !value)}
-            style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 10 }}>
+            style={{ minHeight: theme.interaction.compactTouchTarget, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 10 }}>
             <Text style={{ color: theme.colors.tertiary, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
               Thinking summary
             </Text>

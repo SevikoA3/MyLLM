@@ -48,7 +48,7 @@ describe('ReasoningSelector', () => {
     fireEvent.press(view.getByLabelText('Thinking high'));
 
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith('high'));
-    expect(view.queryByLabelText('Thinking high')).toBeNull();
+    await waitFor(() => expect(view.queryByLabelText('Thinking high')).toBeNull());
   });
 });
 

@@ -1,29 +1,13 @@
 import { useState } from 'react';
 import { SymbolView } from 'expo-symbols';
-import { Modal, Pressable, Switch, Text, View } from 'react-native';
+import { Pressable, Switch, Text, View } from 'react-native';
 
 import { DEFAULT_CONTEXT_POLICY, type ContextBudgetResult, type ContextPolicy } from '../../domain/context';
 import { formatCount, formatDuration, formatPercent, formatRate, type TurnMetrics } from '../../domain/usage';
+import { designSystem } from '../../ui/tokens';
+import { BottomSheet } from '../../ui/bottom-sheet';
 
-const theme = {
-  colors: {
-    canvas: '#060e20',
-    sheet: '#131b2e',
-    surface: '#171f33',
-    surfaceHigh: '#222a3d',
-    border: '#86948a',
-    text: '#dae2fd',
-    textMuted: '#bbcabf',
-    accent: '#4edea3',
-    accentText: '#003824',
-    secondary: '#4cd7f6',
-    danger: '#ffb4ab',
-    warning: '#ffb95f',
-  },
-  radius: { control: 4, card: 8, sheet: 12 },
-  typography: { subtitle: 18, body: 13, meta: 10 },
-  fonts: { heading: 'Inter_600SemiBold', mono: 'JetBrainsMono_400Regular', monoMedium: 'JetBrainsMono_500Medium' },
-} as const;
+const theme = designSystem;
 
 export function ContextPill({
   budget,
@@ -82,17 +66,11 @@ export function ContextPill({
         <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={14} tintColor={theme.colors.textMuted} />
       </Pressable>
 
-      <Modal
+      <BottomSheet
         visible={expanded}
-        transparent
-        animationType="slide"
-        presentationStyle="overFullScreen"
-        statusBarTranslucent
-        navigationBarTranslucent
+        dismissLabel="Dismiss context usage"
         onRequestClose={() => setExpanded(false)}>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.55)' }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Dismiss context usage" onPress={() => setExpanded(false)} style={{ position: 'absolute', inset: 0 }} />
-          <View accessibilityViewIsModal style={{ gap: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
+          <View style={{ gap: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
             <View style={{ alignItems: 'center' }}>
               <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
             </View>
@@ -165,9 +143,8 @@ export function ContextPill({
                 Context limit reached. Compact, start a new chat, or reduce output reserve.
               </Text>
             )}
-          </View>
         </View>
-      </Modal>
+      </BottomSheet>
     </>
   );
 }
@@ -250,7 +227,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone: 'a
   const color = tone === 'neutral' ? theme.colors.text : theme.colors[tone];
   return (
     <View style={{ flexGrow: 1, gap: 2, borderRadius: 4, backgroundColor: theme.colors.surfaceHigh, padding: 8 }}>
-      <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: 9 }}>{label.toUpperCase()}</Text>
+      <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>{label.toUpperCase()}</Text>
       <Text style={{ color, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>{value}</Text>
     </View>
   );
@@ -259,7 +236,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone: 'a
 function Badge({ label, tone }: { label: string; tone: 'accent' | 'warning' | 'neutral' }) {
   const color = tone === 'accent' ? theme.colors.accent : tone === 'warning' ? theme.colors.warning : theme.colors.textMuted;
   return (
-    <Text style={{ color, backgroundColor: theme.colors.surfaceHigh, fontFamily: theme.fonts.monoMedium, fontSize: 9, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}>
+    <Text style={{ color, backgroundColor: theme.colors.surfaceHigh, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 4 }}>
       {label}
     </Text>
   );
