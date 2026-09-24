@@ -1,7 +1,7 @@
 import type { EndpointProfile } from '../../domain/endpoint';
 
 export type ClearAllDataDeps = {
-  loadEndpoint: () => Promise<EndpointProfile | null>;
+  loadAllEndpoints: () => Promise<EndpointProfile[]>;
   removeCredential: (credentialId: string) => Promise<void>;
   clearCredentials: () => Promise<void>;
   clearEndpoint: () => Promise<void>;
@@ -14,9 +14,12 @@ export type ClearAllDataDeps = {
 };
 
 export async function clearAllData(deps: ClearAllDataDeps): Promise<void> {
-  const endpoint = await deps.loadEndpoint();
-  if (endpoint?.credentialRef !== null && endpoint?.credentialRef !== undefined) {
-    await deps.removeCredential(endpoint.credentialRef);
+  // Hapus credential semua endpoint, bukan hanya yang aktif.
+  const allEndpoints = await deps.loadAllEndpoints();
+  for (const ep of allEndpoints) {
+    if (ep.credentialRef !== null) {
+      await deps.removeCredential(ep.credentialRef).catch(() => undefined);
+    }
   }
   await deps.clearCredentials();
   await Promise.all([

@@ -2,7 +2,13 @@ import { Directory, File, Paths } from 'expo-file-system';
 
 import defaults from '../../../assets/model-defaults.json';
 import { CatalogDefaultsSchema, type CatalogDefaults } from '../../domain/catalog';
-import { CATALOG_DIR, type CatalogStorage } from './catalog-store';
+import {
+  CATALOG_DIR,
+  backupFileName,
+  removeEndpointCatalogData,
+  snapshotFileName,
+  type CatalogStorage,
+} from './catalog-store';
 
 /**
  * Cache katalog disimpan di document directory (per-app-private) karena bertahan
@@ -54,4 +60,26 @@ export function clearCatalogCache(): void {
   if (directory.exists) {
     directory.delete();
   }
+}
+
+/** Hapus snapshot, override, dan history model milik satu endpoint saja. */
+export async function deleteCatalogForEndpoint(endpointId: string): Promise<void> {
+  const snapshot = snapshotFileName(endpointId);
+  const backup = backupFileName(endpointId);
+  for (const name of [
+    snapshot,
+    backup,
+    `${snapshot}.corrupt`,
+    `${backup}.corrupt`,
+    `${snapshot}.tmp`,
+    `${snapshot}.writing`,
+    `${snapshot}.tmp.writing`,
+    `${backup}.writing`,
+  ]) {
+    const target = file(name);
+    if (target.exists) {
+      target.delete();
+    }
+  }
+  await removeEndpointCatalogData(fileCatalogStorage, endpointId);
 }

@@ -8,19 +8,19 @@ Panduan kerja untuk agent yang mengerjakan repository MyLLM.
 |---|---|---|
 | `DESIGN.md` | Arah visual produk, tipografi, warna, dan perilaku komponen | Sebelum mengubah UI, layout, atau styling |
 | `PLAN.md` | Kontrak executor, keputusan default, urutan fase, exit gate, definition of done | Sebelum mengerjakan fase apa pun |
-| `docs/CODEBASE.md` | Peta struktur folder, tanggung jawab berkas, arah dependency | Sebelum menjelajah kode |
+| `graphify-out/graph.json` | Navigation index for codebase structure and relationships | Before locating a change or tracing a flow |
 | `RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md` | Riset requirement dan keputusan teknis | Saat butuh alasan di balik sebuah keputusan |
 | `README.md` | Perintah, versi toolchain, catatan styling dan development build | Saat menjalankan atau menambah dependency |
 
-Baca `docs/CODEBASE.md` lebih dulu untuk menemukan berkas. Jangan menjelajahi seluruh repository untuk mencari tempat sebuah perubahan.
+When `graphify-out/graph.json` exists, start codebase exploration with `graphify query "<question about the codebase>"`. Use the returned paths to read the relevant source. The graph is a navigation index, not a source of truth, so verify important behavior and relationships in source. If the graph is missing, unhelpful, or stale, search narrowly with `rg` and `rg --files`.
 
-Untuk perubahan UI, baca `DESIGN.md` setelah `docs/CODEBASE.md`. Terapkan arahnya tanpa mengubah perilaku produk yang dikontrak `PLAN.md`.
+For UI changes, read `DESIGN.md`. Follow its direction without changing behavior specified by `PLAN.md`.
 
 ## 1A. Prioritas dokumen
 
 - `PLAN.md` mengatur requirement, fase, default produk, dan exit gate.
 - `AGENTS.md` mengatur perilaku agent dan batas kerja repository.
-- `docs/CODEBASE.md` hanya mencatat keadaan repository dan menjadi indeks navigasi.
+- `graphify-out/graph.json` aids navigation, but its claims must be verified against source.
 - Jika dokumen bertentangan, jangan menebak. Laporkan konflik dan minta keputusan.
 
 ## 1B. Batas eksekusi lokal
@@ -96,7 +96,7 @@ Tambahkan test contract Node bila perubahan menyentuh `src/services/transport` a
 
 Ada dua jalur test dan keduanya memakai kode produksi, bukan tiruan.
 
-Jest memuat langsung berkas TypeScript di `src`. Modul native dan helper murni dipisahkan supaya berkas `*.test.ts` tidak perlu environment React Native. Contoh pola: `services/persistence/catalog-store.test.ts` memakai `CatalogStorage` berbasis `Map`, dan `services/credentials/store.test.ts` menyuntikkan `SecureStoreLike` palsu.
+All tests live under `test/`. Jest tests mirror the source layout, for example `test/services/persistence/catalog-store.test.ts`. Node contract tests live in `test/contract/`. Native modules and pure helpers remain separate so Jest tests do not require a React Native environment.
 
 Contract test Node menjalankan hasil kompilasi dari `.tests-build/`, yang dibuat `tools/build-tests.mjs`. Modul yang diuji harus terdaftar di `ENTRIES`, modul native yang tidak tersedia di Node ditambal lewat `STUBS`. Folder `.tests-build/` tidak di-commit.
 
@@ -128,55 +128,13 @@ Aturan test:
 
 1. Tentukan fase yang sedang aktif dari checklist di PLAN.md.
 2. Baca bagian fase tersebut beserta exit gate dan daftar do not build yet.
-3. Cari berkas terkait lewat `docs/CODEBASE.md`.
+3. Find related files with `graphify query` when the graph exists, then verify the source. Use a narrow source search when the graph is missing or unhelpful.
 4. Sebutkan asumsi jika ada keputusan yang belum tercantum di PLAN.md. Jika bertentangan dengan default, hentikan dan tanyakan.
 5. Kerjakan hanya scope fase aktif. Jangan mempersiapkan abstraksi untuk fase berikutnya.
 6. Jalankan typecheck, lint, dan test yang relevan. Perubahan docs-only tidak memerlukan pemeriksaan source code.
 7. Perbarui checklist PLAN.md setelah verifikasi, bukan sebelum.
-8. Periksa `docs/CODEBASE.md` setelah setiap perubahan. Perbarui pada commit yang sama hanya jika struktur, file, tanggung jawab, export utama, arah dependency, atau alur runtime berubah.
+8. After source changes that affect structure, responsibilities, dependencies, or runtime flow, refresh the graph with `graphify update .`. After changes to indexed documents, or when an incremental update cannot represent a change, run the full `/graphify .` workflow. Do not edit generated graph files manually.
 9. Pastikan `git diff` hanya berisi perubahan yang terkait tugas.
-
-### 8A. Prompt wajib pembaruan CODEBASE.md
-
-Jalankan prompt ini setelah perubahan yang mungkin memengaruhi peta codebase. Ganti bagian dalam tanda kurung. Jika tidak ada struktur, file, tanggung jawab, export utama, arah dependency, atau alur runtime yang berubah, jangan mengubah `docs/CODEBASE.md`.
-
-~~~text
-Update docs/CODEBASE.md to match the current repository after this codebase change.
-
-Change context: (describe the completed change, for example: "Phase 4 non-streaming chat").
-
-Changed files: (list files changed by this task, or inspect the current git diff).
-
-Steps:
-
-1. Inspect the current git diff and list real files with: find app src tools assets -type f | sort
-2. Compare the result with section 2, Folder structure, in docs/CODEBASE.md.
-3. Add, remove, or move every file entry required by the current repository.
-4. Update section 3 for every file whose responsibility, main export, or imported layer changed.
-5. Update section 4 when the runtime flow, data flow, or dependency direction changed.
-6. Remove or revise section 5 entries that no longer describe missing work.
-7. Update the Status line when the repository state or completed phase changed.
-
-Rules:
-
-- Reflect the repository as it exists now, not a future plan.
-- Do not change PLAN.md, README.md, or source code during this refresh.
-- Do not add requirements, phases, or speculative entries.
-- Do not record dependency versions, test counts, or line counts.
-- Preserve Indonesian language and the existing table style.
-- Keep claims checkable from the referenced files.
-- Apply changes directly to `docs/CODEBASE.md`; do not return recommendations only.
-- If no update is needed, make no empty change.
-- Do not use an em dash.
-
-Verify:
-
-- Every path in section 2 exists.
-- Every file under app/, src/, tools/, or assets/ is represented.
-- Every responsibility and dependency claim matches the referenced source file.
-
-Output only the diff for docs/CODEBASE.md.
-~~~
 
 ## 9. Larangan
 

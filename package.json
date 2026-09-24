@@ -57,22 +57,29 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest --watchAll",
-    "test:ci": "jest --ci",
+    "test:ci": "jest --ci --runInBand",
     "doctor": "npx expo-doctor",
-    "test:server": "node --test tools/fake-server.test.mjs",
-    "test:transport": "node tools/build-tests.mjs && node --test tools/transport.test.mjs",
-    "test:onboarding": "node tools/build-tests.mjs && node --test tools/onboarding.test.mjs",
-    "test:responses": "node tools/build-tests.mjs && node --test tools/responses.test.mjs",
-    "test:chat": "node tools/build-tests.mjs && node --test tools/chat-completions.test.mjs",
-    "test:protocol": "node tools/build-tests.mjs && node --test tools/protocol.test.mjs",
-    "test:web-tools": "node tools/build-tests.mjs && node --test tools/web-tools.test.mjs",
-    "test:conversations": "node tools/build-tests.mjs && node --test tools/conversations.test.mjs",
-    "test:fields": "node tools/build-tests.mjs && node --test tools/model-fields.test.mjs",
+    "test:server": "node --test test/contract/fake-server.test.mjs",
+    "test:transport": "node tools/build-tests.mjs && node --test test/contract/transport.test.mjs",
+    "test:onboarding": "node tools/build-tests.mjs && node --test test/contract/onboarding.test.mjs",
+    "test:responses": "node tools/build-tests.mjs && node --test test/contract/responses.test.mjs",
+    "test:chat": "node tools/build-tests.mjs && node --test test/contract/chat-completions.test.mjs",
+    "test:protocol": "node tools/build-tests.mjs && node --test test/contract/protocol.test.mjs",
+    "test:web-tools": "node tools/build-tests.mjs && node --test test/contract/web-tools.test.mjs",
+    "test:usage": "node tools/build-tests.mjs && node --test test/contract/usage.test.mjs",
+    "test:conversations": "node tools/build-tests.mjs && node --test test/contract/conversations.test.mjs",
+    "test:fields": "node tools/build-tests.mjs && node --test test/contract/model-fields.test.mjs",
     "smoke:models": "node tools/build-tests.mjs && node tools/smoke-models.mjs",
     "smoke:responses": "node tools/build-tests.mjs && node tools/smoke-responses.mjs"
   },
   "jest": {
     "preset": "jest-expo",
+    "roots": [
+      "<rootDir>/test"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/.kilo/"
+    ],
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|standard-navigation|@sentry/react-native|native-base|react-native-svg)"
     ]

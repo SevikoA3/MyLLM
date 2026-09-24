@@ -6,12 +6,12 @@ const globals = require("globals");
 module.exports = defineConfig([
   expoConfig,
   {
-    files: ["tools/**/*.mjs"],
+    files: ["tools/**/*.mjs", "test/contract/**/*.mjs"],
     languageOptions: {
       globals: globals.node,
     },
   },
   {
-    ignores: ["dist/*", "node_modules/*", ".expo/*", "web-build/*"],
+    ignores: ["dist/*", "node_modules/*", ".expo/*", ".tests-build/**", "web-build/*", ".kilo/**"],
   }
 ]);

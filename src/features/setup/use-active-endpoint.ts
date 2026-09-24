@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import type { EndpointProfile } from '../../domain/endpoint';
-import { endpointStore } from '../../services/persistence/endpoint-store';
+import { endpointStore, subscribeEndpointChanges } from '../../services/persistence/endpoint-store';
 
 export type ActiveEndpointState =
   | { status: 'loading'; profile: null }
@@ -18,20 +18,28 @@ export function useActiveEndpoint(): ActiveEndpointState {
 
   useEffect(() => {
     let alive = true;
-    endpointStore
-      .load()
-      .then((profile) => {
-        if (alive) {
+    let requestVersion = 0;
+    const load = () => {
+      const version = ++requestVersion;
+      return endpointStore.load().then((profile) => {
+        if (alive && version === requestVersion) {
           setState({ status: 'ready', profile });
         }
       })
       .catch(() => {
-        if (alive) {
+        if (alive && version === requestVersion) {
           setState({ status: 'ready', profile: null });
         }
       });
+    };
+    void load();
+    const unsubscribe = subscribeEndpointChanges(() => {
+      setState({ status: 'loading', profile: null });
+      void load();
+    });
     return () => {
       alive = false;
+      unsubscribe();
     };
   }, []);
 

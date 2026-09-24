@@ -57,7 +57,11 @@ export function profileFromInput(input: SetupInput, credentialId: string | null)
   });
   return {
     ...profile,
-    compat: { ...profile.compat, modelListPath: input.modelListPath.trim() || '/models' },
+    compat: {
+      ...profile.compat,
+      modelListPath: input.modelListPath.trim() || '/models',
+      usagePath: new URL(baseUrl).hostname === 'api.amanai.dev' ? '/usage' : null,
+    },
   };
 }
 
@@ -141,17 +145,16 @@ export async function connectAndDiscover(
   });
 
   // Secret ditulis lebih dulu supaya profile tidak pernah menunjuk credential yang belum ada.
-  await credentials.save(credentialId ?? '', apiKey);
+  if (!reusesCredential) await credentials.save(credentialId ?? '', apiKey);
   try {
-    await endpoints.save(profile);
-    await endpoints.saveActiveModelId(discovered.models[0].id);
+    await endpoints.save(profile, discovered.models[0].id);
   } catch {
-    await credentials.remove(credentialId ?? '');
+    if (!reusesCredential) await credentials.remove(credentialId ?? '');
     return {
       ok: false,
       error: createAppError({
         category: 'unknown',
-        message: 'Endpoint profile could not be saved. The new credential was deleted. Try again.',
+        message: 'Endpoint profile could not be saved. Try again.',
         httpStatus: null,
         providerCode: null,
         requestId: null,

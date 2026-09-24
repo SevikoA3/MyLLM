@@ -1,16 +1,14 @@
-import { nativeStorage, type KeyValueStore } from './endpoint-store';
+import { createEndpointStore, type KeyValueStore } from './endpoint-store';
 
-/** Satu model aktif untuk endpoint aktif, memakai key yang sama dengan onboarding. */
+/** Model aktif dipisahkan per endpoint. */
 export function createSettingsStore(store?: KeyValueStore) {
-  async function resolve(): Promise<KeyValueStore> {
-    return store ?? (await nativeStorage());
-  }
+  const endpoints = createEndpointStore(store);
   return {
-    async loadActiveModelId(): Promise<string | null> {
-      return (await resolve()).getItemAsync('myllm.activeModelId');
+    async loadActiveModelId(endpointId: string): Promise<string | null> {
+      return endpoints.loadActiveModelId(endpointId);
     },
-    async saveActiveModelId(modelId: string): Promise<void> {
-      await (await resolve()).setItemAsync('myllm.activeModelId', modelId);
+    async saveActiveModelId(endpointId: string, modelId: string): Promise<void> {
+      await endpoints.saveActiveModelId(endpointId, modelId);
     },
   };
 }

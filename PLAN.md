@@ -1,6 +1,6 @@
 # Implementation Plan Aplikasi Chat LLM Android
 
-Status: Phase 15 implementation and automated tests completed on 20 September 2026. The Android endpoint and memory exit gate remain manual.
+Status: Phase 17 implementation and automated tests completed on 24 September 2026. Phase 16 was skipped by product decision, so generation remains foreground-only. Android portability and endpoint-management verification remain manual.
 
 Tanggal: 16 September 2026.
 
@@ -1079,6 +1079,8 @@ Stream dapat berlanjut saat app di-background-kan melalui Android foreground ser
 
 Implementasikan hanya jika penggunaan nyata menunjukkan foreground-only tidak cukup.
 
+Decision: Skipped on 24 September 2026. Foreground-only remains the product behavior; no foreground service was added.
+
 ### Steps
 
 - [ ] Buat local Expo Module khusus Android untuk foreground generation.
@@ -1104,28 +1106,30 @@ Menutup fitur portability dan endpoint management setelah chat, tools, dan attac
 
 ### Steps
 
-- [ ] Tambahkan multi-endpoint profile list dan endpoint switcher.
-- [ ] Satu conversation tetap terikat ke endpointId dan modelId snapshot.
-- [ ] Switching endpoint tidak mengubah active stream.
-- [ ] Credential terpisah per profile.
-- [ ] Import/export endpoint config tidak membawa credential.
-- [ ] Export conversation membawa transcript, tool audit, usage, dan readable compaction summary.
-- [ ] Import conversation memvalidasi schema dan menghasilkan ID baru.
-- [ ] Tambahkan usage screen hanya jika endpoint profile memiliki documented usage path.
-- [ ] AmanAI profile boleh memakai /usage.
-- [ ] Endpoint lain tidak menampilkan usage screen palsu.
-- [ ] Tambahkan model cache cleanup untuk endpoint yang dihapus.
-- [ ] Delete endpoint meminta kebijakan untuk conversation terkait: keep read-only atau delete.
+- [x] Tambahkan multi-endpoint profile list dan endpoint switcher.
+- [x] Satu conversation tetap terikat ke endpointId dan modelId snapshot.
+- [x] Switching endpoint tidak mengubah active stream.
+- [x] Credential terpisah per profile.
+- [x] Import/export endpoint config tidak membawa credential.
+- [x] Export conversation membawa transcript, tool audit, usage, dan readable compaction summary.
+- [x] Import conversation memvalidasi schema dan menghasilkan ID baru.
+- [x] Tambahkan usage screen hanya jika endpoint profile memiliki documented usage path.
+- [x] AmanAI profile boleh memakai /usage.
+- [x] Endpoint lain tidak menampilkan usage screen palsu.
+- [x] Tambahkan model cache cleanup untuk endpoint yang dihapus.
+- [x] Delete endpoint meminta kebijakan untuk conversation terkait: keep read-only atau delete.
 
 ### P1 release gate
 
-- [ ] Chat Completions fallback stabil.
-- [ ] Tool loop stabil.
-- [ ] Web search stabil.
-- [ ] Attachment yang didukung stabil.
-- [ ] Background behavior sesuai keputusan produk.
-- [ ] Multi-endpoint data tidak tercampur.
-- [ ] Export tidak mengandung secret.
+- [x] Chat Completions fallback stabil.
+- [x] Tool loop stabil.
+- [x] Web search stabil.
+- [x] Attachment yang didukung stabil.
+- [x] Background behavior sesuai keputusan produk.
+- [x] Multi-endpoint data tidak tercampur.
+- [x] Export tidak mengandung secret.
+
+Status: Phase 17 implementation and automated checks completed on 24 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, `npm run test:onboarding`, `npm run test:conversations`, `npm run test:usage`, `npm run test:protocol`, `npm run test:web-tools`, and `npm run test:responses` pass. Phase 16 remains intentionally skipped and foreground-only. Android import/export, switching, deletion policy, and supported attachment verification remain manual.
 
 ## 25. Phase 18: Command execution threat-model gate
 
@@ -1438,72 +1442,6 @@ Project dianggap MVP selesai setelah Phase 11. Project dianggap P1 selesai setel
 
 Jika dokumentasi library berubah saat executor mulai, pilih stable release yang saling kompatibel, update lockfile, dan catat versi aktual. Jangan pindah ke beta atau canary hanya untuk mendapatkan fitur yang belum diperlukan.
 
-## 35. Peta codebase dan prompt pembaruannya
+## 35. Navigasi codebase
 
-Peta struktur folder dan tanggung jawab berkas tinggal di `docs/CODEBASE.md`. Dokumen itu adalah indeks navigasi, bukan pengganti PLAN.md: PLAN.md memuat kontrak fase, CODEBASE.md memuat keadaan isi repository.
-
-Aturan pemakaian:
-
-- Baca `docs/CODEBASE.md` sebelum menjelajah repository untuk mencari tempat sebuah perubahan.
-- Perbarui `docs/CODEBASE.md` pada commit yang sama dengan setiap perubahan struktur, penambahan berkas, atau perubahan tanggung jawab berkas.
-- Jangan menambahkan fase atau requirement baru ke CODEBASE.md. Requirement tetap hanya di PLAN.md.
-- Jangan mencatat versi dependency di CODEBASE.md. Sumbernya adalah package.json dan bagian Generated toolchain README.md.
-
-### Prompt untuk mengubah markdown peta codebase
-
-Pakai prompt berikut apa adanya saat peta perlu disegarkan. Salin, ganti bagian dalam tanda kurung, lalu jalankan.
-
-~~~text
-Perbarui docs/CODEBASE.md supaya cocok dengan keadaan repository saat ini.
-
-Konteks perubahan: (tulis fase atau PR yang baru selesai, misalnya "Phase 4 chat non-stream").
-
-Langkah:
-
-1. Daftar berkas nyata dengan: find app src tools assets -type f | sort
-2. Bandingkan dengan bagian 2 Struktur folder pada docs/CODEBASE.md.
-3. Untuk setiap berkas yang ditambah, dihapus, atau dipindah, perbarui bagian 2.
-4. Untuk setiap berkas dengan tanggung jawab baru, perbarui tabel di bagian 3. Sebutkan nama export utama dan layer yang diimpor, bukan ringkasan naratif.
-5. Perbarui bagian 4 Alur yang sudah berjalan jika alur runtime berubah.
-6. Pindahkan atau hapus baris di bagian 5 Yang belum ada jika fasenya sudah selesai.
-7. Perbarui baris Status di kepala dokumen dengan fase yang sedang berjalan.
-
-Batasan:
-
-- Jangan menyentuh PLAN.md, README.md, atau source code pada perubahan ini.
-- Jangan mencatat versi dependency, jumlah test, atau jumlah baris.
-- Jangan menambahkan fase, requirement, atau rencana baru.
-- Jangan membuat folder utils atau barrel index.ts.
-- Pertahankan bahasa Indonesia dan gaya tabel yang sudah ada.
-- Jangan memakai em dash.
-
-Verifikasi:
-
-- Setiap path di bagian 2 benar-benar ada, dan tidak ada berkas di app/, src/, tools/, atau assets/ yang terlewat.
-- Setiap klaim di bagian 3 dapat diperiksa langsung di berkas yang disebut.
-- Dokumen tetap menjelaskan repository yang sekarang, bukan rencana.
-
-Keluarkan diff untuk docs/CODEBASE.md saja.
-~~~
-
-### Prompt review peta codebase
-
-Pakai prompt ini untuk memeriksa peta tanpa mengubah source code.
-
-~~~text
-Periksa docs/CODEBASE.md terhadap repository saat ini dan laporkan ketidakcocokan saja.
-
-1. Jalankan: find app src tools assets -type f | sort
-2. Tandai berkas yang tidak tercantum, path yang tidak lagi ada, dan tanggung jawab yang sudah tidak sesuai.
-3. Tandai klaim yang menyalin rencana, bukan keadaan sekarang.
-4. Jangan perbaiki apa pun. Keluarkan daftar temuan dengan path berkas dan baris dokumen yang perlu diubah.
-~~~
-
-### Tambahan struktur saat fase bertambah
-
-Saat fase berikutnya menambah folder baru, tambahkan juga bagiannya di CODEBASE.md mengikuti aturan layer:
-
-- `src/domain/conversation.ts`, `src/domain/usage.ts`, `src/domain/context.ts`, dan `src/domain/tool.ts` dibuat pada fase yang benar-benar memakainya.
-- Folder `src/features/chat/`, `src/features/history/`, dan `src/features/settings/` menyusul pada Phase 4, 6, dan 7.
-- `src/domain/usage.ts` dibuat pada Phase 8; `src/services/metrics/` tidak dibuat karena normalizer dan formula metrics pure, sedangkan persistence tetap di `conversation-store.ts`. `src/services/context/` menyusul pada Phase 9.
-- Folder `modules/` hanya dibuat setelah native feature disetujui.
+Use `graphify-out/graph.json` as the index for codebase structure and relationships, following `AGENTS.md`. The graph helps locate source, while source remains authoritative. Refresh the graph after codebase changes that affect structure or flow. Run the full `/graphify .` workflow when document changes or file deletions cannot be represented by an incremental update.

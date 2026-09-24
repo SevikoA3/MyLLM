@@ -8,6 +8,7 @@ const OUT = '.tests-build';
 // Modul yang dipakai contract test Node: transport discovery dan orkestrasi onboarding.
 const ENTRIES = [
   'src/services/transport/models.ts',
+  'src/services/transport/usage.ts',
   'src/services/transport/chat-completions.ts',
   'src/services/transport/protocol.ts',
   'src/services/transport/responses.ts',
@@ -102,6 +103,9 @@ if (!existsSync(join(OUT, 'services', 'transport', 'models.js'))) {
 }
 if (!existsSync(join(OUT, 'services', 'transport', 'responses.js'))) {
   throw new Error('kompilasi Responses client gagal');
+}
+if (!existsSync(join(OUT, 'services', 'transport', 'usage.js'))) {
+  throw new Error('kompilasi usage client gagal');
 }
 if (!existsSync(join(OUT, 'services', 'transport', 'chat-completions.js'))) {
   throw new Error('kompilasi Chat Completions client gagal');

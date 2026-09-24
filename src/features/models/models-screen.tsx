@@ -91,7 +91,8 @@ export default function ModelsScreen() {
 
   useEffect(() => {
     let alive = true;
-    endpointStore.loadActiveModelId().then((modelId) => {
+    if (profile === null) return;
+    endpointStore.loadActiveModelId(profile.id).then((modelId) => {
       if (alive) {
         setActiveModelId(modelId);
       }
@@ -99,7 +100,7 @@ export default function ModelsScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [profile]);
 
   useFocusEffect(
     useCallback(() => {
@@ -113,10 +114,11 @@ export default function ModelsScreen() {
       return;
     }
     setBlocked(null);
-    await endpointStore.saveActiveModelId(model.id);
+    if (profile === null) return;
+    await endpointStore.saveActiveModelId(profile.id, model.id);
     setActiveModelId(model.id);
     router.replace('/(tabs)');
-  }, []);
+  }, [profile]);
 
   const editModel = useCallback((model: MergedModel) => {
     router.push({ pathname: '/settings/model', params: { modelId: model.id } });

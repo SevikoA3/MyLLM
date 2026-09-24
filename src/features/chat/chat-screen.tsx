@@ -102,6 +102,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const reloadModel = chat.reloadModel;
   const updateContext = chat.updateContext;
+  const displayModelId = chat.readOnly ? chat.conversationModelId : chat.activeModelId;
   const activeAssistantId = chat.messages.at(-1)?.id ?? null;
   const listContentStyle = useMemo<ViewStyle>(() => ({
     flexGrow: 1,
@@ -125,10 +126,10 @@ export default function ChatScreen() {
         {activeAssistant && chat.pending && <PendingMessage calls={calls} />}
         {item.role === 'assistant' && item.status === 'sending' && item.text.length === 0
           ? null
-          : <MessageBubble message={item} modelId={chat.activeModelId} />}
+          : <MessageBubble message={item} modelId={displayModelId} />}
       </View>
     );
-  }, [activeAssistantId, chat.activeModelId, chat.pending, chat.resolveToolApproval, chat.toolActivities]);
+  }, [activeAssistantId, chat.pending, chat.resolveToolApproval, chat.toolActivities, displayModelId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -147,6 +148,7 @@ export default function ChatScreen() {
       chat.pending ||
       chat.compacting ||
       chat.loadingModel ||
+      chat.readOnly ||
       chat.activeModelId === null
     ) {
       return;
@@ -158,6 +160,7 @@ export default function ChatScreen() {
     !chat.pending &&
     (chat.compacting ||
       chat.loadingModel ||
+      chat.readOnly ||
       chat.activeModelId === null ||
       (draft.trim().length === 0 && chat.attachments.length === 0));
 
@@ -195,7 +198,7 @@ export default function ChatScreen() {
               MyLLM
             </Text>
             <View
-              accessibilityLabel={profile === null ? 'No endpoint connected' : 'Endpoint configured'}
+              accessibilityLabel={chat.readOnly ? 'Conversation endpoint unavailable' : profile === null ? 'No endpoint connected' : 'Endpoint configured'}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -210,16 +213,16 @@ export default function ChatScreen() {
                   width: 6,
                   height: 6,
                   borderRadius: 3,
-                  backgroundColor: profile === null ? theme.colors.tertiary : theme.colors.accent,
+                  backgroundColor: chat.readOnly || profile === null ? theme.colors.tertiary : theme.colors.accent,
                 }}
               />
               <Text
                 style={{
-                  color: profile === null ? theme.colors.tertiary : theme.colors.accent,
+                  color: chat.readOnly || profile === null ? theme.colors.tertiary : theme.colors.accent,
                   fontFamily: theme.fonts.monoMedium,
                   fontSize: theme.typography.meta,
                 }}>
-                {profile === null ? 'NO ENDPOINT' : 'CONNECTED'}
+                {chat.readOnly ? 'READ ONLY' : profile === null ? 'NO ENDPOINT' : 'CONNECTED'}
               </Text>
             </View>
           </View>
@@ -243,8 +246,10 @@ export default function ChatScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: theme.spacing.screen, paddingTop: 4, paddingBottom: 8, backgroundColor: theme.colors.surfaceLow }}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Active model, ${chat.activeModelId ?? 'none'}`}
-            onPress={() => router.push('/models')}
+            accessibilityLabel={`Conversation model, ${displayModelId ?? 'none'}`}
+            onPress={() => {
+              if (!chat.readOnly) router.push('/models');
+            }}
             hitSlop={6}
             style={({ pressed }) => ({
               flex: 1,
@@ -263,7 +268,9 @@ export default function ChatScreen() {
             <Text
               numberOfLines={1}
               style={{ flex: 1, color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-              {chat.loadingModel ? 'Loading active model...' : (chat.activeModelId ?? 'Choose active model')}
+              {chat.readOnly
+                ? (displayModelId ?? 'Imported model unavailable')
+                : chat.loadingModel ? 'Loading active model...' : (chat.activeModelId ?? 'Choose active model')}
             </Text>
             <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={16} tintColor={theme.colors.textMuted} />
           </Pressable>
@@ -322,7 +329,7 @@ export default function ChatScreen() {
             <ReasoningSelector
               options={chat.reasoningOptions}
               selected={chat.reasoningEffort}
-              disabled={chat.pending}
+              disabled={chat.pending || chat.readOnly}
               onSelect={(effort) => void chat.setReasoningEffort(effort)}
             />
           )}
@@ -334,23 +341,32 @@ export default function ChatScreen() {
               policy={chat.contextPolicy}
               autoCompact={chat.autoCompact}
               compacting={chat.compacting}
-              canCompact={chat.conversationId !== null && !chat.pending}
+              canCompact={chat.conversationId !== null && !chat.pending && !chat.readOnly}
               onCompact={() => void chat.compactNow()}
               onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
             />
           )}
           <ToolApprovalControl
             enabled={chat.autoApproveTools}
-            disabled={chat.pending}
+            disabled={chat.pending || chat.readOnly}
             onToggle={(enabled) => chat.setAutoApproveTools(enabled)}
           />
         </ScrollView>
 
-        {profile === null ? (
+        {chat.readOnly && (
+          <View style={{ paddingHorizontal: theme.spacing.screen, paddingTop: 8 }}>
+            <ChatInfoBlock
+              title="Read-only conversation"
+              body="This conversation belongs to an unavailable endpoint. Its transcript remains readable, but sending and local compaction are disabled."
+            />
+          </View>
+        )}
+
+        {profile === null && !chat.readOnly ? (
           <View style={{ flex: 1, padding: theme.spacing.screen }}>
             <ChatInfoBlock title="No endpoint connected" body="Connect an endpoint before sending a message." />
           </View>
-        ) : chat.activeModelId === null && !chat.loadingModel ? (
+        ) : !chat.readOnly && chat.activeModelId === null && !chat.loadingModel ? (
           <View style={{ flex: 1, gap: 12, padding: theme.spacing.screen }}>
             <ChatInfoBlock title="Choose a model" body="Chat needs one active model from the catalog." />
             <Link href="/models" asChild>
@@ -474,12 +490,13 @@ export default function ChatScreen() {
                 accessibilityHint="Write a message to send to the active model"
                 value={draft}
                 onChangeText={setDraft}
-                placeholder={chat.activeModelId === null ? 'Choose a model to start...' : `Message ${chat.activeModelId}...`}
+                placeholder={chat.readOnly ? 'Read-only conversation' : chat.activeModelId === null ? 'Choose a model to start...' : `Message ${chat.activeModelId}...`}
                 placeholderTextColor="#7f8ba8"
                 editable={
                   !chat.pending &&
                   !chat.compacting &&
                   !chat.loadingModel &&
+                  !chat.readOnly &&
                   chat.activeModelId !== null
                 }
                 multiline

@@ -86,6 +86,12 @@ const SCENARIOS = {
     headers: { location: 'https://example.invalid/v1/models' },
     body: '',
   }),
+  'usage-ok': () => json(200, {
+    balance: 42.5,
+    currency: 'amanai_credit',
+    period_start: '2026-09-01',
+    period_end: '2026-09-30',
+  }),
   'responses-ok': ({ body }) => {
     const turn = typeof body?.previous_response_id === 'string' ? 2 : 1;
     const text = `fake call ${turn}`;
@@ -263,6 +269,9 @@ function scenarioFor(pathname, headerScenario) {
   const key = pathname.replace(/^\/+/, '').replace(/^v1\//, '').replace(/^scenario\//, '');
   if (key === 'models') {
     return 'models-standard';
+  }
+  if (key === 'usage') {
+    return 'usage-ok';
   }
   if (key === 'responses') {
     return 'responses-ok';

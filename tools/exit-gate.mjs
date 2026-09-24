@@ -55,9 +55,9 @@ const result = await connectAndDiscover(
 
 console.log('hasil  :', result.ok ? 'ok' : result.error.category + ' / ' + result.error.message);
 console.log('profile:', kv.get('myllm.activeEndpoint'));
-console.log('model  :', kv.get('myllm.activeModelId'));
+const savedProfile = result.ok ? result.profile : null;
+console.log('model  :', savedProfile === null ? null : kv.get('myllm.activeModel.' + savedProfile.id));
 console.log('secure :', [...secure.keys()].join(', '));
 console.log('profile memuat key?', String(kv.get('myllm.activeEndpoint')).includes('fake-key'));
 
 server.kill();
-

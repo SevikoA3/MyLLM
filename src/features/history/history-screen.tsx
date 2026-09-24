@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { memo, useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   type ListRenderItemInfo,
   Modal,
@@ -16,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { ConversationCursor, ConversationSummary, TurnStatus } from '../../domain/conversation';
 import { conversationRepository } from '../../services/persistence/conversation-store';
+import { pickConversation, shareConversation } from '../../services/persistence/catalog-transfer';
 import { deleteStagedImages } from '../../services/attachments/images';
 
 const PAGE_SIZE = 20;
@@ -72,6 +74,7 @@ export default function HistoryScreen() {
   const [query, setQuery] = useState('');
   const [interruptedOnly, setInterruptedOnly] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null);
+  const [transferring, setTransferring] = useState(false);
   const router = useRouter();
 
   const loadFirst = useCallback(async () => {
@@ -142,6 +145,34 @@ export default function HistoryScreen() {
     await loadFirst();
   }, [deleteTarget, loadFirst]);
 
+  const exportConversation = useCallback(async (conversation: ConversationSummary) => {
+    setTransferring(true);
+    try {
+      const value = await conversationRepository.exportConversation(conversation.id);
+      if (value === null) throw new Error('Conversation was not found.');
+      await shareConversation(value);
+    } catch {
+      Alert.alert('Could not export conversation', 'The conversation or share sheet is unavailable.');
+    } finally {
+      setTransferring(false);
+    }
+  }, []);
+
+  const importConversation = useCallback(async () => {
+    setTransferring(true);
+    try {
+      const value = await pickConversation();
+      if (value === null) return;
+      const id = await conversationRepository.importConversation(value);
+      await loadFirst();
+      router.push({ pathname: '/chat/[conversationId]', params: { conversationId: id } });
+    } catch {
+      Alert.alert('Could not import conversation', 'The selected file is invalid or uses an unsupported schema.');
+    } finally {
+      setTransferring(false);
+    }
+  }, [loadFirst, router]);
+
   const visibleConversations = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return conversations.filter((conversation) => {
@@ -170,9 +201,11 @@ export default function HistoryScreen() {
         onCancelEditing={cancelEditing}
         onSave={saveTitle}
         onDelete={setDeleteTarget}
+        onExport={exportConversation}
+        transferring={transferring}
       />
     ),
-    [cancelEditing, editingId, openConversation, saveTitle, startEditing, title],
+    [cancelEditing, editingId, exportConversation, openConversation, saveTitle, startEditing, title, transferring],
   );
 
   const filtered = query.trim().length > 0 || interruptedOnly;
@@ -213,11 +246,28 @@ export default function HistoryScreen() {
           </View>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Import conversation"
+            accessibilityState={{ busy: transferring, disabled: transferring }}
+            disabled={transferring}
+            onPress={() => void importConversation()}
+            style={({ pressed }) => ({
+              minHeight: 48,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 10,
+              borderRadius: 8,
+              backgroundColor: colors.surfaceHigh,
+              opacity: transferring ? 0.5 : pressed ? 0.8 : 1,
+            })}>
+            <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>IMPORT</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="Start a new chat"
             onPress={startNewChat}
             hitSlop={4}
             style={({ pressed }) => ({
-              minHeight: 40,
+              minHeight: 48,
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
@@ -356,6 +406,8 @@ const HistoryRow = memo(function HistoryRow({
   onCancelEditing,
   onSave,
   onDelete,
+  onExport,
+  transferring,
 }: {
   conversation: ConversationSummary;
   editing: boolean;
@@ -366,6 +418,8 @@ const HistoryRow = memo(function HistoryRow({
   onCancelEditing: () => void;
   onSave: (id: string) => Promise<void>;
   onDelete: (conversation: ConversationSummary) => void;
+  onExport: (conversation: ConversationSummary) => Promise<void>;
+  transferring: boolean;
 }) {
   const status = historyStatus(conversation.status);
 
@@ -446,6 +500,7 @@ const HistoryRow = memo(function HistoryRow({
           {status.detail}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <IconButton label={'Export ' + conversation.title} icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }} disabled={transferring} onPress={() => void onExport(conversation)} />
           <IconButton label={'Rename ' + conversation.title} icon={{ ios: 'pencil', android: 'edit' }} onPress={() => onStartEditing(conversation)} />
           <IconButton label={'Delete ' + conversation.title} icon={{ ios: 'trash', android: 'delete' }} danger onPress={() => onDelete(conversation)} />
           <Pressable
@@ -454,7 +509,7 @@ const HistoryRow = memo(function HistoryRow({
             onPress={() => onOpen(conversation.id)}
             hitSlop={4}
             style={({ pressed }) => ({
-              height: 32,
+              minHeight: 48,
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
@@ -486,22 +541,26 @@ function IconButton({
   label,
   icon,
   danger = false,
+  disabled = false,
   onPress,
 }: {
   label: string;
-  icon: { ios: 'pencil' | 'trash'; android: 'edit' | 'delete' };
+  icon: { ios: 'pencil' | 'trash' | 'square.and.arrow.up'; android: 'edit' | 'delete' | 'ios_share' };
   danger?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       hitSlop={8}
       style={({ pressed }) => ({
-        width: 32,
-        height: 32,
+        width: 48,
+        height: 48,
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: 4,

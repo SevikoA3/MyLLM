@@ -496,6 +496,33 @@ export async function saveModelReasoningEffort(
   });
 }
 
+export async function removeEndpointCatalogData(
+  storage: CatalogStorage,
+  endpointId: string,
+): Promise<void> {
+  const overrides = await readOverrides(storage);
+  const nextOverrides = { ...overrides.endpoints };
+  delete nextOverrides[endpointId];
+  const serializedOverrides = serializeModelOverrides({
+    schemaVersion: 1,
+    endpoints: nextOverrides,
+  });
+  // Cleanup menghapus endpoint dari primary dan backup; backup lama tidak boleh
+  // mempertahankan data endpoint yang sengaja dihapus.
+  await storage.writeText('model-overrides.json', serializedOverrides);
+  await storage.writeText('model-overrides.json.backup', serializedOverrides);
+  if (await storage.exists('model-overrides.json.corrupt')) {
+    await storage.writeText('model-overrides.json.corrupt', serializedOverrides);
+  }
+
+  const history = await readJsonFile(storage, 'history-models.json', HistoryModelsFileSchema);
+  if (history !== null) {
+    const nextHistory = { ...history.endpoints };
+    delete nextHistory[endpointId];
+    await storage.writeText('history-models.json', JSON.stringify({ schemaVersion: 1, endpoints: nextHistory }));
+  }
+}
+
 function uniqueDiscovered(entries: ModelRecordType[]): ModelRecordType[] | null {
   const models: ModelRecordType[] = [];
   const seen = new Set<string>();

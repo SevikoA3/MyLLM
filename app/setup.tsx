@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -49,7 +49,9 @@ const fonts = {
 
 export default function SetupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const { status, profile } = useActiveEndpoint();
+  const editingProfile = params.mode === 'new' ? null : profile;
   // Field yang belum disentuh tetap mengikuti nilai dari endpoint tersimpan.
   const [edits, setEdits] = useState<Edits>({});
   // Key hanya hidup selama flow submit, tidak pernah dibaca ulang dari storage.
@@ -68,13 +70,13 @@ export default function SetupScreen() {
     };
   }, []);
 
-  const name = edits.name ?? profile?.name ?? '';
-  const baseUrl = edits.baseUrl ?? profile?.baseUrl ?? '';
-  const authMode = edits.authMode ?? profile?.authMode ?? 'bearer';
-  const protocol = edits.protocol ?? profile?.protocol ?? 'responses';
-  const modelListPath = edits.modelListPath ?? profile?.compat.modelListPath ?? '/models';
+  const name = edits.name ?? editingProfile?.name ?? '';
+  const baseUrl = edits.baseUrl ?? editingProfile?.baseUrl ?? '';
+  const authMode = edits.authMode ?? editingProfile?.authMode ?? 'bearer';
+  const protocol = edits.protocol ?? editingProfile?.protocol ?? 'responses';
+  const modelListPath = edits.modelListPath ?? editingProfile?.compat.modelListPath ?? '/models';
   // Key lama tidak pernah dibaca ke form, jadi field tetap kosong sampai pengguna mengetik.
-  const canReuseKey = profile?.credentialRef != null;
+  const canReuseKey = editingProfile?.credentialRef != null;
   const apiKey = keyDraft ?? '';
 
   const urlError = baseUrl.length === 0 ? null : validateBaseUrl(baseUrl);
@@ -108,7 +110,7 @@ export default function SetupScreen() {
       protocol,
       modelListPath,
     };
-    const result = await connectAndDiscover(input, profile, {
+    const result = await connectAndDiscover(input, editingProfile, {
       seedCatalog: async (nextProfile, models) => {
         const result = await seedCatalogCache(nextProfile, models, {
           storage: fileCatalogStorage,
@@ -193,11 +195,11 @@ export default function SetupScreen() {
               width: 6,
               height: 6,
               borderRadius: 3,
-              backgroundColor: profile === null ? colors.warning : colors.primary,
+              backgroundColor: editingProfile === null ? colors.warning : colors.primary,
             }}
           />
-          <Text style={{ color: profile === null ? colors.warning : colors.primary, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-            {profile === null ? 'NEW' : 'CONFIGURED'}
+          <Text style={{ color: editingProfile === null ? colors.warning : colors.primary, fontFamily: fonts.monoMedium, fontSize: 10 }}>
+            {editingProfile === null ? 'NEW' : 'CONFIGURED'}
           </Text>
         </View>
       </View>
@@ -210,7 +212,7 @@ export default function SetupScreen() {
             ENDPOINT ONBOARDING
           </Text>
           <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 26, lineHeight: 32 }}>
-            {profile === null ? 'Connect an endpoint' : 'Update endpoint'}
+            {editingProfile === null ? 'Connect an endpoint' : 'Update endpoint'}
           </Text>
           <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 13, lineHeight: 20 }}>
             Configure an OpenAI-compatible endpoint, then validate its model catalog.
@@ -240,7 +242,7 @@ export default function SetupScreen() {
               ENDPOINT PROFILE
             </Text>
             <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-              {profile === null ? 'NEW' : 'EDIT'}
+              {editingProfile === null ? 'NEW' : 'EDIT'}
             </Text>
           </View>
 

@@ -9,6 +9,15 @@ import {
   type TurnStatus,
 } from '../../domain/conversation';
 import {
+  CONVERSATION_EXPORT_SCHEMA_VERSION,
+  ConversationExportSchema,
+  type ConversationExport,
+  type ExportCompaction,
+  type ExportToolCall,
+  type ExportTurn,
+} from '../../domain/conversation-export';
+import { redactText } from '../../domain/error';
+import {
   orphanedImageAttachments,
   parseImageAttachments,
   type ImageAttachment,
@@ -152,6 +161,33 @@ type ToolCallRow = {
 
 type ToolCallWithAssistantRow = ToolCallRow & { assistant_item_id: string };
 
+type ExportTurnRow = {
+  id: string;
+  ordinal: number;
+  status: TurnStatus;
+  endpoint_id: string;
+  model_id: string;
+  reasoning_setting: string | null;
+  output_ceiling: number | null;
+  response_id: string | null;
+  user_content_json: string;
+  assistant_content_json: string;
+  usage_raw_json: string | null;
+  request_start: number | null;
+  first_event: number | null;
+  first_visible_token: number | null;
+  completed: number | null;
+};
+
+type ExportCompactionRow = {
+  source_start_ordinal: number;
+  source_end_ordinal: number;
+  model_id: string;
+  prompt_version: number;
+  summary_json: string;
+  status: ExportCompaction['status'];
+};
+
 async function nativeDatabase(): Promise<SQLiteDatabase> {
   const { openDatabaseAsync } = await import('expo-sqlite');
   return openDatabaseAsync(DATABASE_NAME);
@@ -261,11 +297,11 @@ export function createConversationRepository(
       const existing =
         input.conversationId === null
           ? null
-          : await transaction.getFirstAsync<{ id: string }>(
-              'SELECT id FROM conversations WHERE id = ?',
+          : await transaction.getFirstAsync<{ id: string; endpoint_id: string }>(
+              'SELECT id, endpoint_id FROM conversations WHERE id = ?',
               [input.conversationId],
             );
-      if (existing === null) {
+      if (existing === null || existing.endpoint_id !== input.endpointId) {
         if (input.conversationId !== null) {
           conversationId = newId('conv', timestamp);
         }
@@ -499,6 +535,8 @@ export function createConversationRepository(
   async function loadConversation(id: string): Promise<{
     id: string;
     title: string;
+    endpointId: string;
+    modelId: string;
     messages: ChatMessage[];
     toolActivities: Record<string, ToolActivity[]>;
     previousResponseId: string | null;
@@ -559,6 +597,8 @@ export function createConversationRepository(
     return {
       id: conversation.id,
       title: conversation.title,
+      endpointId: conversation.endpoint_id,
+      modelId: conversation.active_model_id,
       messages: rows.map(messageFromRow),
       toolActivities,
       autoCompact: conversation.auto_compact !== 0,
@@ -797,6 +837,286 @@ export function createConversationRepository(
     );
   }
 
+  async function exportConversation(
+    conversationId: string,
+    exportedAt = new Date(now()).toISOString(),
+  ): Promise<ConversationExport | null> {
+    await initialize();
+    const db = await database();
+    const conversation = await db.getFirstAsync<ConversationRow>(
+      'SELECT * FROM conversations WHERE id = ?',
+      [conversationId],
+    );
+    if (conversation === null) return null;
+    const rows = await db.getAllAsync<ExportTurnRow>(
+      `SELECT t.id, t.ordinal, t.status, t.endpoint_id, t.model_id, t.reasoning_setting,
+              t.output_ceiling, t.response_id, user.content_json AS user_content_json,
+              assistant.content_json AS assistant_content_json, u.raw_json AS usage_raw_json,
+              ti.request_start, ti.first_event, ti.first_visible_token, ti.completed
+       FROM turns t
+       JOIN items user ON user.turn_id = t.id AND user.role = 'user'
+       JOIN items assistant ON assistant.turn_id = t.id AND assistant.role = 'assistant'
+       LEFT JOIN usage u ON u.turn_id = t.id
+       LEFT JOIN timing ti ON ti.turn_id = t.id
+       WHERE t.conversation_id = ? ORDER BY t.ordinal ASC`,
+      [conversationId],
+    );
+    const toolRows = await db.getAllAsync<ToolCallRow & { ordinal: number }>(
+      `SELECT tc.id, tc.turn_id, tc.call_id, tc.name, tc.arguments_json, tc.target,
+              tc.side_effect, tc.status, tc.approval, tc.result_json, t.ordinal
+       FROM tool_calls tc JOIN turns t ON t.id = tc.turn_id
+       WHERE t.conversation_id = ? ORDER BY t.ordinal ASC, tc.created_at ASC`,
+      [conversationId],
+    );
+    const compactionRows = await db.getAllAsync<ExportCompactionRow>(
+      `SELECT source_start_ordinal, source_end_ordinal, model_id, prompt_version,
+              summary_json, status
+       FROM compactions
+       WHERE conversation_id = ? AND summary_json IS NOT NULL AND status <> 'running'
+       ORDER BY source_end_ordinal ASC`,
+      [conversationId],
+    );
+    const toolsByOrdinal = toolRows.reduce<Record<number, ExportToolCall[]>>((current, row) => {
+      const calls = current[row.ordinal] ?? [];
+      const result = parseToolResult(row.result_json, row.call_id);
+      calls.push({
+        callId: row.call_id,
+        name: row.name,
+        argumentsJson: redactText(row.arguments_json),
+        target: redactText(row.target),
+        sideEffect: redactText(row.side_effect),
+        status: row.status,
+        approval: row.approval,
+        result: result === null ? null : { ...result, output: redactText(result.output) },
+      });
+      current[row.ordinal] = calls;
+      return current;
+    }, {});
+    const turns: ExportTurn[] = rows.map((row) => {
+      const user = parseContent(row.user_content_json);
+      const assistant = parseContent(row.assistant_content_json);
+      return {
+        ordinal: row.ordinal,
+        userText: redactText(user.text),
+        assistantText: redactText(assistant.text),
+        reasoningSummary:
+          assistant.reasoningSummary === null ? null : redactText(assistant.reasoningSummary),
+        status: row.status,
+        modelId: row.model_id,
+        endpointId: row.endpoint_id,
+        reasoningSetting: row.reasoning_setting,
+        outputCeiling: row.output_ceiling,
+        responseId: row.response_id,
+        toolCalls: toolsByOrdinal[row.ordinal] ?? [],
+        usageRaw: normalizedUsageExport(parseRawUsage(row.usage_raw_json)),
+        timingMs: {
+          requestStart: row.request_start,
+          firstEvent: row.first_event,
+          firstVisibleToken: row.first_visible_token,
+          completed: row.completed,
+        },
+      };
+    });
+    const compactions: ExportCompaction[] = compactionRows.flatMap((row) => {
+      const summary = parseCompactionSummary(row.summary_json);
+      return summary.ok
+        ? [{
+            sourceStartOrdinal: row.source_start_ordinal,
+            sourceEndOrdinal: row.source_end_ordinal,
+            modelId: row.model_id,
+            promptVersion: row.prompt_version,
+            summary: redactCompactionSummary(summary.value),
+            status: row.status,
+          }]
+        : [];
+    });
+    return ConversationExportSchema.parse({
+      schemaVersion: CONVERSATION_EXPORT_SCHEMA_VERSION,
+      exportedAt,
+      sourceConversationId: conversation.id,
+      title: redactText(conversation.title),
+      endpointId: conversation.endpoint_id,
+      modelId: conversation.active_model_id,
+      turns,
+      compactions,
+    });
+  }
+
+  async function importConversation(input: ConversationExport): Promise<string> {
+    await initialize();
+    const value = ConversationExportSchema.parse(input);
+    const timestamp = now();
+    const conversationId = newId('conv', timestamp);
+    await write(async (transaction) => {
+      await transaction.runAsync(
+        `INSERT INTO conversations
+         (id, title, created_at, updated_at, endpoint_id, active_model_id, auto_compact, active_compaction_id)
+         VALUES (?, ?, ?, ?, ?, ?, 1, NULL)`,
+        [conversationId, value.title, timestamp, timestamp, value.endpointId, value.modelId],
+      );
+      const turnIds = new Map<number, string>();
+      for (const turn of [...value.turns].sort((left, right) => left.ordinal - right.ordinal)) {
+        const turnId = newId('turn', timestamp);
+        const userItemId = newId('msg', timestamp);
+        const assistantItemId = newId('msg', timestamp);
+        const status = turn.status === 'sending' || turn.status === 'streaming'
+          ? 'interrupted'
+          : turn.status;
+        turnIds.set(turn.ordinal, turnId);
+        await transaction.runAsync(
+          `INSERT INTO turns
+           (id, conversation_id, ordinal, status, endpoint_id, model_id, reasoning_setting,
+            output_ceiling, previous_response_id, response_id, started_at, completed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+          [
+            turnId,
+            conversationId,
+            turn.ordinal,
+            status,
+            turn.endpointId,
+            turn.modelId,
+            turn.reasoningSetting,
+            turn.outputCeiling,
+            turn.responseId,
+            timestamp,
+            timestamp,
+          ],
+        );
+        await transaction.runAsync(
+          `INSERT INTO items
+           (id, turn_id, type, role, status, content_json, provider_item_id, phase, created_at, updated_at)
+           VALUES (?, ?, 'message', 'user', 'completed', ?, NULL, NULL, ?, ?)`,
+          [userItemId, turnId, contentJson(turn.userText, null), timestamp, timestamp],
+        );
+        await transaction.runAsync(
+          `INSERT INTO items
+           (id, turn_id, type, role, status, content_json, provider_item_id, phase, created_at, updated_at)
+           VALUES (?, ?, 'message', 'assistant', ?, ?, NULL, NULL, ?, ?)`,
+          [
+            assistantItemId,
+            turnId,
+            status,
+            contentJson(turn.assistantText, turn.reasoningSummary),
+            timestamp,
+            timestamp,
+          ],
+        );
+        await transaction.runAsync('INSERT INTO usage (turn_id, raw_json) VALUES (?, ?)', [
+          turnId,
+          turn.usageRaw === null ? null : JSON.stringify(turn.usageRaw),
+        ]);
+        await transaction.runAsync(
+          `INSERT INTO timing
+           (turn_id, request_start, first_event, first_visible_token, completed)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            turnId,
+            turn.timingMs.requestStart,
+            turn.timingMs.firstEvent,
+            turn.timingMs.firstVisibleToken,
+            turn.timingMs.completed,
+          ],
+        );
+        for (const call of turn.toolCalls) {
+          await transaction.runAsync(
+            `INSERT INTO tool_calls
+             (id, turn_id, call_id, name, arguments_json, target, side_effect, status,
+              approval, result_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              newId('tool', timestamp),
+              turnId,
+              call.callId,
+              call.name,
+              call.argumentsJson,
+              call.target,
+              call.sideEffect,
+              call.status === 'awaiting_approval' || call.status === 'executing'
+                ? 'interrupted'
+                : call.status,
+              call.approval,
+              call.result === null ? null : JSON.stringify(call.result),
+              timestamp,
+              timestamp,
+            ],
+          );
+        }
+      }
+      let activeCompactionId: string | null = null;
+      for (const compaction of value.compactions) {
+        const startTurnId = turnIds.get(compaction.sourceStartOrdinal);
+        const endTurnId = turnIds.get(compaction.sourceEndOrdinal);
+        if (startTurnId === undefined || endTurnId === undefined) {
+          throw new Error('Compaction source ordinals do not exist in the imported transcript.');
+        }
+        const id = newId('compact', timestamp);
+        await transaction.runAsync(
+          `INSERT INTO compactions
+           (id, conversation_id, method, source_start_turn_id, source_end_turn_id,
+            source_start_ordinal, source_end_ordinal, model_id, prompt_version,
+            input_tokens, output_tokens, before_estimate, after_estimate, usage_json,
+            summary_json, created_at, completed_at, status)
+           VALUES (?, ?, 'local', ?, ?, ?, ?, ?, ?, NULL, NULL, 0, 0, NULL, ?, ?, ?, ?)`,
+          [
+            id,
+            conversationId,
+            startTurnId,
+            endTurnId,
+            compaction.sourceStartOrdinal,
+            compaction.sourceEndOrdinal,
+            compaction.modelId,
+            compaction.promptVersion,
+            JSON.stringify(compaction.summary),
+            timestamp,
+            timestamp,
+            compaction.status,
+          ],
+        );
+        if (compaction.status === 'active') activeCompactionId = id;
+      }
+      if (activeCompactionId !== null) {
+        await transaction.runAsync(
+          'UPDATE conversations SET active_compaction_id = ? WHERE id = ?',
+          [activeCompactionId, conversationId],
+        );
+      }
+    });
+    return conversationId;
+  }
+
+  async function countByEndpoint(endpointId: string): Promise<number> {
+    await initialize();
+    const row = await (await database()).getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM conversations WHERE endpoint_id = ?',
+      [endpointId],
+    );
+    return row?.count ?? 0;
+  }
+
+  async function removeByEndpoint(
+    endpointId: string,
+    removeFiles: (attachments: ImageAttachment[]) => void = () => undefined,
+  ): Promise<void> {
+    await initialize();
+    let deleted: ImageAttachment[] = [];
+    let retained: ImageAttachment[] = [];
+    await write(async (transaction) => {
+      const deletedRows = await transaction.getAllAsync<{ content_json: string }>(
+        `SELECT i.content_json FROM items i JOIN turns t ON t.id = i.turn_id
+         JOIN conversations c ON c.id = t.conversation_id
+         WHERE c.endpoint_id = ? AND i.role = 'user'`,
+        [endpointId],
+      );
+      deleted = deletedRows.flatMap((row) => parseContent(row.content_json).attachments);
+      await transaction.runAsync('DELETE FROM conversations WHERE endpoint_id = ?', [endpointId]);
+      const retainedRows = await transaction.getAllAsync<{ content_json: string }>(
+        "SELECT content_json FROM items WHERE role = 'user'",
+      );
+      retained = retainedRows.flatMap((row) => parseContent(row.content_json).attachments);
+    });
+    removeFiles(orphanedImageAttachments(deleted, retained));
+  }
+
   async function list(
     limit: number,
     cursor: ConversationCursor | null = null,
@@ -881,6 +1201,10 @@ export function createConversationRepository(
     completeCompaction,
     failCompaction,
     loadTurnMetrics,
+    exportConversation,
+    importConversation,
+    countByEndpoint,
+    removeByEndpoint,
     list,
     rename,
     remove,
@@ -965,6 +1289,25 @@ function parseRawUsage(value: string | null): unknown {
   } catch {
     return null;
   }
+}
+
+function normalizedUsageExport(value: unknown): Record<string, unknown> | null {
+  const usage = normalizeUsage(value);
+  const entries = Object.entries({
+    input_tokens: usage.inputTokens,
+    output_tokens: usage.outputTokens,
+    total_tokens: usage.totalTokens,
+    reasoning_tokens: usage.reasoningTokens,
+    cache_read_tokens: usage.cacheReadTokens,
+    cache_write_tokens: usage.cacheWriteTokens,
+  }).filter((entry): entry is [string, number] => entry[1] !== null);
+  return entries.length === 0 ? null : Object.fromEntries(entries);
+}
+
+function redactCompactionSummary(summary: CompactionSummary): CompactionSummary {
+  return Object.fromEntries(
+    Object.entries(summary).map(([key, values]) => [key, values.map(redactText)]),
+  ) as CompactionSummary;
 }
 
 function toolActivityFromRow(row: ToolCallRow): ToolActivity {

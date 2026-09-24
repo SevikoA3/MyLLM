@@ -35,6 +35,8 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="history" />
         <Stack.Screen name="chat/[conversationId]" />
+        <Stack.Screen name="settings/endpoints" />
+        <Stack.Screen name="settings/usage" />
       </Stack>
     </>
   );

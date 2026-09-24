@@ -8,7 +8,7 @@ export type ProtocolMode = z.infer<typeof ProtocolModeSchema>;
 export const ConcreteProtocolSchema = z.enum(['responses', 'chat-completions']);
 export type ConcreteProtocol = z.infer<typeof ConcreteProtocolSchema>;
 
-export const EndpointIdSchema = z.string().trim().min(1).max(64);
+export const EndpointIdSchema = z.string().trim().regex(/^[A-Za-z0-9_-]+$/, 'Endpoint ID contains unsupported characters.').min(1).max(64);
 export type EndpointId = z.infer<typeof EndpointIdSchema>;
 
 export const EndpointProfileSchema = z.object({
@@ -29,11 +29,60 @@ export const EndpointProfileSchema = z.object({
     chatOutputCap: z.number().int().positive().nullable(),
     chatReasoningSupport: z.enum(['supported', 'unsupported', 'unknown']).default('unknown'),
     chatPromptCacheField: z.string().trim().min(1).nullable().default(null),
+    usagePath: z.string().trim().min(1).nullable().default(null),
     autoReasoningBehavior: z.enum(['omit', 'literal-auto']),
     nativeContextManagement: z.enum(['supported', 'unsupported', 'unknown']),
   }),
 });
 export type EndpointProfile = z.infer<typeof EndpointProfileSchema>;
+
+export const PortableEndpointProfileSchema = EndpointProfileSchema.omit({
+  credentialRef: true,
+  headers: true,
+}).extend({ schemaVersion: z.literal(1) }).strict();
+export type PortableEndpointProfile = z.infer<typeof PortableEndpointProfileSchema>;
+
+export const EndpointExportSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    exportedAt: z.string().datetime(),
+    endpoints: z.array(PortableEndpointProfileSchema),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const ids = new Set<string>();
+    value.endpoints.forEach((endpoint, index) => {
+      if (ids.has(endpoint.id)) {
+        context.addIssue({ code: 'custom', path: ['endpoints', index, 'id'], message: 'Endpoint IDs must be unique.' });
+      }
+      ids.add(endpoint.id);
+    });
+  });
+export type EndpointExport = z.infer<typeof EndpointExportSchema>;
+
+export function portableEndpointProfile(profile: EndpointProfile): PortableEndpointProfile {
+  const { credentialRef: _credentialRef, headers: _headers, ...portable } = profile;
+  return PortableEndpointProfileSchema.parse(portable);
+}
+
+export function parseEndpointExport(text: string): EndpointExport {
+  return EndpointExportSchema.parse(JSON.parse(text) as unknown);
+}
+
+export function serializeEndpointExport(
+  profiles: EndpointProfile[],
+  exportedAt = new Date().toISOString(),
+): string {
+  return JSON.stringify(
+    EndpointExportSchema.parse({
+      schemaVersion: 1,
+      exportedAt,
+      endpoints: profiles.map(portableEndpointProfile),
+    }),
+    null,
+    2,
+  );
+}
 
 export function createEndpointProfile(input: {
   id: EndpointId;
@@ -61,6 +110,7 @@ export function createEndpointProfile(input: {
       chatOutputCap: 8192,
       chatReasoningSupport: 'unknown',
       chatPromptCacheField: null,
+      usagePath: null,
       autoReasoningBehavior: 'omit',
       nativeContextManagement: 'unknown',
     },
@@ -86,6 +136,15 @@ export function joinEndpointPath(baseUrl: string, path: string): string {
   const segment = path.trim();
   if (segment.length === 0 || segment === '/') {
     return base;
+  }
+  let decodedSegment: string;
+  try {
+    decodedSegment = decodeURIComponent(segment);
+  } catch {
+    throw new Error('Endpoint path contains invalid encoding.');
+  }
+  if (decodedSegment.split(/[\\/]/).some((part) => part === '..')) {
+    throw new Error('Endpoint path must not contain parent-directory segments.');
   }
   const queryStart = base.indexOf('?');
   const origin = queryStart === -1 ? base : base.slice(0, queryStart);

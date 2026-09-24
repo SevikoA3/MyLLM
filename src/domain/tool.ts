@@ -34,17 +34,20 @@ export type ToolExchange = {
 export type ToolPolicy = { approval: ToolApproval };
 export const DEFAULT_TOOL_POLICY: ToolPolicy = { approval: 'ask' };
 
-export type ToolCallStatus =
-  | 'awaiting_approval'
-  | 'executing'
-  | 'completed'
-  | 'failed'
-  | 'rejected'
-  | 'timed_out'
-  | 'cancelled'
-  | 'interrupted';
+export const TOOL_CALL_STATUSES = [
+  'awaiting_approval',
+  'executing',
+  'completed',
+  'failed',
+  'rejected',
+  'timed_out',
+  'cancelled',
+  'interrupted',
+] as const;
+export type ToolCallStatus = (typeof TOOL_CALL_STATUSES)[number];
 
-export type ToolApprovalStatus = 'pending' | 'approved' | 'rejected' | 'not_required';
+export const TOOL_APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'not_required'] as const;
+export type ToolApprovalStatus = (typeof TOOL_APPROVAL_STATUSES)[number];
 
 export type ToolActivity = ToolCall & {
   id: string;

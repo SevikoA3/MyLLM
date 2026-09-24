@@ -54,6 +54,9 @@ type RetryState = {
 
 export type ChatState = {
   conversationId: string | null;
+  conversationEndpointId: string | null;
+  conversationModelId: string | null;
+  readOnly: boolean;
   messages: ChatMessage[];
   metrics: TurnMetrics[];
   contextBudget: ContextBudgetResult | null;
@@ -93,6 +96,9 @@ export function useChat(
   startFresh = false,
 ): ChatState {
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationEndpointId, setConversationEndpointId] = useState<string | null>(null);
+  const [conversationModelId, setConversationModelId] = useState<string | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [metrics, setMetrics] = useState<TurnMetrics[]>([]);
   const [contextBudget, setContextBudget] = useState<ContextBudgetResult | null>(null);
@@ -107,11 +113,14 @@ export function useChat(
   const [reasoningOptions, setReasoningOptions] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [loadingModel, setLoadingModel] = useState(profile !== null);
-  const [loadingConversation, setLoadingConversation] = useState(profile !== null && !startFresh);
+  const [loadingConversation, setLoadingConversation] = useState(
+    !startFresh && (profile !== null || requestedConversationId !== null),
+  );
   const [pending, setPending] = useState(false);
   const [toolActivities, setToolActivities] = useState<Record<string, ToolActivity[]>>({});
   const [error, setError] = useState<AppError | null>(null);
   const [retryState, setRetryState] = useState<RetryState | null>(null);
+  const [profileLoadVersion, setProfileLoadVersion] = useState(0);
   const previousResponseId = useRef<string | null>(null);
   const previousResponseModelId = useRef<string | null>(null);
   const pendingRef = useRef(false);
@@ -122,6 +131,8 @@ export function useChat(
   const contextTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contextRequestId = useRef(0);
   const compactingRef = useRef(false);
+  const profileIdRef = useRef(profile?.id ?? null);
+  const modelLoadVersion = useRef(0);
   const alive = useRef(true);
 
   const updateToolProgress = useCallback((assistantItemId: string, activity: ToolActivity) => {
@@ -163,6 +174,8 @@ export function useChat(
   }, []);
 
   const reloadModel = useCallback(async () => {
+    const loadVersion = ++modelLoadVersion.current;
+    const current = () => alive.current && loadVersion === modelLoadVersion.current;
     setModelConfig(null);
     setContextBudget(null);
     setContextPolicy(DEFAULT_CONTEXT_POLICY);
@@ -175,8 +188,8 @@ export function useChat(
       return;
     }
     try {
-      const modelId = await settingsStore.loadActiveModelId();
-      if (!alive.current) {
+      const modelId = await settingsStore.loadActiveModelId(profile.id);
+      if (!current()) {
         return;
       }
       setActiveModelId(modelId);
@@ -193,14 +206,14 @@ export function useChat(
             profile,
             modelId,
           );
-          if (alive.current) {
+          if (current()) {
             setModelConfig(config);
             setContextPolicy(config?.contextPolicy ?? DEFAULT_CONTEXT_POLICY);
             setReasoningEffortState(config?.reasoningEffort ?? null);
             setReasoningOptions(config?.reasoningOptions ?? []);
           }
         } catch {
-          if (alive.current) {
+          if (current()) {
             setModelConfig(null);
             setContextPolicy(DEFAULT_CONTEXT_POLICY);
             setReasoningEffortState(null);
@@ -210,7 +223,7 @@ export function useChat(
         }
       }
     } catch {
-      if (alive.current) {
+      if (current()) {
         setActiveModelId(null);
         setModelConfig(null);
         setContextPolicy(DEFAULT_CONTEXT_POLICY);
@@ -218,7 +231,7 @@ export function useChat(
         setReasoningOptions([]);
       }
     } finally {
-      if (alive.current) {
+      if (current()) {
         setLoadingModel(false);
       }
     }
@@ -240,18 +253,50 @@ export function useChat(
   }, []);
 
   useEffect(() => {
-    if (profile === null || startFresh) {
+    const nextProfileId = profile?.id ?? null;
+    if (profileIdRef.current !== nextProfileId) {
+      // Request aktif memiliki snapshot profile sendiri. Tunda pergantian UI sampai
+      // request selesai agar switch tidak membatalkan atau mencampur stream.
+      if (pendingRef.current) return;
+      profileIdRef.current = nextProfileId;
+      setConversationId(null);
+      setConversationEndpointId(null);
+      setConversationModelId(null);
+      setReadOnly(false);
+      setMessages([]);
+      setMetrics([]);
+      setToolActivities({});
+      setRetryState(null);
+      setError(null);
+      previousResponseId.current = null;
+      previousResponseModelId.current = null;
+      setLoadingConversation(!startFresh && (profile !== null || requestedConversationId !== null));
+      setLoadingModel(profile !== null);
+      setProfileLoadVersion((version) => version + 1);
+    }
+  }, [pending, profile, requestedConversationId, startFresh]);
+
+  useEffect(() => {
+    if (
+      profileIdRef.current !== (profile?.id ?? null) ||
+      startFresh ||
+      (profile === null && requestedConversationId === null)
+    ) {
       return;
     }
     let active = true;
     const load = async () => {
       const saved =
         requestedConversationId === null
-          ? await conversationRepository.loadLatest(profile.id)
+          ? await conversationRepository.loadLatest(profile?.id ?? '')
           : await conversationRepository.loadConversation(requestedConversationId);
+      const compatible = saved !== null && profile !== null && saved.endpointId === profile.id;
       if (active) {
         if (saved === null) {
           setConversationId(null);
+          setConversationEndpointId(null);
+          setConversationModelId(null);
+          setReadOnly(false);
           setMessages([]);
           setMetrics([]);
           previousResponseId.current = null;
@@ -262,11 +307,14 @@ export function useChat(
           setToolActivities({});
         } else {
           setConversationId(saved.id);
+          setConversationEndpointId(saved.endpointId);
+          setConversationModelId(saved.modelId);
+          setReadOnly(!compatible);
           setMessages(saved.messages);
           setMetrics(saved.metrics);
-          previousResponseId.current = saved.previousResponseId;
-          previousResponseModelId.current = saved.previousResponseModelId;
-          setRetryState(saved.retry);
+          previousResponseId.current = compatible ? saved.previousResponseId : null;
+          previousResponseModelId.current = compatible ? saved.previousResponseModelId : null;
+          setRetryState(compatible ? saved.retry : null);
           setAutoCompactState(saved.autoCompact ?? true);
           setCompactionActive(saved.compactionActive ?? false);
           setToolActivities(saved.toolActivities ?? {});
@@ -284,7 +332,7 @@ export function useChat(
     return () => {
       active = false;
     };
-  }, [profile, requestedConversationId, startFresh]);
+  }, [profile, profileLoadVersion, requestedConversationId, startFresh]);
 
   useEffect(() => {
     if (profile === null) return;
@@ -303,6 +351,7 @@ export function useChat(
         pendingRef.current ||
         compactingRef.current ||
         loadingConversation ||
+        readOnly ||
         profile === null ||
         activeModelId === null
       ) {
@@ -725,6 +774,7 @@ export function useChat(
       loadingConversation,
       metrics,
       profile,
+      readOnly,
       requestToolApproval,
       updateToolProgress,
     ],
@@ -780,6 +830,7 @@ export function useChat(
     if (
       pendingRef.current ||
       compactingRef.current ||
+      readOnly ||
       profile === null ||
       activeModelId === null ||
       conversationId === null
@@ -842,11 +893,11 @@ export function useChat(
         setCompacting(false);
       }
     }
-  }, [activeModelId, contextBudget, conversationId, profile, updateContext]);
+  }, [activeModelId, contextBudget, conversationId, profile, readOnly, updateContext]);
 
   const setAutoCompact = useCallback(
     async (enabled: boolean): Promise<boolean> => {
-      if (pendingRef.current || compactingRef.current) {
+      if (pendingRef.current || compactingRef.current || readOnly) {
         return false;
       }
       try {
@@ -864,7 +915,7 @@ export function useChat(
         return false;
       }
     },
-    [conversationId],
+    [conversationId, readOnly],
   );
 
   const send = useCallback(
@@ -879,8 +930,8 @@ export function useChat(
   );
 
   const retry = useCallback(
-    async () => (retryState === null ? false : request(retryState.prompt, retryState)),
-    [request, retryState],
+    async () => (retryState === null || readOnly ? false : request(retryState.prompt, retryState)),
+    [readOnly, request, retryState],
   );
 
   const stop = useCallback(() => activeController.current?.abort(), []);
@@ -889,6 +940,7 @@ export function useChat(
     async (effort: string): Promise<boolean> => {
       if (
         pendingRef.current ||
+        readOnly ||
         profile === null ||
         activeModelId === null ||
         reasoningSavingRef.current ||
@@ -913,7 +965,7 @@ export function useChat(
         reasoningSavingRef.current = false;
       }
     },
-    [activeModelId, profile, reasoningOptions],
+    [activeModelId, profile, readOnly, reasoningOptions],
   );
 
   const newChat = useCallback(() => {
@@ -921,6 +973,9 @@ export function useChat(
       return;
     }
     setConversationId(null);
+    setConversationEndpointId(null);
+    setConversationModelId(null);
+    setReadOnly(false);
     setMetrics([]);
     previousResponseId.current = null;
     previousResponseModelId.current = null;
@@ -941,6 +996,9 @@ export function useChat(
 
   return {
     conversationId,
+    conversationEndpointId,
+    conversationModelId,
+    readOnly,
     messages,
     metrics,
     contextBudget,
@@ -958,10 +1016,10 @@ export function useChat(
     pending,
     toolActivities,
     error,
-    canRetry: retryState !== null && !pending,
+    canRetry: !readOnly && retryState !== null && !pending,
     send,
     addImage: async () => {
-      if (!canAttachImages) {
+      if (readOnly || !canAttachImages) {
         setError(modelConfigError('Image attachments are not supported by this model and protocol.'));
         return;
       }
@@ -987,7 +1045,9 @@ export function useChat(
     updateContext,
     compactNow,
     setAutoCompact,
-    setAutoApproveTools: (enabled) => setAutoApproveToolsState(enabled),
+    setAutoApproveTools: (enabled) => {
+      if (!readOnly) setAutoApproveToolsState(enabled);
+    },
     setReasoningEffort,
   };
 }

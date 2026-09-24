@@ -194,7 +194,7 @@ export default function SettingsScreen() {
     setClearing(true);
     try {
       await clearAllData({
-        loadEndpoint: endpointStore.load,
+        loadAllEndpoints: endpointStore.loadAll,
         removeCredential: credentialStore.remove,
         clearCredentials: credentialStore.clearAll,
         clearEndpoint: endpointStore.clear,
@@ -270,11 +270,27 @@ export default function SettingsScreen() {
           </View>
 
           <SettingsLink
+            href="/settings/endpoints"
+            icon={{ ios: 'server.rack', android: 'dns' }}
+            title="Endpoint profiles"
+            body="Switch, import, export, or delete endpoint profiles. Credentials stay on this device."
+          />
+
+          <SettingsLink
             href="/setup"
             icon={{ ios: 'slider.horizontal.3', android: 'tune' }}
             title="Edit endpoint &amp; API key"
             body="Update base URL, authentication, and compatibility settings."
           />
+
+          {profile?.compat.usagePath !== null && profile?.compat.usagePath !== undefined && (
+            <SettingsLink
+              href="/settings/usage"
+              icon={{ ios: 'chart.bar.xaxis', android: 'monitoring' }}
+              title="Account usage"
+              body="Load balance and activity from this endpoint's documented usage path."
+            />
+          )}
 
           <View style={{ flexDirection: 'row', gap: 8, borderRadius: 4, backgroundColor: colors.surfaceLowest, padding: 10 }}>
             <SymbolView name={{ ios: 'lock.shield', android: 'enhanced_encryption' }} size={18} tintColor={colors.secondary} />
@@ -587,9 +603,17 @@ function SettingsAction({ label, disabled, onPress, tone }: { label: string; dis
   );
 }
 
-function SettingsLink({ href, icon, title, body }: { href: '/setup' | '/models'; icon: { ios: 'slider.horizontal.3' | 'cpu'; android: 'tune' | 'memory' }; title: string; body: string }) {
+function SettingsLink({ href, icon, title, body }: {
+  href: string;
+  icon: {
+    ios: 'slider.horizontal.3' | 'cpu' | 'server.rack' | 'chart.bar.xaxis';
+    android: 'tune' | 'memory' | 'dns' | 'monitoring';
+  };
+  title: string;
+  body: string;
+}) {
   return (
-    <Link href={href} asChild>
+    <Link href={href as never} asChild>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={title}
