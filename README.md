@@ -1,51 +1,69 @@
 <div align="center">
   <img src="assets/images/icon.png" width="120" alt="MyLLM app icon" />
   <h1>MyLLM</h1>
-  <p>An Android chat client for your own OpenAI-compatible endpoints.</p>
+  <p>An Android chat client for custom OpenAI-compatible endpoints.</p>
+
+  <p>
+    <a href="#features">Features</a> ·
+    <a href="#compatibility">Compatibility</a> ·
+    <a href="#getting-started">Getting started</a> ·
+    <a href="#development">Development</a> ·
+    <a href="#security">Security</a>
+  </p>
 </div>
 
-MyLLM connects directly to endpoints that implement the OpenAI Responses API, Chat Completions API, or both. It keeps endpoint credentials in Android secure storage, stores conversation history locally, and gives you control over models, context, tools, and endpoint compatibility.
+MyLLM is an Android-first Expo and React Native application for people who use self-hosted, private, or third-party OpenAI-compatible services. Connect multiple endpoints, discover their models, choose a protocol, and keep conversations on the device.
 
 > [!NOTE]
-> MyLLM is under active development. Automated checks cover the implemented Phase 17 scope, while Android device verification and release packaging remain manual.
+> MyLLM is under active development. Android device verification and release packaging are currently manual.
 
 ## Features
 
-- Multiple endpoint profiles with separate credentials, model selections, and protocol settings.
-- Model discovery through `GET /models`, searchable catalogs, per-model overrides, and exact model ID preservation.
-- Streaming text and reasoning through Responses or Chat Completions, with explicit protocol selection or conservative automatic fallback.
-- Local SQLite history with pagination, rename, delete, retry, interrupted-response recovery, and conversation import/export.
-- Context estimates, provider usage metrics, manual compaction, and configurable automatic compaction.
-- Approval-based function tools for device time, web search through Exa or a private SearXNG gateway, and web fetch through Firecrawl Keyless.
-- PNG, JPEG, and WebP image input for models that explicitly declare Responses image support.
-- Optional endpoint account usage view when the profile has a documented usage path.
-- Redacted diagnostic export and credential-free endpoint profile import/export.
+- Manage multiple endpoint profiles with separate credentials, models, and protocol settings.
+- Discover models through `GET /models` without changing provider model IDs.
+- Stream text and reasoning through the Responses API or Chat Completions API.
+- Store conversation history locally with pagination, rename, delete, retry, recovery, import, and export.
+- Track provider usage, estimate context size, and compact long conversations.
+- Approve function tools before they run, including device time, web search, and web fetch.
+- Attach PNG, JPEG, and WebP images when the selected model declares image support.
+- Export redacted diagnostics and endpoint profiles without credentials.
 
-## Requirements
+## Compatibility
+
+| Capability | Support |
+|---|---|
+| Android | Primary target |
+| OpenAI Responses API | Supported |
+| OpenAI Chat Completions API | Supported |
+| Automatic protocol fallback | Conservative fallback between supported protocols |
+| Model discovery | `GET /models` |
+| Web search | Exa or a private SearXNG gateway |
+| Web fetch | Firecrawl Keyless |
+| Image input | PNG, JPEG, and WebP for declared-compatible models |
+
+OpenAI-compatible services vary in the routes and fields they implement. MyLLM supports custom route settings and per-model capability overrides for endpoints that differ from the standard API shape.
+
+## Getting started
+
+### Requirements
 
 - Node.js 24, as pinned in [`.nvmrc`](.nvmrc)
 - npm 11 or newer
 - JDK 17
-- Android Studio, an Android SDK, and either a device or emulator
+- Android Studio and an Android SDK
+- An Android device or emulator
 - An OpenAI-compatible endpoint and API key
 
-## Getting started
-
-Clone the repository and install dependencies:
+### Install
 
 ```sh
 git clone https://github.com/SevikoA3/MyLLM.git
 cd MyLLM
 npm ci
-```
-
-Create and install the Android development build:
-
-```sh
 npx expo run:android
 ```
 
-For later development sessions, start Metro or open the installed Android development build:
+The final command creates and installs an Android development build. For later sessions, start Metro or open the installed build:
 
 ```sh
 npm start
@@ -53,19 +71,21 @@ npm start
 npm run android
 ```
 
+### Configure an endpoint
+
 On first launch:
 
 1. Enter a profile name, endpoint base URL, and API key.
 2. Choose Responses, Chat Completions, or Auto protocol mode.
-3. Review advanced route settings if the endpoint does not use the standard paths.
+3. Adjust the route settings if the endpoint uses nonstandard paths.
 4. Connect to validate the endpoint and discover its models.
-5. Select a model from the Catalog tab and start a chat.
+5. Select a model in the Catalog tab and start a conversation.
 
-The base URL normally includes the provider API prefix, such as `https://api.example.com/v1`. Credentials are entered in the app and must not be added to `.env` or any `EXPO_PUBLIC_*` variable.
+The base URL usually includes the provider API prefix, such as `https://api.example.com/v1`. Enter credentials only in the app. Do not add API keys to `.env` or an `EXPO_PUBLIC_*` variable.
 
-## Validation
+## Development
 
-Run the core automated checks:
+Run the main checks before submitting a change:
 
 ```sh
 npm run typecheck
@@ -73,49 +93,62 @@ npx eslint .
 npm run test:ci
 ```
 
-Node contract tests exercise compiled production modules against local test boundaries:
+The repository also includes focused Node contract tests:
 
-| Command | Coverage |
+| Command | Checks |
 |---|---|
 | `npm run test:server` | Fake OpenAI-compatible server |
 | `npm run test:transport` | Model discovery transport |
-| `npm run test:onboarding` | Connect and discovery flow |
+| `npm run test:onboarding` | Endpoint connection and discovery |
 | `npm run test:responses` | Responses streaming |
 | `npm run test:chat` | Chat Completions streaming |
 | `npm run test:protocol` | Explicit and automatic protocol routing |
 | `npm run test:web-tools` | Web search and fetch boundaries |
 | `npm run test:usage` | Endpoint account usage |
-| `npm run test:conversations` | SQLite history, recovery, and portability |
+| `npm run test:conversations` | Conversation storage, recovery, and portability |
 | `npm run test:fields` | Model field normalization |
 
-## Project structure
+### Project structure
 
 ```text
-app/                Expo Router routes, setup, and settings screens
+app/                Expo Router routes and screens
 src/domain/         Schemas, types, and pure application logic
 src/features/       Chat, history, model, and setup UI flows
 src/services/       Network, persistence, credentials, tools, and file I/O
 src/ui/             Shared visual tokens and components
-test/               Jest tests and Node contract tests
-tools/              Contract build, fake server, and smoke-test scripts
+test/               Jest and Node contract tests
+tools/              Contract build and smoke-test scripts
 graphify-out/       Generated codebase graph and report
 ```
 
-Feature modules coordinate domain logic, services, and shared UI. Domain modules do not perform I/O. See [`PLAN.md`](PLAN.md) for product decisions and phase gates, [`DESIGN.md`](DESIGN.md) for the visual direction, and [`AGENTS.md`](AGENTS.md) for repository rules.
+Feature modules coordinate domain logic, services, and shared UI. Domain modules remain independent of I/O. Repository decisions and contributor rules are documented in [`PLAN.md`](PLAN.md), [`DESIGN.md`](DESIGN.md), and [`AGENTS.md`](AGENTS.md).
 
-## Security model
+## Security
 
-- API keys are stored through Expo SecureStore and referenced by endpoint profiles.
-- Requests do not follow redirects, and credentials are sent only to the configured endpoint origin.
-- Release builds require HTTPS. Development builds allow cleartext HTTP only for loopback hosts.
-- Diagnostics redact sensitive text. Endpoint exports exclude credentials.
-- Command execution is disabled.
-- Conversation history is stored in local SQLite without SQLCipher encryption.
+- API keys are stored through Expo SecureStore and are not included in endpoint exports.
+- Credentials are sent only to the configured endpoint origin, and requests do not follow redirects.
+- Release builds require HTTPS. Development builds permit cleartext HTTP only for loopback hosts.
+- Diagnostic exports redact sensitive text.
+- Shell command execution is not available.
 
-## Current limits
+Conversation history is stored in local SQLite without SQLCipher encryption. Treat the device and its backups as part of your security boundary.
+
+## Project status
+
+MyLLM is developed in phases tracked in [`PLAN.md`](PLAN.md). The current implementation is intended for development and testing rather than a packaged public release.
+
+Current limitations:
 
 - Android is the primary target.
 - Generation runs only while the app is in the foreground.
-- Image input is limited to four supported images, 8 MB per image, and 12 MB per message.
-- Generic file uploads, video input, background generation, and shell execution are not implemented.
-- Account usage is shown only when an endpoint profile declares a compatible usage path.
+- A message can include up to four images, with an 8 MB limit per image and a 12 MB combined limit.
+- Generic file upload, video input, background generation, and shell execution are not implemented.
+- Account usage appears only when an endpoint profile declares a compatible usage route.
+
+## Contributing
+
+Issues and focused pull requests are welcome. Before making a change, read [`AGENTS.md`](AGENTS.md) for repository constraints and [`PLAN.md`](PLAN.md) for the active phase and acceptance gates. Keep changes within the current phase and include the relevant checks.
+
+## License
+
+No license has been added to this repository. Copyright law therefore reserves all rights to the project owner. You may inspect and contribute to the source through GitHub, but redistribution and reuse are not granted until a license is published.
