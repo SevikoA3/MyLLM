@@ -1,6 +1,6 @@
 # Implementation Plan Aplikasi Chat LLM Android
 
-Status: Phase 17 implementation and automated tests completed on 24 September 2026. Phase 16 was skipped by product decision, so generation remains foreground-only. Android portability and endpoint-management verification remain manual.
+Status: Phase 17 implementation and automated tests completed on 24 September 2026. Phase 16 was skipped by product decision, so generation remains foreground-only. Phase 18 was deferred on 26 September 2026, so command execution remains disabled. Android portability and endpoint-management verification remain manual.
 
 Tanggal: 16 September 2026.
 
@@ -1158,6 +1158,8 @@ Memutuskan apakah command execution benar-benar diperlukan dan boundary mana yan
 - Keduanya: implementasikan satu dulu, stabilkan, baru implementasi kedua.
 
 Jangan membuat CommandExecutor abstraction sebelum backend pertama disetujui. Extract interface saat backend kedua benar-benar mulai.
+
+Status: Deferred by product decision on 26 September 2026. Command execution remains disabled; Phases 19-21 must not start until Phase 18 is resumed and selects a backend.
 
 ## 26. Phase 19: Termux bridge
 

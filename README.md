@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/images/icon.png" width="120" alt="MyLLM app icon" />
+  <img src="assets/images/logo.png" width="120" alt="MyLLM app icon" />
   <h1>MyLLM</h1>
   <p>An Android chat client for custom OpenAI-compatible endpoints.</p>
 
