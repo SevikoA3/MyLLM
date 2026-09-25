@@ -6,7 +6,7 @@ import { createEndpointProfile } from '../../../src/domain/endpoint';
 import { endpointStore } from '../../../src/services/persistence/endpoint-store';
 import { useActiveEndpoint } from '../../../src/features/setup/use-active-endpoint';
 import { useModelCatalog } from '../../../src/features/models/use-model-catalog';
-import ModelsScreen, { ModelRow } from '../../../src/features/models/models-screen';
+import ModelsScreen, { modelPickerName, ModelRow } from '../../../src/features/models/models-screen';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn() },
@@ -84,6 +84,44 @@ describe('ModelsScreen', () => {
 });
 
 describe('ModelRow', () => {
+  it('menghapus prefix endpoint yang dikenal dari nama model picker', () => {
+    expect(modelPickerName('yr3/gpt-4o')).toBe('gpt-4o');
+    expect(modelPickerName('amanai/glm-5.3')).toBe('glm-5.3');
+    expect(modelPickerName('vendor/custom/model')).toBe('vendor/custom/model');
+    expect(modelPickerName('model-lokal')).toBe('model-lokal');
+  });
+
+  it('menyembunyikan prefix provider dari nama model di picker', async () => {
+    const view = await render(
+      <ModelRow
+        model={model()}
+        active={false}
+        selectable
+        onPress={() => {}}
+        onToggle={() => {}}
+        onEdit={() => {}}
+      />,
+    );
+
+    expect(view.getByText('glm-5.3')).toBeTruthy();
+    expect(view.queryByText('amanai/glm-5.3')).toBeNull();
+  });
+
+  it('mempertahankan display name buatan pengguna', async () => {
+    const view = await render(
+      <ModelRow
+        model={model({ displayName: 'Model pilihan/saya' })}
+        active={false}
+        selectable
+        onPress={() => {}}
+        onToggle={() => {}}
+        onEdit={() => {}}
+      />,
+    );
+
+    expect(view.getByText('Model pilihan/saya')).toBeTruthy();
+  });
+
   it('menampilkan metadata yang tersedia sebagai badge yang terbaca', async () => {
     const view = await render(
       <ModelRow

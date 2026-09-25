@@ -441,6 +441,8 @@ export const ModelRow = memo(function ModelRow({
   onToggle: (model: MergedModel) => void;
   onEdit: (model: MergedModel) => void;
 }) {
+  const customDisplayName = model.displayName !== model.id;
+  const pickerName = customDisplayName ? model.displayName : modelPickerName(model.id);
   const contextValue = model.contextWindow === null ? 'ctx unknown' : formatTokens(model.contextWindow) + ' ctx';
   const outputValue = model.maxOutputTokens === null ? 'Unknown' : formatTokens(model.maxOutputTokens) + ' out';
   const reasoningValue = model.reasoningEfforts.length === 0 ? 'Unknown' : 'reasoning ' + String(model.reasoningEfforts.length) + ' level';
@@ -501,13 +503,13 @@ export const ModelRow = memo(function ModelRow({
               <Text
                 numberOfLines={1}
                 style={{ flexShrink: 1, color: colors.text, fontFamily: fonts.heading, fontSize: 18 }}>
-                {model.displayName}
+                {pickerName}
               </Text>
-              <Badge label={model.displayName === model.id ? 'EXACT ID' : 'DISPLAY NAME'} tone="neutral" />
+              <Badge label={customDisplayName ? 'DISPLAY NAME' : 'MODEL ID'} tone="neutral" />
               {active && <Badge label="active" tone="accent" />}
               {!model.enabled && <Badge label="disabled" tone="warning" />}
             </View>
-            {model.displayName !== model.id && (
+            {customDisplayName && (
               <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>
                 {model.id}
               </Text>
@@ -575,6 +577,10 @@ export const ModelRow = memo(function ModelRow({
     </View>
   );
 });
+
+export function modelPickerName(displayName: string): string {
+  return displayName.replace(/^(?:yr3|amanai)\//, '');
+}
 
 function MetricCell({
   label,
