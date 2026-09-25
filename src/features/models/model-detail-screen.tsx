@@ -66,6 +66,7 @@ export default function ModelDetailScreen() {
   const form = draft ?? formFrom(override);
   const ceiling = effectiveMaxOutput(model.maxOutputTokens, protocolOutputCap(profile));
   const hasOverride = override !== undefined;
+  const providerRows = providerMetadataRows(model.raw);
 
   const save = async () => {
     setMessage(null);
@@ -149,6 +150,14 @@ export default function ModelDetailScreen() {
               label="Input modalities"
               value={model.inputModalities.length === 0 ? 'Unknown' : model.inputModalities.join(', ')}
             />
+            {providerRows.map((row) => (
+              <ValueRow
+                key={row.label}
+                label={row.label}
+                value={row.value}
+                source={model.provenance.raw?.source ?? null}
+              />
+            ))}
             <SpecificationRow model={model} path="capabilities.streaming" label="Streaming" value={capabilityText(model.capabilities.streaming)} />
             <SpecificationRow model={model} path="capabilities.tools" label="Tool calling" value={capabilityText(model.capabilities.tools)} />
             <SpecificationRow
@@ -215,7 +224,6 @@ export default function ModelDetailScreen() {
               onReset={() => setDraft({ ...form, inputModalities: '' })}
             />
 
-            <View style={{ height: 1, backgroundColor: colors.border }} />
             <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
               CAPABILITY OVERRIDES
             </Text>
@@ -229,7 +237,6 @@ export default function ModelDetailScreen() {
               />
             ))}
 
-            <View style={{ height: 1, backgroundColor: colors.border }} />
             <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
               REQUEST CONTROLS
             </Text>
@@ -253,7 +260,6 @@ export default function ModelDetailScreen() {
           </Panel>
 
           <View style={{ flexDirection: 'row', gap: 8, padding: 12, borderRadius: 8, backgroundColor: colors.surfaceLowest }}>
-            <View style={{ width: 2, borderRadius: 1, backgroundColor: colors.secondary }} />
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
                 LOCAL OVERRIDE POLICY
@@ -295,8 +301,6 @@ export default function ModelDetailScreen() {
               justifyContent: 'center',
               gap: 8,
               borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
               backgroundColor: colors.surface,
               opacity: pressed ? 0.8 : 1,
             })}>
@@ -347,7 +351,7 @@ function AppBar() {
 function IdentifierCard({ model }: { model: MergedModel }) {
   const source = model.provenance.displayName?.source ?? null;
   return (
-    <View style={{ gap: 12, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceLow }}>
+    <View style={{ gap: 12, padding: 12, borderRadius: 8, backgroundColor: colors.surfaceLow }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.5 }}>
           CANONICAL IDENTIFIER
@@ -412,7 +416,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <View style={{ gap: 12, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceLow }}>
+    <View style={{ gap: 12, padding: 12, borderRadius: 8, backgroundColor: colors.surfaceLow }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <SymbolView name={icon} size={18} tintColor={accent} />
@@ -592,8 +596,6 @@ function ResetSheet({
             paddingHorizontal: 16,
             paddingTop: 12,
             paddingBottom: 24,
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
             borderTopLeftRadius: 12,
             borderTopRightRadius: 12,
             backgroundColor: colors.surfaceLow,
@@ -663,6 +665,26 @@ export function sourceDetails(source: CatalogSource | null): { label: string; co
     default:
       return { label: 'UNKNOWN', color: colors.outline };
   }
+}
+
+export function providerMetadataRows(
+  raw: Record<string, unknown>,
+): { label: string; value: string }[] {
+  const rows: { label: string; value: string }[] = [];
+  if (nonNegativeNumber(raw.multiplier)) {
+    rows.push({ label: 'Billing multiplier', value: String(raw.multiplier) + 'x' });
+  }
+  if (nonNegativeNumber(raw.effective_rate_idr_per_m)) {
+    rows.push({
+      label: 'Effective rate',
+      value: 'IDR ' + String(raw.effective_rate_idr_per_m) + ' / 1M tokens',
+    });
+  }
+  return rows;
+}
+
+function nonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 function tokenText(value: number | null): string {

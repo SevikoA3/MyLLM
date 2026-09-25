@@ -8,11 +8,8 @@ Panduan kerja untuk agent yang mengerjakan repository MyLLM.
 |---|---|---|
 | `DESIGN.md` | Mandatory visual contract for tokens, components, states, accessibility, and motion | Before changing UI, layout, styling, or animation |
 | `PLAN.md` | Kontrak executor, keputusan default, urutan fase, exit gate, definition of done | Sebelum mengerjakan fase apa pun |
-| `graphify-out/graph.json` | Navigation index for codebase structure and relationships | Before locating a change or tracing a flow |
 | `RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md` | Riset requirement dan keputusan teknis | Saat butuh alasan di balik sebuah keputusan |
 | `README.md` | Perintah, versi toolchain, catatan styling dan development build | Saat menjalankan atau menambah dependency |
-
-When `graphify-out/graph.json` exists, start codebase exploration with `graphify query "<question about the codebase>"`. Use the returned paths to read the relevant source. The graph is a navigation index, not a source of truth, so verify important behavior and relationships in source. If the graph is missing, unhelpful, or stale, search narrowly with `rg` and `rg --files`.
 
 For UI changes, read `DESIGN.md` before editing. It is the mandatory visual contract. Follow it without changing behavior specified by `PLAN.md`.
 
@@ -20,7 +17,6 @@ For UI changes, read `DESIGN.md` before editing. It is the mandatory visual cont
 
 - `PLAN.md` mengatur requirement, fase, default produk, dan exit gate.
 - `AGENTS.md` mengatur perilaku agent dan batas kerja repository.
-- `graphify-out/graph.json` aids navigation, but its claims must be verified against source.
 - Jika dokumen bertentangan, jangan menebak. Laporkan konflik dan minta keputusan.
 
 ## 1B. Batas eksekusi lokal
@@ -130,13 +126,12 @@ Aturan test:
 
 1. Tentukan fase yang sedang aktif dari checklist di PLAN.md.
 2. Baca bagian fase tersebut beserta exit gate dan daftar do not build yet.
-3. Find related files with `graphify query` when the graph exists, then verify the source. Use a narrow source search when the graph is missing or unhelpful.
+3. Find related files with a narrow `rg` or `rg --files` search, then verify the source.
 4. Sebutkan asumsi jika ada keputusan yang belum tercantum di PLAN.md. Jika bertentangan dengan default, hentikan dan tanyakan.
 5. Kerjakan hanya scope fase aktif. Jangan mempersiapkan abstraksi untuk fase berikutnya.
 6. Jalankan typecheck, lint, dan test yang relevan. Perubahan docs-only tidak memerlukan pemeriksaan source code.
 7. Perbarui checklist PLAN.md setelah verifikasi, bukan sebelum.
-8. After source changes that affect structure, responsibilities, dependencies, or runtime flow, refresh the graph with `graphify update .`. After changes to indexed documents, or when an incremental update cannot represent a change, run the full `/graphify .` workflow. Do not edit generated graph files manually.
-9. Pastikan `git diff` hanya berisi perubahan yang terkait tugas.
+8. Pastikan `git diff` hanya berisi perubahan yang terkait tugas.
 
 ## 9. Larangan
 

@@ -128,7 +128,7 @@ export default function EndpointProfilesScreen() {
       <ScrollView contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 32 }}>
         <View style={{ gap: 4 }}><Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>PORTABLE CONFIGURATION</Text><Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 22 }}>Endpoint Profiles</Text><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>Switch profiles or transfer configuration without credentials.</Text></View>
         {loading ? <ActivityIndicator color={colors.primary} /> : profiles.map((profile) => (
-          <View key={profile.id} style={{ gap: 10, borderWidth: 1, borderColor: profile.id === activeId ? colors.primary : colors.border, borderRadius: 8, backgroundColor: colors.surface, padding: 12 }}>
+          <View key={profile.id} style={{ gap: 10, borderRadius: 8, backgroundColor: profile.id === activeId ? colors.surfaceHigh : colors.surface, padding: 12 }}>
             <View style={{ gap: 3 }}><Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 15 }}>{profile.name}</Text><Text selectable style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>{profile.baseUrl}</Text><Text style={{ color: profile.id === activeId ? colors.primary : colors.secondary, fontFamily: fonts.monoMedium, fontSize: typography.meta }}>{profile.id === activeId ? 'ACTIVE' : 'AVAILABLE'} {'//'} {profile.protocol.toUpperCase()}</Text></View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Action label={profile.id === activeId ? 'ACTIVE' : 'SWITCH'} disabled={profile.id === activeId || busyId !== null} onPress={() => void select(profile)} />
@@ -151,7 +151,7 @@ return <Pressable accessibilityRole="button" accessibilityLabel={label} accessib
 function DeletePolicySheet({ target, busy, onCancel, onKeep, onDelete }: { target: DeleteTarget | null; busy: boolean; onCancel: () => void; onKeep: () => void; onDelete: () => void }) {
   return (
     <BottomSheet visible={target !== null} dismissLabel="Dismiss endpoint delete confirmation" dismissDisabled={busy} onRequestClose={onCancel}>
-      <View style={{ gap: 12, borderTopWidth: 1, borderColor: colors.border, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surface, padding: 16 }}>
+      <View style={{ gap: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surface, padding: 16 }}>
         <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18 }}>Delete endpoint?</Text>
         <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>
           {String(target?.conversationCount ?? 0)} conversations use this endpoint. Kept conversations remain readable but cannot send until a matching endpoint is connected.

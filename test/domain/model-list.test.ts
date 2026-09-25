@@ -58,6 +58,27 @@ describe('parseModelList', () => {
     expect(model.inputModalities).toEqual(['text']);
   });
 
+  it('membaca context_window yang dikirim Yonda', () => {
+    const result = parseModelList(JSON.stringify({
+      data: [{
+        id: 'gpt-5.6-sol',
+        owned_by: 'Yonda',
+        context_window: 400_000,
+        max_output: 128_000,
+        multiplier: 1.25,
+        effective_rate_idr_per_m: 37_500,
+      }],
+    }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.models[0].contextWindow).toBe(400_000);
+    expect(result.models[0].maxOutputTokens).toBe(128_000);
+    expect(result.models[0].raw.multiplier).toBe(1.25);
+    expect(result.models[0].raw.effective_rate_idr_per_m).toBe(37_500);
+  });
+
   it('tidak gagal karena extension field yang belum dikenal', () => {
     const result = parseModelList(ENRICHED_MODELS);
     expect(result.ok).toBe(true);

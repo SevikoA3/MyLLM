@@ -25,8 +25,6 @@ const cardStyle = {
   gap: 12,
   padding: 12,
   borderRadius: 8,
-  borderWidth: 1,
-  borderColor: colors.border,
   backgroundColor: colors.surfaceLow,
 } as const;
 
@@ -477,8 +475,6 @@ export default function SettingsScreen() {
               justifyContent: 'center',
               gap: 8,
               borderRadius: 4,
-              borderWidth: 1,
-              borderColor: colors.border,
               backgroundColor: colors.surfaceHigh,
               opacity: exporting ? 0.7 : pressed ? 0.75 : 1,
             })}>
@@ -571,8 +567,6 @@ function SettingsAction({ label, disabled, onPress, tone }: { label: string; dis
         justifyContent: 'center',
         borderRadius: 4,
         backgroundColor: tone === 'primary' ? color : colors.surfaceHigh,
-        borderWidth: tone === 'secondary' ? 1 : 0,
-        borderColor: color,
         opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
       })}>
       <Text style={{ color: tone === 'primary' ? colors.surfaceLowest : color, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text>
@@ -643,7 +637,7 @@ function ClearDataSheet({ visible, busy, onCancel, onConfirm }: { visible: boole
       dismissLabel="Dismiss delete confirmation"
       dismissDisabled={busy}
       onRequestClose={busy ? () => undefined : onCancel}>
-        <View style={{ gap: 16, borderTopWidth: 1, borderTopColor: colors.border, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surfaceLow, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
+        <View style={{ gap: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surfaceLow, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
           <View style={{ alignItems: 'center' }}>
             <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: colors.outline }} />
           </View>

@@ -58,6 +58,16 @@ const CAMPAIGN = {
   campaign: { name: 'launch', ends_at: '2026-10-01' },
 };
 
+const YONDA = {
+  id: 'gpt-5.6-sol',
+  object: 'model',
+  owned_by: 'Yonda',
+  context_window: 400_000,
+  max_output: 128_000,
+  multiplier: 1.25,
+  effective_rate_idr_per_m: 37_500,
+};
+
 function parse(records) {
   const result = parseModelList(JSON.stringify({ object: 'list', data: records }));
   assert.equal(result.ok, true);
@@ -113,4 +123,13 @@ test('record tanpa context_length tetap null, bukan angka tebakan', () => {
   assert.equal(model.maxOutputTokens, null);
   assert.deepEqual(model.reasoningEfforts, []);
   assert.deepEqual(model.inputModalities, []);
+});
+
+test('membaca context_window Yonda dan mempertahankan metadata tarif', () => {
+  const [model] = parse([YONDA]);
+
+  assert.equal(model.contextWindow, 400_000);
+  assert.equal(model.maxOutputTokens, 128_000);
+  assert.equal(model.raw.multiplier, 1.25);
+  assert.equal(model.raw.effective_rate_idr_per_m, 37_500);
 });

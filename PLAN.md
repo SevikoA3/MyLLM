@@ -1441,7 +1441,3 @@ Project dianggap MVP selesai setelah Phase 11. Project dianggap P1 selesai setel
 - Exa Search: https://exa.ai/docs/reference/search
 
 Jika dokumentasi library berubah saat executor mulai, pilih stable release yang saling kompatibel, update lockfile, dan catat versi aktual. Jangan pindah ke beta atau canary hanya untuk mendapatkan fitur yang belum diperlukan.
-
-## 35. Navigasi codebase
-
-Use `graphify-out/graph.json` as the index for codebase structure and relationships, following `AGENTS.md`. The graph helps locate source, while source remains authoritative. Refresh the graph after codebase changes that affect structure or flow. Run the full `/graphify .` workflow when document changes or file deletions cannot be represented by an incremental update.

@@ -58,7 +58,7 @@ const MARKDOWN_STYLE: Record<string, ImageStyle | TextStyle | ViewStyle> = {
   heading5: { color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: 13, lineHeight: 20, marginTop: 4, marginBottom: 4 },
   heading6: { color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: 11, lineHeight: 16, marginTop: 4, marginBottom: 4 },
   strong: { color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontWeight: '600' },
-  blockquote: { marginVertical: 4, paddingHorizontal: 12, paddingVertical: 8, borderLeftWidth: 2, borderLeftColor: theme.colors.secondary, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas },
+  blockquote: { marginVertical: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas },
   bullet_list: { marginBottom: 8 },
   ordered_list: { marginBottom: 8 },
   list_item: { flexDirection: 'row', marginBottom: 4 },
@@ -74,7 +74,7 @@ const MARKDOWN_STYLE: Record<string, ImageStyle | TextStyle | ViewStyle> = {
   tr: { flexDirection: 'row', borderBottomWidth: 1, borderColor: theme.colors.surfaceHigh },
   th: { flex: 1, paddingVertical: 8, paddingHorizontal: 6, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: 10 },
   td: { flex: 1, paddingVertical: 8, paddingHorizontal: 6 },
-  hr: { height: 1, marginVertical: 8, backgroundColor: theme.colors.border },
+  hr: { height: 1, marginVertical: 8, backgroundColor: theme.colors.surfaceHigh },
   link: { color: theme.colors.secondary, textDecorationLine: 'underline' },
 };
 
@@ -232,24 +232,27 @@ export default function ChatScreen() {
             borderBottomWidth: 1,
             borderBottomColor: theme.colors.border,
           }}>
-          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={20} tintColor={theme.colors.accent} />
-            <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: 18 }}>
-              MyLLM
-            </Text>
-            <EndpointSelector
-              profiles={profiles}
-              selected={profile}
-              loading={endpointsLoading}
-              disabled={chat.pending || chat.compacting || endpointSwitching}
-              onSelect={(endpointId) => void selectEndpoint(endpointId)}
-              onAdd={() => router.push('/setup?mode=new')}
-              onManage={() => router.push('/settings/endpoints')}
-            />
-          </View>
+          <EndpointSelector
+            profiles={profiles}
+            selected={profile}
+            loading={endpointsLoading}
+            disabled={chat.pending || chat.compacting || endpointSwitching}
+            onSelect={(endpointId) => void selectEndpoint(endpointId)}
+            onAdd={() => router.push('/setup?mode=new')}
+            onManage={() => router.push('/settings/endpoints')}
+          />
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: theme.spacing.screen, paddingTop: 4, paddingBottom: 8, backgroundColor: theme.colors.surfaceLow }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: theme.spacing.screen,
+            paddingTop: 4,
+            paddingBottom: 8,
+            backgroundColor: theme.colors.surfaceLow,
+          }}>
           <ModelSelector
             models={visibleModels}
             selectedId={displayModelId}
@@ -276,11 +279,11 @@ export default function ChatScreen() {
                 height: theme.interaction.compactTouchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: theme.radius.card,
-                backgroundColor: theme.colors.surfaceHigh,
-                opacity: pressed ? 0.7 : 1,
+                borderRadius: theme.radius.control,
+                backgroundColor: theme.colors.surface,
+                opacity: pressed ? theme.interaction.pressedOpacity : 1,
               })}>
-              <SymbolView name={{ ios: 'clock.arrow.circlepath', android: 'history' }} size={16} tintColor={theme.colors.textMuted} />
+              <SymbolView name={{ ios: 'clock.arrow.circlepath', android: 'history' }} size={18} tintColor={theme.colors.textMuted} />
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -302,11 +305,13 @@ export default function ChatScreen() {
                 height: theme.interaction.compactTouchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: theme.radius.card,
+                borderRadius: theme.radius.control,
                 backgroundColor: theme.colors.accent,
-                opacity: chat.pending || chat.messages.length === 0 ? 0.45 : pressed ? 0.75 : 1,
+                opacity: chat.pending || chat.messages.length === 0
+                  ? theme.interaction.disabledOpacity
+                  : pressed ? theme.interaction.pressedOpacity : 1,
               })}>
-              <SymbolView name={{ ios: 'plus', android: 'add' }} size={18} tintColor={theme.colors.accentText} />
+              <SymbolView name={{ ios: 'plus', android: 'add' }} size={20} tintColor={theme.colors.accentText} />
             </Pressable>
           </View>
         </View>
@@ -323,7 +328,7 @@ export default function ChatScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 8, alignItems: 'center', paddingHorizontal: theme.spacing.screen, paddingVertical: 6 }}
-          style={{ maxHeight: 52, backgroundColor: theme.colors.canvas }}>
+          style={{ height: 56, flexGrow: 0, flexShrink: 0, backgroundColor: theme.colors.canvas }}>
           {chat.reasoningOptions.length > 0 && (
             <ReasoningSelector
               options={chat.reasoningOptions}
@@ -504,9 +509,7 @@ export default function ChatScreen() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   borderRadius: theme.radius.sheet,
-                  borderWidth: chat.pending ? 1 : 0,
-                  borderColor: theme.colors.danger,
-                  backgroundColor: chat.pending ? 'transparent' : theme.colors.accent,
+                  backgroundColor: chat.pending ? theme.colors.surfaceHigh : theme.colors.accent,
                   opacity: sendDisabled ? 0.45 : pressed ? 0.75 : 1,
                 })}>
                 {chat.pending ? (
@@ -593,67 +596,77 @@ export function EndpointSelector({
     onSelect(endpointId);
   };
   return (
-    <View>
+    <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={20} tintColor={theme.colors.accent} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Endpoint, ${label}`}
-        accessibilityHint="Switch the active endpoint profile"
+        accessibilityHint="Switch the active endpoint"
         accessibilityState={{ disabled: disabled || loading, expanded: open }}
         disabled={disabled || loading}
         onPress={() => setOpen((value) => !value)}
         style={({ pressed }) => ({
-          minHeight: theme.interaction.compactTouchTarget,
+          flex: 1,
+          minWidth: 0,
+          minHeight: 48,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 4,
-          paddingHorizontal: 6,
-          borderRadius: theme.radius.pill,
-          backgroundColor: theme.colors.surfaceHigh,
+          gap: 8,
+          paddingVertical: 4,
           opacity: disabled || loading ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
         })}>
-        <View
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: selected === null ? theme.colors.tertiary : theme.colors.accent,
-          }}
-        />
-        <Text
-          numberOfLines={1}
-          style={{
-            maxWidth: 96,
-            color: selected === null ? theme.colors.tertiary : theme.colors.accent,
-            fontFamily: theme.fonts.monoMedium,
-            fontSize: theme.typography.meta,
-          }}>
-          {label}
-        </Text>
-        <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={12} tintColor={theme.colors.textMuted} />
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: selected === null ? theme.colors.textMuted : theme.colors.text,
+              fontFamily: theme.fonts.heading,
+              fontSize: theme.typography.componentTitle,
+            }}>
+            {label}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: selected === null ? theme.colors.tertiary : theme.colors.accent,
+              fontFamily: theme.fonts.monoMedium,
+              fontSize: theme.typography.meta,
+            }}>
+            {loading ? 'LOADING ENDPOINTS' : selected === null ? 'NOT CONNECTED' : 'ACTIVE ENDPOINT'}
+          </Text>
+        </View>
+        <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={16} tintColor={theme.colors.textMuted} />
       </Pressable>
       <BottomSheet visible={open} dismissLabel="Close endpoint menu" onRequestClose={() => setOpen(false)}>
         <View
           style={{
-            gap: 4,
-            padding: 16,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
+            gap: 12,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 24,
             borderTopLeftRadius: theme.radius.sheet,
             borderTopRightRadius: theme.radius.sheet,
             backgroundColor: theme.colors.sheet,
           }}>
           <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
-          <Text style={{ paddingHorizontal: 12, paddingVertical: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-            Endpoints
-          </Text>
+          <SelectorSheetHeader
+            title="Choose endpoint"
+            subtitle="New requests use the selected endpoint."
+            closeLabel="Close endpoint menu"
+            onClose={() => setOpen(false)}
+          />
           {loading ? (
-            <ActivityIndicator style={{ marginVertical: 12 }} color={theme.colors.accent} />
+            <View style={{ minHeight: 88, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <ActivityIndicator color={theme.colors.accent} />
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>Loading endpoints...</Text>
+            </View>
           ) : profiles.length === 0 ? (
-            <Text style={{ paddingHorizontal: 12, paddingBottom: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>
-              No endpoint profiles yet. Add one to start chatting.
-            </Text>
+            <View style={{ gap: 4, padding: 12, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }}>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>No endpoints yet</Text>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>Add an endpoint to start chatting.</Text>
+            </View>
           ) : (
-            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 4 }}>
+            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 8 }}>
               {profiles.map((endpointProfile) => {
                 const active = selected?.id === endpointProfile.id;
                 return (
@@ -665,25 +678,24 @@ export function EndpointSelector({
                     disabled={disabled}
                     onPress={() => choose(endpointProfile.id)}
                     style={({ pressed }) => ({
-                      minHeight: 48,
+                      minHeight: 64,
                       flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
-                      paddingHorizontal: 12,
-                      borderRadius: theme.radius.control,
-                      backgroundColor: active ? theme.colors.background : 'transparent',
-                      opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+                      gap: 12,
+                      padding: 12,
+                      borderRadius: theme.radius.card,
+                      backgroundColor: active ? theme.colors.surfaceHigh : theme.colors.surface,
+                      opacity: disabled ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
                     })}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
+                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                      <Text numberOfLines={1} style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>
                         {endpointProfile.name}
                       </Text>
                       <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
                         {endpointProfile.baseUrl}
                       </Text>
                     </View>
-                    {active && <Text style={{ color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>Active</Text>}
+                    <RadioMark checked={active} />
                   </Pressable>
                 );
               })}
@@ -707,14 +719,14 @@ function SelectorAction({ label, primary = false, onPress }: { label: string; pr
       onPress={onPress}
       style={({ pressed }) => ({
         flex: 1,
-        minHeight: 44,
+        minHeight: 48,
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: theme.radius.control,
         backgroundColor: primary ? theme.colors.accent : theme.colors.surfaceHigh,
         opacity: pressed ? theme.interaction.pressedOpacity : 1,
       })}>
-      <Text style={{ color: primary ? theme.colors.accentText : theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.meta }}>
+      <Text style={{ color: primary ? theme.colors.accentText : theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
         {label}
       </Text>
     </Pressable>
@@ -737,6 +749,12 @@ export function ModelSelector({
   onManage: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const selectedModel = models.find((model) => model.id === selectedId);
+  const selectedName = selectedModel === undefined
+    ? selectedId === null ? 'Choose a model' : modelPickerName(selectedId)
+    : selectedModel.displayName === selectedModel.id
+      ? modelPickerName(selectedModel.id)
+      : selectedModel.displayName;
   const choose = (modelId: string) => {
     setOpen(false);
     onSelect(modelId);
@@ -751,45 +769,55 @@ export function ModelSelector({
         disabled={disabled || loading}
         onPress={() => setOpen((value) => !value)}
         style={({ pressed }) => ({
-          minHeight: theme.interaction.compactTouchTarget,
+          minHeight: 52,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 6,
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          borderRadius: theme.radius.sheet,
-          backgroundColor: theme.colors.surfaceHigh,
+          gap: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 7,
+          borderRadius: theme.radius.control,
+          backgroundColor: theme.colors.surface,
           opacity: disabled || loading ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
         })}>
-        <SymbolView name={{ ios: 'cpu', android: 'memory' }} size={16} tintColor={theme.colors.accent} />
-        <Text numberOfLines={1} style={{ flex: 1, color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-          {loading ? 'Loading model...' : (selectedId ?? 'Choose model')}
-        </Text>
+        <SymbolView name={{ ios: 'cpu', android: 'memory' }} size={18} tintColor={theme.colors.secondary} />
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>MODEL</Text>
+          <Text numberOfLines={1} style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
+            {loading ? 'Loading model...' : selectedName}
+          </Text>
+        </View>
         <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={16} tintColor={theme.colors.textMuted} />
       </Pressable>
       <BottomSheet visible={open} dismissLabel="Close model menu" onRequestClose={() => setOpen(false)}>
         <View
           style={{
-            gap: 4,
-            padding: 16,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
+            gap: 12,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 24,
             borderTopLeftRadius: theme.radius.sheet,
             borderTopRightRadius: theme.radius.sheet,
             backgroundColor: theme.colors.sheet,
           }}>
           <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
-          <Text style={{ paddingHorizontal: 12, paddingVertical: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-            Models
-          </Text>
+          <SelectorSheetHeader
+            title="Choose model"
+            subtitle="Only models shown in Catalog appear here."
+            closeLabel="Close model menu"
+            onClose={() => setOpen(false)}
+          />
           {loading ? (
-            <ActivityIndicator style={{ marginVertical: 12 }} color={theme.colors.accent} />
+            <View style={{ minHeight: 88, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <ActivityIndicator color={theme.colors.accent} />
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>Loading models...</Text>
+            </View>
           ) : models.length === 0 ? (
-            <Text style={{ paddingHorizontal: 12, paddingBottom: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>
-              No enabled models yet. Show models in the catalog.
-            </Text>
+            <View style={{ gap: 4, padding: 12, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }}>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>No visible models</Text>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>Show at least one model in Catalog.</Text>
+            </View>
           ) : (
-            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 4 }}>
+            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 8 }}>
               {models.map((model) => {
                 const active = model.id === selectedId;
                 const displayName = model.displayName === model.id ? modelPickerName(model.id) : model.displayName;
@@ -802,20 +830,26 @@ export function ModelSelector({
                     disabled={disabled}
                     onPress={() => choose(model.id)}
                     style={({ pressed }) => ({
-                      minHeight: 48,
+                      minHeight: 56,
                       flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
-                      paddingHorizontal: 12,
-                      borderRadius: theme.radius.control,
-                      backgroundColor: active ? theme.colors.background : 'transparent',
-                      opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+                      gap: 12,
+                      padding: 12,
+                      borderRadius: theme.radius.card,
+                      backgroundColor: active ? theme.colors.surfaceHigh : theme.colors.surface,
+                      opacity: disabled ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
                     })}>
-                    <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>
-                      {displayName}
-                    </Text>
-                    {active && <Text style={{ color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>Active</Text>}
+                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                      <Text numberOfLines={1} style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>
+                        {displayName}
+                      </Text>
+                      {displayName !== model.id && (
+                        <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
+                          {model.id}
+                        </Text>
+                      )}
+                    </View>
+                    <RadioMark checked={active} />
                   </Pressable>
                 );
               })}
@@ -824,6 +858,57 @@ export function ModelSelector({
           <SelectorAction label="Manage catalog" onPress={() => { setOpen(false); onManage(); }} />
         </View>
       </BottomSheet>
+    </View>
+  );
+}
+
+function SelectorSheetHeader({
+  title,
+  subtitle,
+  closeLabel,
+  onClose,
+}: {
+  title: string;
+  subtitle: string;
+  closeLabel: string;
+  onClose: () => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.subtitle }}>{title}</Text>
+        <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>{subtitle}</Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={closeLabel}
+        onPress={onClose}
+        style={({ pressed }) => ({
+          minWidth: 44,
+          minHeight: 44,
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? theme.interaction.pressedOpacity : 1,
+        })}>
+        <Text style={{ color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>CLOSE</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function RadioMark({ checked }: { checked: boolean }) {
+  return (
+    <View
+      style={{
+        width: 22,
+        height: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: checked ? theme.colors.accent : theme.colors.outline,
+        borderRadius: 11,
+      }}>
+      {checked && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.accent }} />}
     </View>
   );
 }
@@ -846,7 +931,7 @@ function CompactionSeparator() {
 
 function ChatInfoBlock({ title, body }: { title: string; body: string }) {
   return (
-    <View style={{ gap: 6, padding: theme.spacing.screen, borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.card, backgroundColor: theme.colors.surfaceLow }}>
+    <View style={{ gap: 6, padding: theme.spacing.screen, borderRadius: theme.radius.card, backgroundColor: theme.colors.surfaceLow }}>
       <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>{title}</Text>
       <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body, lineHeight: 20 }}>{body}</Text>
     </View>
@@ -909,8 +994,6 @@ export function ReasoningSelector({
             alignSelf: 'center',
             gap: 4,
             padding: 16,
-            borderTopWidth: 1,
-            borderTopColor: theme.colors.border,
             borderTopLeftRadius: theme.radius.sheet,
             borderTopRightRadius: theme.radius.sheet,
             backgroundColor: theme.colors.sheet,
@@ -1112,10 +1195,6 @@ export function ToolProgress({
             style={{
               alignSelf: 'flex-start',
               width: '100%',
-              borderWidth: 1,
-              borderColor: toolStatusColor(call.status),
-              borderLeftWidth: 2,
-              borderLeftColor: toolStatusColor(call.status),
               borderRadius: theme.radius.bubble,
               borderTopLeftRadius: theme.radius.micro,
               overflow: 'hidden',
@@ -1243,8 +1322,6 @@ export function WebSearchSourceCards({ output }: { output: string | null }) {
             style={({ pressed }) => ({
               gap: 3,
               padding: 10,
-              borderLeftWidth: 2,
-              borderLeftColor: theme.colors.secondary,
               borderRadius: theme.radius.card,
               backgroundColor: theme.colors.canvas,
               opacity: pressed ? 0.7 : 1,
@@ -1294,8 +1371,6 @@ export function WebToolSourceCards({ name, output }: { name: string; output: str
         style={({ pressed }) => ({
           gap: 3,
           padding: 10,
-          borderLeftWidth: 2,
-          borderLeftColor: theme.colors.secondary,
           borderRadius: theme.radius.card,
           backgroundColor: theme.colors.canvas,
           opacity: pressed ? 0.7 : 1,
@@ -1416,10 +1491,8 @@ function ErrorCard({
         marginHorizontal: theme.spacing.screen,
         marginBottom: 4,
         padding: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.danger,
         borderRadius: theme.radius.control,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.surfaceLow,
       }}>
       <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta, fontWeight: '700' }}>
         {persistenceFailure ? 'Response save failed' : 'Request failed'}

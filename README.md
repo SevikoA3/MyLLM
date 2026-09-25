@@ -118,7 +118,6 @@ src/services/       Network, persistence, credentials, tools, and file I/O
 src/ui/             Shared visual tokens and components
 test/               Jest and Node contract tests
 tools/              Contract build and smoke-test scripts
-graphify-out/       Generated codebase graph and report
 ```
 
 Feature modules coordinate domain logic, services, and shared UI. Domain modules remain independent of I/O. Repository decisions and contributor rules are documented in [`PLAN.md`](PLAN.md), [`DESIGN.md`](DESIGN.md), and [`AGENTS.md`](AGENTS.md).

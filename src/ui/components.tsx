@@ -81,8 +81,6 @@ export function LinkCard({
           gap: 2,
           padding: theme.spacing.screen,
           borderRadius: theme.radius.control,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
           backgroundColor: theme.colors.surface,
           opacity: pressed ? theme.interaction.pressedOpacity : 1,
         })}>
@@ -117,8 +115,6 @@ export function InfoBlock({
         gap: 4,
         padding: theme.spacing.screen,
         borderRadius: theme.radius.card,
-        borderWidth: 1,
-        borderColor: palette.border,
         backgroundColor: palette.background,
       }}>
       <Text style={{ color: palette.title, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
@@ -153,7 +149,6 @@ function tonePalette(colors: ThemeColors, tone: 'neutral' | 'warning' | 'danger'
   if (tone === 'warning') {
     return {
       background: colors.warningBg,
-      border: colors.warningBg,
       title: colors.warningText,
       body: colors.warningText,
     };
@@ -161,14 +156,12 @@ function tonePalette(colors: ThemeColors, tone: 'neutral' | 'warning' | 'danger'
   if (tone === 'danger') {
     return {
       background: colors.surface,
-      border: colors.danger,
       title: colors.danger,
       body: colors.text,
     };
   }
   return {
     background: colors.surface,
-    border: colors.border,
     title: colors.text,
     body: colors.textMuted,
   };

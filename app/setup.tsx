@@ -19,8 +19,6 @@ const cardStyle = {
   gap: 12,
   padding: 12,
   borderRadius: 8,
-  borderWidth: 1,
-  borderColor: colors.border,
   backgroundColor: colors.panel,
 } as const;
 
@@ -284,8 +282,6 @@ export default function SetupScreen() {
             />
             <View
               style={{
-                borderLeftWidth: 2,
-                borderLeftColor: colors.primary,
                 backgroundColor: colors.panelLowest,
                 paddingHorizontal: 10,
                 paddingVertical: 8,
@@ -351,9 +347,8 @@ export default function SetupScreen() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderRadius: 4,
-                    borderWidth: 1,
-                    borderColor:
-                      focusedControl === 'auth-' + mode || authMode === mode ? colors.primary : 'transparent',
+                    borderWidth: focusedControl === 'auth-' + mode ? 1 : 0,
+                    borderColor: colors.primary,
                     backgroundColor: authMode === mode ? colors.controlActive : 'transparent',
                   }}>
                   <Text
@@ -387,9 +382,8 @@ export default function SetupScreen() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderRadius: 4,
-                    borderWidth: 1,
-                    borderColor:
-                      focusedControl === 'protocol-' + mode || protocol === mode ? colors.primary : 'transparent',
+                    borderWidth: focusedControl === 'protocol-' + mode ? 1 : 0,
+                    borderColor: colors.primary,
                     backgroundColor: protocol === mode ? colors.controlActive : 'transparent',
                   }}>
                   <Text
@@ -419,8 +413,8 @@ export default function SetupScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              borderBottomWidth: advanced || focusedControl === 'advanced' ? 1 : 0,
-              borderBottomColor: focusedControl === 'advanced' ? colors.primary : colors.border,
+              borderRadius: 4,
+              backgroundColor: advanced || focusedControl === 'advanced' ? colors.controlActive : 'transparent',
               paddingHorizontal: 12,
             }}
             onPress={() => setAdvanced(!advanced)}>
@@ -465,8 +459,6 @@ export default function SetupScreen() {
             accessibilityRole="alert"
             style={{
               gap: 6,
-              borderLeftWidth: 2,
-              borderLeftColor: colors.errorText,
               borderRadius: 4,
               backgroundColor: colors.errorBackground,
               padding: 12,
@@ -496,8 +488,8 @@ export default function SetupScreen() {
             justifyContent: 'center',
             gap: 8,
             borderRadius: 4,
-            borderWidth: focusedControl === 'connect' ? 2 : 1,
-            borderColor: focusedControl === 'connect' || canConnect ? colors.primary : colors.outline,
+            borderWidth: focusedControl === 'connect' ? 2 : 0,
+            borderColor: colors.primary,
             backgroundColor: canConnect ? colors.primary : colors.control,
             paddingHorizontal: 12,
           }}>

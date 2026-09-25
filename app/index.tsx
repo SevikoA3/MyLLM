@@ -33,7 +33,7 @@ export default function EntryScreen() {
             </Text>
           </View>
 
-          <View style={{ gap: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceLow, padding: 12 }}>
+          <View style={{ gap: 8, borderRadius: 8, backgroundColor: colors.surfaceLow, padding: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <SymbolView name={{ ios: 'arrow.triangle.2.circlepath', android: 'sync' }} size={16} tintColor={colors.secondary} />

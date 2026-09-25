@@ -28,7 +28,7 @@ Import values from `src/ui/tokens.ts`. Use `designSystem` when a component needs
 | Surface | `colors.surface` | Rows and neutral controls |
 | Raised surface | `colors.surfaceHigh` | Active controls, badges, and selected neutral areas |
 | Sheet | `colors.sheet` | Bottom sheet body |
-| Border | `colors.border` | One-pixel structural boundaries |
+| Border | `colors.border` | Functional boundaries for inputs, focus, and data tables |
 | Outline | `colors.outline` | Placeholder text and low-emphasis outlines |
 | Primary text | `colors.text` | Titles and content |
 | Muted text | `colors.muted` or `colors.textMuted` | Supporting copy and metadata |
@@ -69,7 +69,7 @@ Use the 4 dp spacing rhythm in `spacing`: 4, 8, 12, 16, 24, and 32. Use 16 dp fo
 | Bubble | `radius.bubble` | Chat message bubbles only |
 | Pill | `radius.pill` | Progress tracks or controls whose function requires a capsule |
 
-Circles, status dots, avatars, and progress tracks may use geometry-specific radii. Other components use the scale above. Flat surfaces and one-pixel borders communicate hierarchy without decorative elevation.
+Circles, status dots, avatars, and progress tracks may use geometry-specific radii. Other components use the scale above. Flat surfaces, spacing, and color communicate hierarchy without decorative elevation. Do not add decorative top or left accents or full card outlines.
 
 ## Layout
 
@@ -86,7 +86,7 @@ Circles, status dots, avatars, and progress tracks may use geometry-specific rad
 | Type | Treatment |
 |---|---|
 | Primary | Emerald fill, dark text, Inter Semibold, no shadow |
-| Secondary | Raised dark surface, one-pixel border when distinction is needed, light or cyan text |
+| Secondary | Raised dark surface with light or cyan text |
 | Destructive | Red fill for confirmation, or red text on a dark surface before confirmation |
 | Icon | Relevant platform symbol centered in a square target with an accessible label |
 
@@ -102,7 +102,7 @@ Standard controls use `interaction.touchTarget` at 48 dp. Compact controls use `
 
 ### Cards, rows, badges, and status
 
-- Cards use `surfaceLow`, a one-pixel border, `radius.card`, and 12 dp internal padding.
+- Cards use `surfaceLow`, `radius.card`, and 12 dp internal padding without an outline.
 - Rows align their primary value first and place metadata or actions after it. Entire-row actions receive one accessible press target.
 - Badges use `surfaceHigh`, `radius.control`, meta text, and only enough padding to separate the label.
 - Status dots are 5 to 8 dp, have no glow or pulse, and always accompany a text label.
@@ -111,7 +111,7 @@ Standard controls use `interaction.touchTarget` at 48 dp. Compact controls use `
 ### Switches and selectors
 
 - Switch tracks use emerald when enabled and neutral surfaces when disabled. The row label remains readable in either state.
-- Radio and segmented choices use a 44 dp minimum target. Selected choices use emerald fill or border plus accessible checked state.
+- Radio and segmented choices use a 44 dp minimum target. Selected choices use an emerald or raised fill plus accessible checked state. Borders are reserved for visible keyboard focus and radio marks.
 - Show only choices supported by the active endpoint or model.
 
 ### Bottom sheets and modals
@@ -121,7 +121,7 @@ Use `src/ui/bottom-sheet.tsx` for every bottom sheet. The native `Modal` animati
 - The backdrop fades independently using `motion.backdropIn` and `motion.backdropOut`.
 - The sheet translates vertically from and to the bottom using `motion.sheetIn` and `motion.sheetOut`.
 - The close animation completes before the modal unmounts.
-- The sheet uses `colors.sheet` or `colors.surfaceLow`, a top border, `radius.sheet` top corners, and a centered 32 by 4 dp handle.
+- The sheet uses `colors.sheet` or `colors.surfaceLow`, `radius.sheet` top corners, and a centered 32 by 4 dp handle without a top border.
 - Tapping the backdrop and using the Android back action close the sheet unless an irreversible operation is in progress.
 - The sheet exposes a modal accessibility boundary and every backdrop has a specific dismiss label.
 

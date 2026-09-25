@@ -26,8 +26,6 @@ const cardStyle = {
   gap: 12,
   padding: 12,
   borderRadius: 8,
-  borderWidth: 1,
-  borderColor: colors.border,
   backgroundColor: colors.surfaceLow,
 } as const;
 
@@ -274,7 +272,7 @@ export default function ModelsScreen() {
         )}
 
         {catalog.failure?.kind === 'network' && models.length > 0 && (
-          <View style={{ ...cardStyle, borderColor: colors.warning, backgroundColor: colors.surfaceLow }}>
+          <View style={cardStyle}>
             <Text style={{ color: colors.warning, fontFamily: fonts.monoMedium, fontSize: 10 }}>
               OFFLINE CACHED MODE
             </Text>
@@ -285,7 +283,7 @@ export default function ModelsScreen() {
         )}
 
         {blocked !== null && (
-          <View style={{ ...cardStyle, borderColor: colors.warning, backgroundColor: colors.surfaceLow }} accessibilityRole="alert">
+          <View style={cardStyle} accessibilityRole="alert">
             <Text style={{ color: colors.warningText, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>
               {blocked}
             </Text>
@@ -360,8 +358,6 @@ function RefreshButton({
         justifyContent: 'center',
         paddingHorizontal: compact ? 10 : 16,
         borderRadius: 4,
-        borderWidth: 1,
-        borderColor: colors.border,
         backgroundColor: refreshing ? colors.control : colors.surface,
         opacity: refreshing ? 0.7 : pressed ? 0.8 : 1,
       })}>
@@ -414,7 +410,6 @@ export const ModelRow = memo(function ModelRow({
         gap: 0,
         padding: 0,
         overflow: 'hidden',
-        borderColor: colors.border,
         backgroundColor: cardColor,
       }}>
       <View style={{ gap: 12, padding: 12 }}>
@@ -536,8 +531,6 @@ function SmallButton({
         alignItems: 'center',
         paddingHorizontal: 12,
         borderRadius: 4,
-        borderWidth: 1,
-        borderColor: primary ? colors.primary : colors.border,
         backgroundColor: primary ? colors.primary : colors.surface,
         opacity: disabled ? 0.45 : pressed ? 0.7 : 1,
       })}>

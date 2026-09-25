@@ -403,7 +403,7 @@ const HistoryRow = memo(function HistoryRow({
 
   if (editing) {
     return (
-      <View style={{ gap: 8, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+      <View style={{ gap: 8, padding: 12, borderRadius: 8, backgroundColor: colors.surface }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <StatusBadge status={{ label: 'EDITING METADATA', color: colors.secondary, detail: '' }} />
@@ -444,7 +444,7 @@ const HistoryRow = memo(function HistoryRow({
   }
 
   return (
-    <View style={{ overflow: 'hidden', borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceLow }}>
+    <View style={{ overflow: 'hidden', borderRadius: 8, backgroundColor: colors.surfaceLow }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={'Open ' + conversation.title}
@@ -632,8 +632,6 @@ function DeleteSheet({
             paddingHorizontal: 16,
             paddingTop: 12,
             paddingBottom: 24,
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
             borderTopLeftRadius: 12,
             borderTopRightRadius: 12,
             backgroundColor: colors.surfaceLow,

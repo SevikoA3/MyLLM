@@ -85,7 +85,7 @@ export default function UsageScreen() {
           <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 22 }}>Account Usage</Text>
           <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>{profile?.name ?? 'No endpoint'}</Text>
         </View>
-        <View style={{ gap: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 8, backgroundColor: colors.surface, padding: 12 }}>
+        <View style={{ gap: 12, borderRadius: 8, backgroundColor: colors.surface, padding: 12 }}>
           {loading ? <ActivityIndicator color={colors.primary} /> : error !== null ? (
             <Text accessibilityRole="alert" style={{ color: colors.error, fontFamily: fonts.mono, fontSize: 11 }}>{error}</Text>
           ) : usage !== null ? (

@@ -70,7 +70,7 @@ export function ContextPill({
         visible={expanded}
         dismissLabel="Dismiss context usage"
         onRequestClose={() => setExpanded(false)}>
-          <View style={{ gap: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
+          <View style={{ gap: 12, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
             <View style={{ alignItems: 'center' }}>
               <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
             </View>
