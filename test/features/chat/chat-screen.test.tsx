@@ -1,6 +1,57 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
-import { MessageBubble, ReasoningSelector, ToolApprovalControl, ToolProgress, WebSearchSourceCards, WebToolSourceCards } from '../../../src/features/chat/chat-screen';
+import type { MergedModel } from '../../../src/domain/catalog-merge';
+import { createEndpointProfile } from '../../../src/domain/endpoint';
+import { EndpointSelector, MessageBubble, ModelSelector, ReasoningSelector, ToolApprovalControl, ToolProgress, WebSearchSourceCards, WebToolSourceCards } from '../../../src/features/chat/chat-screen';
+
+const model: MergedModel = {
+  id: 'amanai/glm-5.3',
+  displayName: 'amanai/glm-5.3',
+  vendor: 'zai',
+  ownedBy: 'amanai',
+  description: null,
+  contextWindow: 1_000_000,
+  maxOutputTokens: 128_000,
+  reasoningEfforts: [],
+  inputModalities: ['text'],
+  capabilities: { streaming: 'unknown', tools: 'unknown', structuredOutput: 'unknown', nativeCompaction: 'unknown' },
+  raw: {},
+  pricing: null,
+  provenance: {},
+  request: { reasoningEffort: null, outputLimit: null },
+  enabled: true,
+  orphaned: false,
+};
+
+describe('Chat selectors', () => {
+  it('switches endpoint from the chat dropdown', async () => {
+    const first = createEndpointProfile({ id: 'ep_1', name: 'Primary', baseUrl: 'https://one.example/v1' });
+    const second = createEndpointProfile({ id: 'ep_2', name: 'Backup', baseUrl: 'https://two.example/v1' });
+    const onSelect = jest.fn();
+    const view = await render(
+      <EndpointSelector profiles={[first, second]} selected={first} loading={false} disabled={false} onSelect={onSelect} onAdd={() => {}} onManage={() => {}} />,
+    );
+
+    fireEvent.press(view.getByLabelText('Endpoint, Primary'));
+    await waitFor(() => expect(view.getByLabelText('Endpoint Backup')).toBeTruthy());
+    fireEvent.press(view.getByLabelText('Endpoint Backup'));
+
+    expect(onSelect).toHaveBeenCalledWith('ep_2');
+  });
+
+  it('switches model from the chat dropdown', async () => {
+    const onSelect = jest.fn();
+    const view = await render(
+      <ModelSelector models={[model, { ...model, id: 'yr3/gpt-5.6', displayName: 'yr3/gpt-5.6' }]} selectedId={model.id} loading={false} disabled={false} onSelect={onSelect} onManage={() => {}} />,
+    );
+
+    fireEvent.press(view.getByLabelText('Conversation model, amanai/glm-5.3'));
+    await waitFor(() => expect(view.getByLabelText('Model yr3/gpt-5.6')).toBeTruthy());
+    fireEvent.press(view.getByLabelText('Model yr3/gpt-5.6'));
+
+    expect(onSelect).toHaveBeenCalledWith('yr3/gpt-5.6');
+  });
+});
 
 describe('MessageBubble', () => {
   it('uses compact markdown headings and the reference transcript shape', async () => {

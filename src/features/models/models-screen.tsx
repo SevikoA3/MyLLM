@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
@@ -15,10 +15,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MergedModel } from '../../domain/catalog-merge';
-import { endpointStore } from '../../services/persistence/endpoint-store';
 import { colors, fonts, typography } from '../../ui/tokens';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
-import { describeRefresh, formatTokens, modelBadges } from './model-badges';
+import { describeRefresh, formatTokens, modelBadges, modelPickerName } from './model-badges';
 import { useModelCatalog } from './use-model-catalog';
 
 type BadgeTone = 'neutral' | 'accent' | 'warning';
@@ -34,13 +33,12 @@ const cardStyle = {
 
 const EMPTY_MODELS: MergedModel[] = [];
 
-/** Picker model dipakai dari tab Model dan dari Settings > Models. */
+/** Catalog mengatur visibilitas dan metadata model untuk endpoint aktif. */
 export default function ModelsScreen() {
   const { status, profile } = useActiveEndpoint();
   const catalog = useModelCatalog(profile);
   const reloadCatalog = catalog.reload;
   const setOverride = catalog.setOverride;
-  const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [customId, setCustomId] = useState('');
@@ -48,9 +46,7 @@ export default function ModelsScreen() {
   const [showDisabled, setShowDisabled] = useState(false);
 
   const models = catalog.runtime?.models ?? EMPTY_MODELS;
-  const enabledIds = models.filter((model) => model.enabled).map((model) => model.id);
-  const excludedCount = models.length - enabledIds.length;
-  const hasActive = activeModelId !== null && enabledIds.includes(activeModelId);
+  const excludedCount = models.filter((model) => !model.enabled).length;
   const visibleModels = useMemo(() => {
     const query = filter.trim().toLowerCase();
     return models.filter((model) => {
@@ -61,36 +57,11 @@ export default function ModelsScreen() {
     });
   }, [filter, models, showDisabled]);
 
-  useEffect(() => {
-    let alive = true;
-    if (profile === null) return;
-    endpointStore.loadActiveModelId(profile.id).then((modelId) => {
-      if (alive) {
-        setActiveModelId(modelId);
-      }
-    });
-    return () => {
-      alive = false;
-    };
-  }, [profile]);
-
   useFocusEffect(
     useCallback(() => {
       void reloadCatalog();
     }, [reloadCatalog]),
   );
-
-  const pick = useCallback(async (model: MergedModel) => {
-    if (!model.enabled) {
-      setBlocked(model.displayName + ' is disabled. Enable it before using it.');
-      return;
-    }
-    setBlocked(null);
-    if (profile === null) return;
-    await endpointStore.saveActiveModelId(profile.id, model.id);
-    setActiveModelId(model.id);
-    router.replace('/(tabs)');
-  }, [profile]);
 
   const editModel = useCallback((model: MergedModel) => {
     router.push({ pathname: '/settings/model', params: { modelId: model.id } });
@@ -104,14 +75,11 @@ export default function ModelsScreen() {
     ({ item }: ListRenderItemInfo<MergedModel>) => (
       <ModelRow
         model={item}
-        active={item.id === activeModelId && item.enabled}
-        selectable={item.enabled}
-        onPress={pick}
         onEdit={editModel}
         onToggle={toggleModel}
       />
     ),
-    [activeModelId, editModel, pick, toggleModel],
+    [editModel, toggleModel],
   );
 
   const addCustomModel = useCallback(async () => {
@@ -155,7 +123,7 @@ export default function ModelsScreen() {
       : catalog.failure !== null
         ? colors.warning
         : colors.primary;
-  const allModelsExcluded = models.length > 0 && enabledIds.length === 0 && !showDisabled;
+  const allModelsExcluded = models.length > 0 && excludedCount === models.length && !showDisabled;
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
@@ -316,17 +284,6 @@ export default function ModelsScreen() {
           </View>
         )}
 
-        {!hasActive && models.length > 0 && (
-          <View style={{ ...cardStyle, borderColor: colors.error, backgroundColor: colors.errorBackground }}>
-            <Text style={{ color: colors.errorText, fontFamily: fonts.heading, fontSize: 15 }}>
-              No active model
-            </Text>
-            <Text style={{ color: colors.errorText, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>
-              Select an enabled model below before starting a chat.
-            </Text>
-          </View>
-        )}
-
         {blocked !== null && (
           <View style={{ ...cardStyle, borderColor: colors.warning, backgroundColor: colors.surfaceLow }} accessibilityRole="alert">
             <Text style={{ color: colors.warningText, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>
@@ -428,16 +385,10 @@ function RefreshButton({
 
 export const ModelRow = memo(function ModelRow({
   model,
-  active,
-  selectable,
-  onPress,
   onToggle,
   onEdit,
 }: {
   model: MergedModel;
-  active: boolean;
-  selectable: boolean;
-  onPress: (model: MergedModel) => void;
   onToggle: (model: MergedModel) => void;
   onEdit: (model: MergedModel) => void;
 }) {
@@ -454,7 +405,7 @@ export const ModelRow = memo(function ModelRow({
       !badge.endsWith(' out') &&
       !badge.startsWith('reasoning '),
   );
-  const cardColor = active ? colors.surfaceHigh : colors.surfaceLow;
+  const cardColor = colors.surfaceLow;
 
   return (
     <View
@@ -463,42 +414,12 @@ export const ModelRow = memo(function ModelRow({
         gap: 0,
         padding: 0,
         overflow: 'hidden',
-        borderColor: active ? colors.primary : colors.border,
+        borderColor: colors.border,
         backgroundColor: cardColor,
       }}>
-      {active && (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border,
-            backgroundColor: colors.surface,
-          }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary }} />
-            <Text style={{ color: colors.primary, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-              ACTIVE INFERENCE ENGINE
-            </Text>
-          </View>
-          <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-            SELECTED
-          </Text>
-        </View>
-      )}
       <View style={{ gap: 12, padding: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={'Select model ' + model.id}
-            accessibilityHint={selectable ? 'Make this the active model' : 'This model is disabled'}
-            accessibilityState={{ selected: active, disabled: !selectable }}
-            onPress={() => onPress(model)}
-            style={({ pressed }) => ({ flex: 1, minWidth: 0, gap: 4, opacity: pressed ? 0.7 : 1 })}>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
               <Text
                 numberOfLines={1}
@@ -506,7 +427,6 @@ export const ModelRow = memo(function ModelRow({
                 {pickerName}
               </Text>
               <Badge label={customDisplayName ? 'DISPLAY NAME' : 'MODEL ID'} tone="neutral" />
-              {active && <Badge label="active" tone="accent" />}
               {!model.enabled && <Badge label="disabled" tone="warning" />}
             </View>
             {customDisplayName && (
@@ -514,7 +434,7 @@ export const ModelRow = memo(function ModelRow({
                 {model.id}
               </Text>
             )}
-          </Pressable>
+          </View>
           <Pressable
             accessibilityRole="checkbox"
             accessibilityLabel={'Show ' + model.id + ' in picker'}
@@ -560,27 +480,12 @@ export const ModelRow = memo(function ModelRow({
         )}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {active ? (
-            <View style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: colors.primary }}>
-              <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: 13 }}>
-                Selected model
-              </Text>
-            </View>
-          ) : (
-            <View style={{ flex: 1 }}>
-              <SmallButton label="Set as active model" tone="primary" onPress={() => onPress(model)} />
-            </View>
-          )}
           <SmallButton label="Details" onPress={() => onEdit(model)} />
         </View>
       </View>
     </View>
   );
 });
-
-export function modelPickerName(displayName: string): string {
-  return displayName.replace(/^(?:yr3|amanai)\//, '');
-}
 
 function MetricCell({
   label,

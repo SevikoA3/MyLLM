@@ -1,5 +1,9 @@
 import type { MergedModel } from '../../domain/catalog-merge';
 
+export function modelPickerName(displayName: string): string {
+  return displayName.replace(/^(?:yr3|amanai)\//, '');
+}
+
 /** Badge hanya dari metadata yang benar-benar diketahui, bukan tebakan dari nama model. */
 export function modelBadges(model: MergedModel): string[] {
   const badges: string[] = [];

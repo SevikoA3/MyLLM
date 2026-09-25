@@ -1,20 +1,15 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { router } from 'expo-router';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import type { MergedModel } from '../../../src/domain/catalog-merge';
 import { createEndpointProfile } from '../../../src/domain/endpoint';
-import { endpointStore } from '../../../src/services/persistence/endpoint-store';
 import { useActiveEndpoint } from '../../../src/features/setup/use-active-endpoint';
 import { useModelCatalog } from '../../../src/features/models/use-model-catalog';
-import ModelsScreen, { modelPickerName, ModelRow } from '../../../src/features/models/models-screen';
+import { modelPickerName } from '../../../src/features/models/model-badges';
+import ModelsScreen, { ModelRow } from '../../../src/features/models/models-screen';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), replace: jest.fn() },
   useFocusEffect: (effect: () => void) => effect(),
-}));
-
-jest.mock('../../../src/services/persistence/endpoint-store', () => ({
-  endpointStore: { loadActiveModelId: jest.fn(), saveActiveModelId: jest.fn() },
 }));
 
 jest.mock('../../../src/features/setup/use-active-endpoint', () => ({ useActiveEndpoint: jest.fn() }));
@@ -48,13 +43,12 @@ function model(overrides: Partial<MergedModel> = {}): MergedModel {
 }
 
 describe('ModelsScreen', () => {
-  it('returns to chat after setting an active model', async () => {
+  it('toggles model visibility without offering active selection', async () => {
     const activeEndpoint = jest.mocked(useActiveEndpoint);
     const modelCatalog = jest.mocked(useModelCatalog);
     const profile = createEndpointProfile({ id: 'endpoint_1', name: 'Example endpoint', baseUrl: 'https://example.com/v1' });
+    const setOverride = jest.fn().mockResolvedValue(undefined);
 
-    jest.mocked(endpointStore.loadActiveModelId).mockResolvedValue(null);
-    jest.mocked(endpointStore.saveActiveModelId).mockResolvedValue(undefined);
     activeEndpoint.mockReturnValue({ status: 'ready', profile });
     modelCatalog.mockReturnValue({
       runtime: { models: [model()], lastFetchedAt: '2026-09-19T00:00:00.000Z' },
@@ -63,7 +57,7 @@ describe('ModelsScreen', () => {
       failure: null,
       reload: jest.fn().mockResolvedValue(undefined),
       refresh: jest.fn().mockResolvedValue(undefined),
-      setOverride: jest.fn().mockResolvedValue(undefined),
+      setOverride,
       addCustomModel: jest.fn().mockResolvedValue(undefined),
       previewOverrides: jest.fn(),
       applyOverridesText: jest.fn(),
@@ -71,15 +65,10 @@ describe('ModelsScreen', () => {
     } as never);
 
     const view = await render(<ModelsScreen />);
-    await act(async () => {
-      fireEvent.press(view.getByLabelText('Set as active model'));
-      await Promise.resolve();
-    });
+    expect(view.queryByText('Set as active model')).toBeNull();
+    fireEvent.press(view.getByLabelText('Show amanai/glm-5.3 in picker'));
 
-    await waitFor(() => {
-      expect(endpointStore.saveActiveModelId).toHaveBeenCalledWith('endpoint_1', 'amanai/glm-5.3');
-      expect(router.replace).toHaveBeenCalledWith('/(tabs)');
-    });
+    await waitFor(() => expect(setOverride).toHaveBeenCalledWith('amanai/glm-5.3', { enabled: false }));
   });
 });
 
@@ -95,9 +84,6 @@ describe('ModelRow', () => {
     const view = await render(
       <ModelRow
         model={model()}
-        active={false}
-        selectable
-        onPress={() => {}}
         onToggle={() => {}}
         onEdit={() => {}}
       />,
@@ -111,9 +97,6 @@ describe('ModelRow', () => {
     const view = await render(
       <ModelRow
         model={model({ displayName: 'Model pilihan/saya' })}
-        active={false}
-        selectable
-        onPress={() => {}}
         onToggle={() => {}}
         onEdit={() => {}}
       />,
@@ -126,9 +109,6 @@ describe('ModelRow', () => {
     const view = await render(
       <ModelRow
         model={model()}
-        active
-        selectable
-        onPress={() => {}}
         onToggle={() => {}}
         onEdit={() => {}}
       />,
@@ -137,16 +117,13 @@ describe('ModelRow', () => {
     expect(view.getByText('1M ctx')).toBeTruthy();
     expect(view.getByText('128k out')).toBeTruthy();
     expect(view.getByText('reasoning 3 level')).toBeTruthy();
-    expect(view.getByText('active')).toBeTruthy();
+    expect(view.queryByText('active')).toBeNull();
   });
 
   it('menandai context window yang tidak diketahui sebagai unknown', async () => {
     const view = await render(
       <ModelRow
         model={model({ contextWindow: null, maxOutputTokens: null, reasoningEfforts: [] })}
-        active={false}
-        selectable
-        onPress={() => {}}
         onToggle={() => {}}
         onEdit={() => {}}
       />,
@@ -159,9 +136,6 @@ describe('ModelRow', () => {
     const view = await render(
       <ModelRow
         model={model({ enabled: false })}
-        active={false}
-        selectable={false}
-        onPress={() => {}}
         onToggle={() => {}}
         onEdit={() => {}}
       />,

@@ -1,4 +1,4 @@
-import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
@@ -23,12 +23,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { ChatMessage } from '../../domain/conversation';
+import type { EndpointProfile } from '../../domain/endpoint';
 import type { AppError } from '../../domain/error';
+import type { MergedModel } from '../../domain/catalog-merge';
 import type { ToolActivity } from '../../domain/tool';
 import { parseWebFetchOutput, parseWebSearchOutput } from '../../domain/web-search';
 import { formatCount } from '../../domain/usage';
+import { pickerModels } from '../../services/persistence/catalog-store';
+import {
+  endpointStore,
+  subscribeEndpointChanges,
+} from '../../services/persistence/endpoint-store';
+import { settingsStore } from '../../services/persistence/settings-store';
 import { designSystem } from '../../ui/tokens';
 import { BottomSheet } from '../../ui/bottom-sheet';
+import { modelPickerName } from '../models/model-badges';
+import { useModelCatalog } from '../models/use-model-catalog';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { useChat } from './use-chat';
 import { ContextPill } from './context-pill';
@@ -36,6 +46,7 @@ import { ContextPill } from './context-pill';
 const theme = designSystem;
 const chatMessageKey = (item: ChatMessage) => item.id;
 const chatListStyle = { flex: 1 } as const;
+const EMPTY_MODELS: MergedModel[] = [];
 
 const MARKDOWN_STYLE: Record<string, ImageStyle | TextStyle | ViewStyle> = {
   body: { color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.body, lineHeight: 20 },
@@ -74,11 +85,19 @@ export default function ChatScreen() {
   const requestedConversationId =
     typeof params.conversationId === 'string' && !startFresh ? params.conversationId : null;
   const chat = useChat(profile, requestedConversationId, startFresh);
+  const catalog = useModelCatalog(profile);
   const [draft, setDraft] = useState('');
+  const [profiles, setProfiles] = useState<EndpointProfile[]>([]);
+  const [endpointsLoading, setEndpointsLoading] = useState(true);
+  const [endpointSwitching, setEndpointSwitching] = useState(false);
+  const [modelSwitching, setModelSwitching] = useState(false);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const router = useRouter();
   const reloadModel = chat.reloadModel;
+  const reloadCatalog = catalog.reload;
   const updateContext = chat.updateContext;
   const displayModelId = chat.readOnly ? chat.conversationModelId : chat.activeModelId;
+  const visibleModels = catalog.runtime === null ? EMPTY_MODELS : pickerModels(catalog.runtime);
   const activeAssistantId = chat.messages.at(-1)?.id ?? null;
   const listContentStyle = useMemo<ViewStyle>(() => ({
     flexGrow: 1,
@@ -110,8 +129,27 @@ export default function ChatScreen() {
   useFocusEffect(
     useCallback(() => {
       void reloadModel();
-    }, [reloadModel]),
+      void reloadCatalog();
+    }, [reloadCatalog, reloadModel]),
   );
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const next = await endpointStore.loadAll();
+        if (alive) setProfiles(next);
+      } finally {
+        if (alive) setEndpointsLoading(false);
+      }
+    };
+    void load();
+    const unsubscribe = subscribeEndpointChanges(() => void load());
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     updateContext(draft);
@@ -139,6 +177,32 @@ export default function ChatScreen() {
       chat.readOnly ||
       chat.activeModelId === null ||
       (draft.trim().length === 0 && chat.attachments.length === 0));
+
+  const selectEndpoint = useCallback(async (endpointId: string) => {
+    setEndpointSwitching(true);
+    setSelectionError(null);
+    try {
+      await endpointStore.select(endpointId);
+    } catch {
+      setSelectionError('Could not switch endpoint. Try again.');
+    } finally {
+      setEndpointSwitching(false);
+    }
+  }, []);
+
+  const selectModel = useCallback(async (modelId: string) => {
+    if (profile === null) return;
+    setModelSwitching(true);
+    setSelectionError(null);
+    try {
+      await settingsStore.saveActiveModelId(profile.id, modelId);
+      await reloadModel();
+    } catch {
+      setSelectionError('Could not switch model. Try again.');
+    } finally {
+      setModelSwitching(false);
+    }
+  }, [profile, reloadModel]);
 
   if (status === 'loading') {
     return (
@@ -173,83 +237,34 @@ export default function ChatScreen() {
             <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: 18 }}>
               MyLLM
             </Text>
-            <View
-              accessibilityLabel={chat.readOnly ? 'Conversation endpoint unavailable' : profile === null ? 'No endpoint connected' : 'Endpoint configured'}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                paddingHorizontal: 6,
-                paddingVertical: 3,
-                borderRadius: theme.radius.pill,
-                backgroundColor: theme.colors.surfaceHigh,
-              }}>
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  backgroundColor: chat.readOnly || profile === null ? theme.colors.tertiary : theme.colors.accent,
-                }}
-              />
-              <Text
-                style={{
-                  color: chat.readOnly || profile === null ? theme.colors.tertiary : theme.colors.accent,
-                  fontFamily: theme.fonts.monoMedium,
-                  fontSize: theme.typography.meta,
-                }}>
-                {chat.readOnly ? 'READ ONLY' : profile === null ? 'NO ENDPOINT' : 'CONNECTED'}
-              </Text>
-            </View>
+            <EndpointSelector
+              profiles={profiles}
+              selected={profile}
+              loading={endpointsLoading}
+              disabled={chat.pending || chat.compacting || endpointSwitching}
+              onSelect={(endpointId) => void selectEndpoint(endpointId)}
+              onAdd={() => router.push('/setup?mode=new')}
+              onManage={() => router.push('/settings/endpoints')}
+            />
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open active model catalog"
-            onPress={() => router.push('/models')}
-            style={({ pressed }) => ({
-              minWidth: 44,
-              minHeight: 44,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: theme.radius.control,
-              backgroundColor: theme.colors.surfaceHigh,
-              opacity: pressed ? 0.7 : 1,
-            })}>
-            <SymbolView name={{ ios: 'slider.horizontal.3', android: 'tune' }} size={20} tintColor={theme.colors.textMuted} />
-          </Pressable>
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: theme.spacing.screen, paddingTop: 4, paddingBottom: 8, backgroundColor: theme.colors.surfaceLow }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Conversation model, ${displayModelId ?? 'none'}`}
-            onPress={() => {
-              if (!chat.readOnly) router.push('/models');
-            }}
-            hitSlop={6}
-            style={({ pressed }) => ({
-              flex: 1,
-              minWidth: 0,
-              minHeight: theme.interaction.compactTouchTarget,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: theme.radius.sheet,
-              backgroundColor: theme.colors.surfaceHigh,
-              opacity: pressed ? 0.8 : 1,
-            })}>
-            <SymbolView name={{ ios: 'cpu', android: 'memory' }} size={16} tintColor={theme.colors.accent} />
-            <Text
-              numberOfLines={1}
-              style={{ flex: 1, color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-              {chat.readOnly
-                ? (displayModelId ?? 'Imported model unavailable')
-                : chat.loadingModel ? 'Loading active model...' : (chat.activeModelId ?? 'Choose active model')}
-            </Text>
-            <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={16} tintColor={theme.colors.textMuted} />
-          </Pressable>
+          <ModelSelector
+            models={visibleModels}
+            selectedId={displayModelId}
+            loading={catalog.loading || chat.loadingModel}
+            disabled={
+              profile === null ||
+              chat.pending ||
+              chat.compacting ||
+              chat.readOnly ||
+              modelSwitching ||
+              catalog.loading
+            }
+            onSelect={(modelId) => void selectModel(modelId)}
+            onManage={() => router.push('/models')}
+          />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Pressable
               accessibilityRole="button"
@@ -295,6 +310,14 @@ export default function ChatScreen() {
             </Pressable>
           </View>
         </View>
+
+        {selectionError !== null && (
+          <View accessibilityRole="alert" style={{ paddingHorizontal: theme.spacing.screen, paddingBottom: 8, backgroundColor: theme.colors.surfaceLow }}>
+            <Text style={{ color: theme.colors.warningText, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
+              {selectionError}
+            </Text>
+          </View>
+        )}
 
         <ScrollView
           horizontal
@@ -344,27 +367,7 @@ export default function ChatScreen() {
           </View>
         ) : !chat.readOnly && chat.activeModelId === null && !chat.loadingModel ? (
           <View style={{ flex: 1, gap: 12, padding: theme.spacing.screen }}>
-            <ChatInfoBlock title="Choose a model" body="Chat needs one active model from the catalog." />
-            <Link href="/models" asChild>
-              <Pressable
-                accessibilityRole="button"
-                style={{
-                  minHeight: 48,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: theme.radius.control,
-                  backgroundColor: theme.colors.accent,
-                }}>
-                <Text
-                  style={{
-                    color: theme.colors.accentText,
-                    fontSize: theme.typography.body,
-                    fontWeight: '700',
-                  }}>
-                  Open model catalog
-                </Text>
-              </Pressable>
-            </Link>
+            <ChatInfoBlock title="Choose a model" body="Use the model dropdown above before starting a chat." />
           </View>
         ) : (
           <FlatList
@@ -563,6 +566,265 @@ export function ToolApprovalControl({
         {enabled ? 'Tools: Auto read' : 'Tools: Ask'}
       </Text>
     </Pressable>
+  );
+}
+
+export function EndpointSelector({
+  profiles,
+  selected,
+  loading,
+  disabled,
+  onSelect,
+  onAdd,
+  onManage,
+}: {
+  profiles: EndpointProfile[];
+  selected: EndpointProfile | null;
+  loading: boolean;
+  disabled: boolean;
+  onSelect: (endpointId: string) => void;
+  onAdd: () => void;
+  onManage: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = selected?.name ?? 'No endpoint';
+  const choose = (endpointId: string) => {
+    setOpen(false);
+    onSelect(endpointId);
+  };
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Endpoint, ${label}`}
+        accessibilityHint="Switch the active endpoint profile"
+        accessibilityState={{ disabled: disabled || loading, expanded: open }}
+        disabled={disabled || loading}
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => ({
+          minHeight: theme.interaction.compactTouchTarget,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 4,
+          paddingHorizontal: 6,
+          borderRadius: theme.radius.pill,
+          backgroundColor: theme.colors.surfaceHigh,
+          opacity: disabled || loading ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
+        })}>
+        <View
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: selected === null ? theme.colors.tertiary : theme.colors.accent,
+          }}
+        />
+        <Text
+          numberOfLines={1}
+          style={{
+            maxWidth: 96,
+            color: selected === null ? theme.colors.tertiary : theme.colors.accent,
+            fontFamily: theme.fonts.monoMedium,
+            fontSize: theme.typography.meta,
+          }}>
+          {label}
+        </Text>
+        <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={12} tintColor={theme.colors.textMuted} />
+      </Pressable>
+      <BottomSheet visible={open} dismissLabel="Close endpoint menu" onRequestClose={() => setOpen(false)}>
+        <View
+          style={{
+            gap: 4,
+            padding: 16,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            borderTopLeftRadius: theme.radius.sheet,
+            borderTopRightRadius: theme.radius.sheet,
+            backgroundColor: theme.colors.sheet,
+          }}>
+          <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
+          <Text style={{ paddingHorizontal: 12, paddingVertical: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+            Endpoints
+          </Text>
+          {loading ? (
+            <ActivityIndicator style={{ marginVertical: 12 }} color={theme.colors.accent} />
+          ) : profiles.length === 0 ? (
+            <Text style={{ paddingHorizontal: 12, paddingBottom: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>
+              No endpoint profiles yet. Add one to start chatting.
+            </Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 4 }}>
+              {profiles.map((endpointProfile) => {
+                const active = selected?.id === endpointProfile.id;
+                return (
+                  <Pressable
+                    key={endpointProfile.id}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Endpoint ${endpointProfile.name}`}
+                    accessibilityState={{ checked: active, disabled }}
+                    disabled={disabled}
+                    onPress={() => choose(endpointProfile.id)}
+                    style={({ pressed }) => ({
+                      minHeight: 48,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      paddingHorizontal: 12,
+                      borderRadius: theme.radius.control,
+                      backgroundColor: active ? theme.colors.background : 'transparent',
+                      opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+                    })}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.body }}>
+                        {endpointProfile.name}
+                      </Text>
+                      <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>
+                        {endpointProfile.baseUrl}
+                      </Text>
+                    </View>
+                    {active && <Text style={{ color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>Active</Text>}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+          <View style={{ flexDirection: 'row', gap: 8, paddingTop: 8 }}>
+            <SelectorAction label="Add endpoint" primary onPress={() => { setOpen(false); onAdd(); }} />
+            <SelectorAction label="Manage" onPress={() => { setOpen(false); onManage(); }} />
+          </View>
+        </View>
+      </BottomSheet>
+    </View>
+  );
+}
+
+function SelectorAction({ label, primary = false, onPress }: { label: string; primary?: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minHeight: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: theme.radius.control,
+        backgroundColor: primary ? theme.colors.accent : theme.colors.surfaceHigh,
+        opacity: pressed ? theme.interaction.pressedOpacity : 1,
+      })}>
+      <Text style={{ color: primary ? theme.colors.accentText : theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.meta }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function ModelSelector({
+  models,
+  selectedId,
+  loading,
+  disabled,
+  onSelect,
+  onManage,
+}: {
+  models: MergedModel[];
+  selectedId: string | null;
+  loading: boolean;
+  disabled: boolean;
+  onSelect: (modelId: string) => void;
+  onManage: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const choose = (modelId: string) => {
+    setOpen(false);
+    onSelect(modelId);
+  };
+  return (
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Conversation model, ${selectedId ?? 'none'}`}
+        accessibilityHint="Switch the active model"
+        accessibilityState={{ disabled: disabled || loading, expanded: open }}
+        disabled={disabled || loading}
+        onPress={() => setOpen((value) => !value)}
+        style={({ pressed }) => ({
+          minHeight: theme.interaction.compactTouchTarget,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          borderRadius: theme.radius.sheet,
+          backgroundColor: theme.colors.surfaceHigh,
+          opacity: disabled || loading ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
+        })}>
+        <SymbolView name={{ ios: 'cpu', android: 'memory' }} size={16} tintColor={theme.colors.accent} />
+        <Text numberOfLines={1} style={{ flex: 1, color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+          {loading ? 'Loading model...' : (selectedId ?? 'Choose model')}
+        </Text>
+        <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={16} tintColor={theme.colors.textMuted} />
+      </Pressable>
+      <BottomSheet visible={open} dismissLabel="Close model menu" onRequestClose={() => setOpen(false)}>
+        <View
+          style={{
+            gap: 4,
+            padding: 16,
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.border,
+            borderTopLeftRadius: theme.radius.sheet,
+            borderTopRightRadius: theme.radius.sheet,
+            backgroundColor: theme.colors.sheet,
+          }}>
+          <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
+          <Text style={{ paddingHorizontal: 12, paddingVertical: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+            Models
+          </Text>
+          {loading ? (
+            <ActivityIndicator style={{ marginVertical: 12 }} color={theme.colors.accent} />
+          ) : models.length === 0 ? (
+            <Text style={{ paddingHorizontal: 12, paddingBottom: 8, color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>
+              No enabled models yet. Show models in the catalog.
+            </Text>
+          ) : (
+            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 4 }}>
+              {models.map((model) => {
+                const active = model.id === selectedId;
+                const displayName = model.displayName === model.id ? modelPickerName(model.id) : model.displayName;
+                return (
+                  <Pressable
+                    key={model.id}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Model ${model.id}`}
+                    accessibilityState={{ checked: active, disabled }}
+                    disabled={disabled}
+                    onPress={() => choose(model.id)}
+                    style={({ pressed }) => ({
+                      minHeight: 48,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      paddingHorizontal: 12,
+                      borderRadius: theme.radius.control,
+                      backgroundColor: active ? theme.colors.background : 'transparent',
+                      opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+                    })}>
+                    <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>
+                      {displayName}
+                    </Text>
+                    {active && <Text style={{ color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>Active</Text>}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+          <SelectorAction label="Manage catalog" onPress={() => { setOpen(false); onManage(); }} />
+        </View>
+      </BottomSheet>
+    </View>
   );
 }
 

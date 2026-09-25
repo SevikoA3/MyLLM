@@ -61,8 +61,15 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
   }, []);
 
   useEffect(() => {
+    let active = true;
     alive.current = true;
     if (profile === null) {
+      void (async () => {
+        setRuntime(null);
+        setFailure(null);
+        setRefreshing(false);
+        setLoading(false);
+      })();
       return () => {
         alive.current = false;
       };
@@ -96,7 +103,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
           baseUrl: profile.baseUrl,
           modelListPath: profile.compat.modelListPath,
         });
-        if (!alive.current) {
+        if (!active) {
           return;
         }
         setRefreshing(false);
@@ -106,8 +113,12 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     };
 
     void (async () => {
+      setRuntime(null);
+      setFailure(null);
+      setRefreshing(false);
+      setLoading(true);
       const cached = await repository.load(profile.id);
-      if (!alive.current) {
+      if (!active) {
         return;
       }
       setRuntime(cached);
@@ -122,6 +133,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     })();
 
     return () => {
+      active = false;
       alive.current = false;
       refreshInFlight.current = null;
       repositoryRef.current = null;

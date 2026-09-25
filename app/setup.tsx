@@ -71,10 +71,6 @@ export default function SetupScreen() {
   const canConnect =
     !busy && baseUrl.length > 0 && urlError === null && (apiKey.length > 0 || canReuseKey);
 
-  // Setelah connect, pengguna memilih model lewat layar picker, bukan lewat
-  // routing diam-diam ke tab utama.
-  const seeded = useRef(false);
-
   async function onConnect() {
     setFailure(null);
     setBusy(true);
@@ -93,7 +89,6 @@ export default function SetupScreen() {
           storage: fileCatalogStorage,
           readDefaults: readBundledDefaults,
         });
-        seeded.current = result.ok;
         return result;
       },
     });
@@ -107,7 +102,7 @@ export default function SetupScreen() {
       setFailure(describe(result.error, previewUrl ?? baseUrl));
       return;
     }
-    router.replace(seeded.current ? '/models' : '/(tabs)');
+    router.replace('/(tabs)');
   }
 
   if (status === 'loading') {

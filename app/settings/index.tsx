@@ -282,7 +282,7 @@ export default function SettingsScreen() {
             href="/models"
             icon={{ ios: 'cpu', android: 'memory' }}
             title="Model catalog &amp; overrides"
-            body="Select the active model and edit local metadata overrides."
+            body="Show or hide models and edit local metadata overrides."
           />
           <View style={{ gap: 8, borderRadius: 4, backgroundColor: colors.surface, padding: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
