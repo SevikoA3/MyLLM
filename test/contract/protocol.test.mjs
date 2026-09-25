@@ -93,6 +93,49 @@ test('Auto fallback 404 sebelum output lalu cache protocol yang berhasil', async
   assert.equal(second.attempts, 1);
 });
 
+test('Auto image request requires Responses and ignores a cached Chat protocol', async () => {
+  let responseCalls = 0;
+  let chatCalls = 0;
+  const failure = failureResult(404);
+  const transport = createProtocolTransport({
+    responses: {
+      send: async () => {
+        responseCalls += 1;
+        return failure;
+      },
+    },
+    chatCompletions: {
+      send: async () => {
+        chatCalls += 1;
+        return failure;
+      },
+    },
+    cache: {
+      loadProtocol: async () => 'chat-completions',
+      saveProtocol: async () => {},
+    },
+  });
+
+  const result = await transport.send(profile('auto', 'unused', 'ep_auto_image'), KEY, {
+    ...input,
+    history: [{
+      role: 'user',
+      content: 'Describe this image.',
+      attachments: [{
+        id: 'image_1',
+        name: 'photo.png',
+        mimeType: 'image/png',
+        byteSize: 100,
+        uri: 'file:///private/photo.png',
+      }],
+    }],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(responseCalls, 1);
+  assert.equal(chatCalls, 0);
+});
+
 test('Auto tidak fallback untuk 400 atau setelah output parsial', async () => {
   let chatCalls = 0;
   const failure = (status, hadModelEvent = false) => ({

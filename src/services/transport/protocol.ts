@@ -52,7 +52,10 @@ export function createProtocolTransport(
       return transports[profile.protocol].send(profile, apiKey, input, options);
     }
 
-    const cached = await loadCached(cache, profile.id);
+    const requiresResponses = input.history?.some(
+      (message) => (message.attachments?.length ?? 0) > 0,
+    ) === true;
+    const cached = requiresResponses ? null : await loadCached(cache, profile.id);
     const firstProtocol = cached ?? 'responses';
     const first = await run(
       transports[firstProtocol],
@@ -61,7 +64,7 @@ export function createProtocolTransport(
       input,
       options,
     );
-    if (!isProtocolFallbackError(first)) {
+    if (!isProtocolFallbackError(first) || requiresResponses) {
       if (first.ok) {
         await saveCached(cache, profile.id, firstProtocol);
       }

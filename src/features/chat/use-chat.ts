@@ -1076,7 +1076,10 @@ function supportsImageAttachments(
   profile: EndpointProfile | null,
   config: ModelRequestSnapshot | null,
 ): boolean {
-  return profile?.protocol === 'responses' && config?.inputModalities?.includes('image') === true;
+  return (
+    (profile?.protocol === 'responses' || profile?.protocol === 'auto') &&
+    config?.inputModalities?.includes('image') === true
+  );
 }
 
 function resultStatus(result: SendResponseResult): Exclude<TurnStatus, 'sending' | 'streaming'> {

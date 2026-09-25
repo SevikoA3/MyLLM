@@ -218,14 +218,33 @@ describe('useChat', () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it('only enables image attachments for an explicit image modality', async () => {
+  it('only enables image attachments for an explicit image modality on a Responses-capable protocol', async () => {
     const { result } = await setup();
     expect(result.current.canAttachImages).toBe(false);
 
     mockInputModalities = ['text', 'image'];
     await act(async () => result.current.reloadModel());
-
     expect(result.current.canAttachImages).toBe(true);
+
+    const autoProfile = createEndpointProfile({
+      id: 'ep_auto',
+      name: 'Auto',
+      baseUrl: 'https://auto.example/v1',
+      protocol: 'auto',
+    });
+    const autoHook = await renderHook(() => useChat(autoProfile));
+    await act(async () => autoHook.result.current.reloadModel());
+    expect(autoHook.result.current.canAttachImages).toBe(true);
+
+    const chatProfile = createEndpointProfile({
+      id: 'ep_chat',
+      name: 'Chat Completions',
+      baseUrl: 'https://chat.example/v1',
+      protocol: 'chat-completions',
+    });
+    const chatHook = await renderHook(() => useChat(chatProfile));
+    await act(async () => chatHook.result.current.reloadModel());
+    expect(chatHook.result.current.canAttachImages).toBe(false);
   });
 
   it('ignores a stale model load after the endpoint changes', async () => {
