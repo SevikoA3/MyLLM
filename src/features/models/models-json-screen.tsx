@@ -156,7 +156,7 @@ function ModelsJsonEditor({ profile }: { profile: EndpointProfile }) {
   }
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 32 }}>
@@ -295,7 +295,7 @@ function BackButton() {
 
 function LoadingScreen({ loading = true, message = 'Loading model overrides.', connect = false, onRetry, retrying = false }: { loading?: boolean; message?: string; connect?: boolean; onRetry?: () => void; retrying?: boolean }) {
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <View style={{ paddingHorizontal: spacing.screen }}><BackButton /></View>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16 }}>

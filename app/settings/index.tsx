@@ -268,13 +268,13 @@ export default function SettingsScreen() {
   const credential = profile === null || profile.credentialRef === null ? 'NO CREDENTIAL' : 'CREDENTIAL SAVED';
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: spacing.screen, padding: spacing.screen, paddingBottom: spacing.xlarge }}>
         <View style={{ gap: 6, paddingVertical: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.heading, fontSize: typography.title, lineHeight: 28 }}>
-              Settings
+              General
             </Text>
             <StatusBadge label={profile === null ? 'SETUP REQUIRED' : 'SECURE STORAGE'} tone={profile === null ? 'warning' : 'secondary'} />
           </View>
@@ -347,7 +347,7 @@ export default function SettingsScreen() {
         <Section label="Model and protocol" icon="model" tone="secondary">
           <SettingsLink
             disabled={actionsBlocked}
-            href="/(tabs)/models"
+            href="/settings/models"
             icon={{ ios: 'cpu', android: 'memory' }}
             title="Model catalog &amp; overrides"
             body="Show or hide models and edit local metadata overrides."
@@ -605,7 +605,7 @@ export default function SettingsScreen() {
 
 function LoadingScreen() {
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16 }}>
         <ActivityIndicator color={colors.primary} />

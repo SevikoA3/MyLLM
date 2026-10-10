@@ -49,7 +49,7 @@ describe('SetupScreen', () => {
     expect(connect).toHaveBeenCalledWith(expect.objectContaining({
       name: saved.name, baseUrl: 'https://changed.example/v1', apiKey: '', apiKeyChanged: false,
     }), saved, expect.any(Object));
-    expect(mockRouter.replace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockRouter.replace).toHaveBeenCalledWith('/chat');
   });
 
   it.each(['/../models', '/%'])('disables Connect for an invalid models path %s and recovers when corrected', async (path) => {
@@ -129,7 +129,7 @@ describe('SetupScreen', () => {
     expect(connect).toHaveBeenLastCalledWith(expect.objectContaining({
       name: 'Renamed endpoint', baseUrl: 'https://changed.example/v1', apiKey: '', apiKeyChanged: false,
     }), saved, expect.any(Object));
-    expect(mockRouter.replace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockRouter.replace).toHaveBeenCalledWith('/chat');
   });
 
   it('keeps first-run setup focused and moves connection options into Advanced', async () => {

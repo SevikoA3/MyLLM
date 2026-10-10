@@ -12,7 +12,7 @@ import {
   type ContextPolicy,
 } from '../../domain/context';
 import type { EndpointProfile } from '../../domain/endpoint';
-import { createAppError, type AppError } from '../../domain/error';
+import { createAppError, redactText, type AppError } from '../../domain/error';
 import type { ModelRequestSnapshot } from '../../domain/model-config';
 import { ATTACHMENT_ERROR_COPY, attachmentMimeTypes, validateAttachmentSet, type Attachment } from '../../domain/attachment';
 import {
@@ -1083,7 +1083,10 @@ export function useChat(
         if (result.kind === 'ready') {
           setAttachments((current) => [...current, result.attachment]);
         } else if (result.kind === 'rejected') {
-          setError(modelConfigError(ATTACHMENT_ERROR_COPY[result.reason]));
+          setError({
+            ...modelConfigError(ATTACHMENT_ERROR_COPY[result.reason]),
+            safeDetails: { stage: 'attachment', ...(result.operation ? { operation: result.operation } : {}), ...(result.detail ? { detail: redactText(result.detail) } : {}) },
+          });
         }
       } finally {
         attachmentPickingRef.current = false;

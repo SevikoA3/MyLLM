@@ -51,7 +51,7 @@ export default function EndpointProfilesScreen() {
     try {
       await endpointStore.select(profile.id);
       setActiveId(profile.id);
-      router.replace('/(tabs)');
+      router.replace('/chat');
     } catch {
       Alert.alert('Could not switch endpoint', 'Try again later.');
     } finally {
@@ -152,10 +152,9 @@ export default function EndpointProfilesScreen() {
   }
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 32 }}>
-        <View style={{ alignItems: 'flex-start' }}><Action label="Back" disabled={busyId !== null || transfer !== null} onPress={() => router.back()} /></View>
         <View style={{ gap: 4 }}><Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>PORTABLE CONFIGURATION</Text><Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 22 }}>Endpoint Profiles</Text><Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>Switch profiles or transfer configuration without credentials.</Text></View>
         {loading ? (
           <View style={{ gap: spacing.small, alignItems: 'center' }}>

@@ -99,7 +99,7 @@ export default function SetupScreen() {
         setFailure(describe(result.error, previewUrl ?? baseUrl));
         return;
       }
-      router.replace('/(tabs)');
+      router.replace('/chat');
     } catch {
       if (mounted.current) {
         setFailure({ title: 'Could not connect', body: 'The connection could not be completed. Try again.', retryable: true });

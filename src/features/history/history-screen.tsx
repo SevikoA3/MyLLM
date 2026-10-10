@@ -20,6 +20,7 @@ import { pickConversation, shareConversation } from '../../services/persistence/
 import { deleteStagedAttachments } from '../../services/attachments/files';
 import { colors, fonts, interaction, radius, spacing, typography } from '../../ui/tokens';
 import { BottomSheet } from '../../ui/bottom-sheet';
+import { NavigationMenu } from './navigation-menu';
 
 const PAGE_SIZE = 20;
 
@@ -270,12 +271,15 @@ export default function HistoryScreen() {
   );
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
+      <NavigationMenu onNewChat={startNewChat} onOpenConversation={openConversation} onHistory={() => router.replace('/history')} onSettings={() => router.push('/settings')}>
+      {(trigger) => <>
       <View style={{ gap: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
-        <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.title }}>
-          History
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.small }}>
+          {trigger}
+          <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.title }}>History</Text>
+        </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.small }}>
           <Pressable
             accessibilityRole="button"
@@ -419,6 +423,8 @@ export default function HistoryScreen() {
         onCancel={cancelDeleting}
         onConfirm={() => void deleteConversation()}
       />
+      </>}
+      </NavigationMenu>
     </SafeAreaView>
   );
 }

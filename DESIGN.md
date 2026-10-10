@@ -76,6 +76,9 @@ Circles, status dots, avatars, and progress tracks may use geometry-specific rad
 - Screens use the app background, safe-area insets, a 16 dp horizontal gutter, and enough bottom padding for system navigation.
 - App bars present one title, current context when useful, and only actions that apply to the whole screen.
 - Tab bars use the same dark surface hierarchy and show emerald only for the active destination.
+- A fresh app launch opens a new chat. Chat uses a left sidebar for New chat, saved conversations, and Settings. Conversations appear as scrollable rows with the current conversation marked selected. History management remains available for search, rename, delete, and import/export.
+- Swipe right from the left edge to open the sidebar and swipe left inside it to close. Vertical scrolling, taps, and horizontal controls away from the edge keep their normal behavior. The menu and close buttons remain available.
+- Bottom tabs appear inside Settings only: General, Models, Endpoints, and Usage when the active endpoint declares support. Every tab has a platform icon and a text label. Model details and JSON remain within the Models tab. Closing Settings returns to the previous screen.
 - Lists use rows for repeated records. Cards group related settings or a single record with several fields.
 - Narrow screens remain the baseline. Wrap status and action rows instead of shrinking text or touch targets.
 
@@ -137,11 +140,11 @@ This motion separates two jobs: the fade establishes modal focus while the panel
 
 ## Chat
 
-- Thinking, context, and tool approval controls stay in one horizontally scrollable row to preserve transcript space. History and New chat controls stretch to match the model picker height.
+- Thinking, context, and tool approval controls stay in one horizontally scrollable row to preserve transcript space. The New chat shortcut stretches to match the model picker height; conversation history lives in the sidebar.
 - User and assistant messages use distinct surface roles and `radius.bubble`; live state is shown with text and emerald status.
 - The composer stays visually connected to the transcript and keeps attach and send controls at least 44 dp.
 - Attachments use the system Files picker. Images show thumbnails; documents show a file icon and filename. Removal sits over the top-right corner of the preview with a 44 dp touch target and a solid icon background so the action stays readable over photos.
-- Markdown prioritizes readable body text. Tables scroll when necessary. Code uses a recessed canvas, monospace text, and no simulated terminal decoration.
+- Markdown prioritizes readable body text. Tables scroll horizontally when necessary and fit their rows vertically without filling unused space. Code uses a recessed canvas, monospace text, and no simulated terminal decoration.
 - Thinking summaries are collapsed by default and use amber as a semantic reasoning marker.
 - Context, token use, TTFT, throughput, and cache data use compact monospace labels. Unknown values remain unknown rather than becoming zero.
 - Tool approval and interruption states use explicit labels and actions.

@@ -1,1 +1,5 @@
-export { default } from '../../src/features/models/models-json-screen';
+import { Redirect } from 'expo-router';
+
+export default function ModelsJsonRedirect() {
+  return <Redirect href="/settings/models/json" />;
+}

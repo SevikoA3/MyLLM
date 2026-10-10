@@ -69,10 +69,15 @@ describe('MessageBubble', () => {
     expect(view.queryByLabelText('Attached image, notes.pdf')).toBeNull();
   });
 
-  it('contains wide tables in a horizontal scroll region', async () => {
-    const view = await render(<MessageBubble message={{ id: 'a1', role: 'assistant', text: '| Model | Context | Output |\n| --- | --- | --- |\n| example/model | 1000000 | 128000 |', status: 'completed', reasoningSummary: null, attachments: [] }} />);
-    expect(view.getByLabelText('Scrollable response table').props.horizontal).toBe(true);
+  it('fits table rows vertically while allowing horizontal scrolling', async () => {
+    const view = await render(<MessageBubble message={{ id: 'a1', role: 'assistant', text: '| Model | Context | Output |\n| --- | --- | --- |\n| example/model | 1000000 | 128000 |\n| second/model with a longer description | 200000 | 32000 |\n| third/model | 128000 | 16000 |\n| fourth/model | 64000 | 8000 |\n\nText after the table.', status: 'completed', reasoningSummary: null, attachments: [] }} />);
+    const table = view.getByLabelText('Scrollable response table');
+    expect(table.props.horizontal).toBe(true);
+    expect(table).toHaveStyle({ maxWidth: '100%', flexGrow: 0, flexShrink: 0 });
+    expect(table.props.contentContainerStyle).toMatchObject({ alignItems: 'flex-start' });
     expect(view.getByText('example/model')).toBeTruthy();
+    expect(view.getByText('fourth/model')).toBeTruthy();
+    expect(view.getByText('Text after the table.')).toBeTruthy();
   });
   it('keeps thinking collapsed until requested', async () => {
     const view = await render(<MessageBubble message={{ id: 'a1', role: 'assistant', text: 'Answer', status: 'completed', reasoningSummary: 'Reasoning details', attachments: [] }} />);

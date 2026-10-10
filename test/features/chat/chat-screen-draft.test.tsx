@@ -33,6 +33,21 @@ function setupState(send: ChatState['send']) {
 }
 
 describe('Chat composer', () => {
+  it('shows file failure details and recovery separately from endpoint errors', async () => {
+    setupState(jest.fn());
+    const state = useChat(null);
+    jest.mocked(useChat).mockReturnValue({ ...state, error: {
+      category: 'request', message: 'File selection failed. Try again.', retryable: false,
+      httpStatus: null, providerCode: null, requestId: null,
+      safeDetails: { stage: 'attachment', operation: 'read', detail: 'Cannot read sk-private1234' },
+    } });
+    const view = await render(<ChatScreen />);
+    expect(view.getByText('Attachment failed')).toBeTruthy();
+    expect(view.getByText('Reading selected file: Cannot read [redacted]')).toBeTruthy();
+    expect(view.getByText(/attach it again/)).toBeTruthy();
+    expect(view.queryByText(/check the endpoint and active model/)).toBeNull();
+  });
+
   it('opens Files and removes a selected document through the composer controls', async () => {
     setupState(jest.fn());
     const state = useChat(null);

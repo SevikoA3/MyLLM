@@ -22,5 +22,5 @@ export default function EntryScreen() {
     );
   }
 
-  return profile === null ? <Redirect href="/setup" /> : <Redirect href="/(tabs)" />;
+  return profile === null ? <Redirect href="/setup" /> : <Redirect href="/chat/new" />;
 }

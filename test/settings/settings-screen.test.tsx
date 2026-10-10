@@ -317,7 +317,7 @@ describe('SettingsScreen', () => {
 
   it('links model settings to the existing explicit route', async () => {
     const view = await ready();
-    expect(view.getByRole('link', { name: 'Model catalog & overrides' }).props.href).toBe('/models');
+    expect(view.getByRole('link', { name: 'Model catalog & overrides' }).props.href).toBe('/settings/models');
   });
 
   it('uses informational notices, honest draft state, and keyboard tap handling', async () => {
@@ -332,7 +332,7 @@ describe('SettingsScreen', () => {
     while (scrollView && scrollView.props.keyboardShouldPersistTaps === undefined) scrollView = scrollView.parent;
     expect(scrollView?.props.keyboardShouldPersistTaps).toBe('handled');
     expect(view.queryByText('Settings & Maintenance')).toBeNull();
-    expect(view.getByText('Settings')).toBeTruthy();
+    expect(view.getByText('General')).toBeTruthy();
     expect(view.queryByText('CONFIG // SYS.PREFS')).toBeNull();
     await fireEvent.press(view.getByRole('button', { name: 'Dismiss notice' }));
     expect(view.queryByText('Web tools settings could not be loaded.')).toBeNull();

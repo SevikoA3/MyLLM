@@ -1,1 +1,6 @@
-export { default } from '../../src/features/models/model-detail-screen';
+import { Redirect, useLocalSearchParams } from 'expo-router';
+
+export default function ModelRedirect() {
+  const params = useLocalSearchParams();
+  return <Redirect href={{ pathname: '/settings/models/model', params }} />;
+}

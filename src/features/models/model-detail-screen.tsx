@@ -174,7 +174,7 @@ export default function ModelDetailScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 24 }}>
@@ -404,7 +404,7 @@ export default function ModelDetailScreen() {
 
 function DetailState({ loading, message, refreshing, onRefresh }: { loading: boolean; message: string; refreshing: boolean; onRefresh?: () => void }) {
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16 }}>
         <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.title }}>Model settings</Text>

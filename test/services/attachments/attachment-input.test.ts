@@ -1,14 +1,16 @@
 import { attachmentDataUrls } from '../../../src/services/attachments/attachment-input';
 
-const mockSizes = new Map<string, number>();
+const mockSizes = new Map<string, number | undefined>();
+const mockUnavailableProperties = new Set<string>();
 const mockBase64 = jest.fn(async () => 'AA==');
 
 jest.mock('expo-file-system', () => ({
   File: class {
     uri: string;
     constructor(uri: string) { this.uri = uri; }
-    get exists() { return mockSizes.has(this.uri); }
-    get size() { return mockSizes.get(this.uri) ?? null; }
+    get exists() { return !mockUnavailableProperties.has(this.uri) && mockSizes.has(this.uri); }
+    get size() { return mockUnavailableProperties.has(this.uri) ? null : mockSizes.get(this.uri) ?? null; }
+    info() { return { exists: mockSizes.has(this.uri), size: mockSizes.get(this.uri) }; }
     base64() { return mockBase64(); }
   },
 }));
@@ -23,6 +25,7 @@ function prepare(history: Parameters<typeof attachmentDataUrls>[0]) {
 describe('attachmentDataUrls', () => {
   beforeEach(() => {
     mockSizes.clear();
+    mockUnavailableProperties.clear();
     mockBase64.mockClear();
   });
 
@@ -37,6 +40,14 @@ describe('attachmentDataUrls', () => {
     expect(mockBase64).toHaveBeenCalledTimes(2);
   });
 
+  it('prepares a file with readable stat metadata when native properties are unavailable', async () => {
+    mockSizes.set(document.uri, 100);
+    mockUnavailableProperties.add(document.uri);
+    const urls = await prepare([{ role: 'user', content: '', attachments: [document] }]);
+    expect([...urls]).toEqual([['file_1', 'data:application/pdf;base64,AA==']]);
+    expect(mockBase64).toHaveBeenCalledTimes(1);
+  });
+
   it('rechecks actual file sizes before reading any file into JavaScript', async () => {
     mockSizes.set(image.uri, 100);
     mockSizes.set(document.uri, 10 * 1024 * 1024 + 1);
@@ -44,10 +55,26 @@ describe('attachmentDataUrls', () => {
     expect(mockBase64).not.toHaveBeenCalled();
   });
 
-  it('rejects a combined total above 80 MB before preparing data URLs', async () => {
-    const attachments = Array.from({ length: 9 }, (_, index) => ({ ...document, id: `file_${index}`, uri: `file:///file_${index}.pdf` }));
+  it.each([false, true])('rejects a combined total above 80 MB before preparing data URLs (repeated: %s)', async (repeated) => {
+    const attachments = Array.from({ length: 9 }, (_, index) => repeated ? document : ({ ...document, id: `file_${index}`, uri: `file:///file_${index}.pdf` }));
     attachments.forEach((attachment) => mockSizes.set(attachment.uri, 10 * 1024 * 1024));
     await expect(prepare([{ role: 'user', content: '', attachments }])).rejects.toThrow(/message limit/);
+    expect(mockBase64).not.toHaveBeenCalled();
+  });
+
+  it('validates actual combined sizes in later messages before reading an earlier file', async () => {
+    mockSizes.set(image.uri, 100);
+    mockSizes.set(document.uri, 10 * 1024 * 1024);
+    await expect(prepare([
+      { role: 'user', content: '', attachments: [image] },
+      { role: 'user', content: '', attachments: Array.from({ length: 9 }, () => document) },
+    ])).rejects.toThrow(/message limit/);
+    expect(mockBase64).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, 0])('rejects actual size %s even when the stored size is positive', async (byteSize) => {
+    mockSizes.set(document.uri, byteSize);
+    await expect(prepare([{ role: 'user', content: '', attachments: [document] }])).rejects.toThrow(/no longer valid/);
     expect(mockBase64).not.toHaveBeenCalled();
   });
 

@@ -25,7 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ChatMessage } from '../../domain/conversation';
 import { MAX_ATTACHMENTS, type Attachment } from '../../domain/attachment';
 import type { EndpointProfile } from '../../domain/endpoint';
-import type { AppError } from '../../domain/error';
+import { redactText, type AppError } from '../../domain/error';
 import type { MergedModel } from '../../domain/catalog-merge';
 import type { ToolActivity } from '../../domain/tool';
 import { parseWebFetchOutput, parseWebSearchOutput } from '../../domain/web-search';
@@ -38,6 +38,7 @@ import {
 import { settingsStore } from '../../services/persistence/settings-store';
 import { designSystem } from '../../ui/tokens';
 import { BottomSheet } from '../../ui/bottom-sheet';
+import { NavigationMenu } from '../history/navigation-menu';
 import { modelPickerName } from '../models/model-badges';
 import { useModelCatalog } from '../models/use-model-catalog';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
@@ -80,7 +81,12 @@ const MARKDOWN_STYLE: Record<string, ImageStyle | TextStyle | ViewStyle> = {
 };
 const MARKDOWN_RULES: RenderRules = {
   table: (node, children) => (
-    <ScrollView key={node.key} horizontal accessibilityLabel="Scrollable response table" style={{ maxWidth: '100%' }}>
+    <ScrollView
+      key={node.key}
+      horizontal
+      accessibilityLabel="Scrollable response table"
+      style={{ maxWidth: '100%', flexGrow: 0, flexShrink: 0 }}
+      contentContainerStyle={{ alignItems: 'flex-start' }}>
       <View style={MARKDOWN_STYLE.table as ViewStyle}>{children}</View>
     </ScrollView>
   ),
@@ -219,6 +225,15 @@ export default function ChatScreen() {
     }
   }, [profile, reloadModel]);
 
+  function startNewChat() {
+    if (newChatDisabled) return;
+    chat.newChat();
+    setDraft('');
+    if (requestedConversationId !== null || conversationLoadError) {
+      router.replace({ pathname: '/chat/[conversationId]', params: { conversationId: 'new' } });
+    }
+  }
+
   if (status === 'loading') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -231,8 +246,13 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: theme.colors.background }}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <StatusBar style="light" />
+      <NavigationMenu newChatDisabled={newChatDisabled} onNewChat={startNewChat}
+        currentConversationId={chat.conversationId}
+        onOpenConversation={(id) => router.push({ pathname: '/chat/[conversationId]', params: { conversationId: id } })}
+        onHistory={() => router.push('/history')} onSettings={() => router.push('/settings')}>
+      {(trigger) => (
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -247,6 +267,7 @@ export default function ChatScreen() {
             borderBottomWidth: 1,
             borderBottomColor: theme.colors.border,
           }}>
+          {trigger}
           <EndpointSelector
             profiles={profiles}
             selected={profile}
@@ -281,41 +302,16 @@ export default function ChatScreen() {
               catalog.loading
             }
             onSelect={(modelId) => void selectModel(modelId)}
-            onManage={() => router.push('/(tabs)/models')}
+            onManage={() => router.push('/settings/models')}
           />
           <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 4 }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open history"
-              hitSlop={6}
-              onPress={() => router.push('/history')}
-              style={({ pressed }) => ({
-                width: theme.interaction.compactTouchTarget,
-                minHeight: theme.interaction.touchTarget,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: theme.radius.control,
-                backgroundColor: theme.colors.surface,
-                opacity: pressed ? theme.interaction.pressedOpacity : 1,
-              })}>
-              <SymbolView name={{ ios: 'clock.arrow.circlepath', android: 'history' }} size={18} tintColor={theme.colors.textMuted} />
-            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Start new chat"
               hitSlop={6}
               accessibilityState={{ disabled: newChatDisabled }}
               disabled={newChatDisabled}
-              onPress={() => {
-                chat.newChat();
-                setDraft('');
-                if (requestedConversationId !== null || conversationLoadError) {
-                  router.replace({
-                    pathname: '/chat/[conversationId]',
-                    params: { conversationId: 'new' },
-                  });
-                }
-              }}
+              onPress={startNewChat}
               style={({ pressed }) => ({
                 width: theme.interaction.compactTouchTarget,
                 minHeight: theme.interaction.touchTarget,
@@ -565,6 +561,8 @@ export default function ChatScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+      )}
+      </NavigationMenu>
     </SafeAreaView>
   );
 }
@@ -1237,7 +1235,7 @@ function EmptyChat() {
           textAlign: 'center',
           lineHeight: 21,
         }}>
-        Conversations are saved automatically and appear in History.
+        Conversations are saved automatically. Open the side menu to find them.
       </Text>
     </View>
   );
@@ -1551,6 +1549,7 @@ function ErrorCard({
   onRetry: () => void;
 }) {
   const persistenceFailure = error.safeDetails.stage === 'persistence';
+  const attachmentFailure = error.safeDetails.stage === 'attachment';
   return (
     <View
       style={{
@@ -1562,9 +1561,12 @@ function ErrorCard({
         backgroundColor: theme.colors.surfaceLow,
       }}>
       <Text style={{ color: theme.colors.error, fontSize: theme.typography.meta, fontWeight: '700' }}>
-        {persistenceFailure ? 'Response save failed' : 'Request failed'}
+        {persistenceFailure ? 'Response save failed' : attachmentFailure ? 'Attachment failed' : 'Request failed'}
       </Text>
       <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta }}>{error.message}</Text>
+      {attachmentFailure && error.safeDetails.detail ? <Text selectable style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>
+        {error.safeDetails.operation === 'read' ? 'Reading selected file' : error.safeDetails.operation === 'save' ? 'Saving selected file' : 'Selecting file'}: {redactText(error.safeDetails.detail)}
+      </Text> : null}
       <Text style={{ color: theme.colors.textMuted, fontSize: theme.typography.meta }}>
         Endpoint {endpointName ?? 'unavailable'} · Model {modelId ?? 'unavailable'} · Protocol{' '}
         {protocol ?? 'unavailable'}
@@ -1578,6 +1580,7 @@ function ErrorCard({
         Safe next step:{' '}
         {persistenceFailure
           ? 'copy the response before leaving this chat.'
+          : attachmentFailure ? 'choose a supported file saved on this device and attach it again.'
           : error.retryable ? 'try again after checking the endpoint.' : 'check the endpoint and active model.'}
       </Text>
       {canRetry && (

@@ -64,7 +64,7 @@ export default function ModelsScreen() {
   );
 
   const editModel = useCallback((model: MergedModel) => {
-    router.push({ pathname: '/settings/model', params: { modelId: model.id } });
+    router.push({ pathname: '/settings/models/model', params: { modelId: model.id } });
   }, []);
 
   const toggleModel = useCallback((model: MergedModel) => {
@@ -92,7 +92,7 @@ export default function ModelsScreen() {
       setAdding(false);
       setCustomId('');
       setBlocked(null);
-      router.push({ pathname: '/settings/model', params: { modelId: id } });
+      router.push({ pathname: '/settings/models/model', params: { modelId: id } });
     } catch {
       setBlocked('Custom model could not be added. Check its ID and try again.');
     } finally {
@@ -102,7 +102,7 @@ export default function ModelsScreen() {
 
   if (status === 'loading' || catalog.loading) {
     return (
-      <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+      <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
         <StatusBar style="light" />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16 }}>
           <ActivityIndicator color={colors.primary} />
@@ -133,7 +133,7 @@ export default function ModelsScreen() {
   const allModelsExcluded = models.length > 0 && excludedCount === models.length && !showDisabled;
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <View
         style={{
@@ -247,7 +247,7 @@ export default function ModelsScreen() {
                 label={(showDisabled ? 'Hide' : 'Show') + ' hidden (' + String(excludedCount) + ')'}
                 onPress={() => setShowDisabled((value) => !value)}
               />
-              <SmallButton label="Edit JSON" disabled={profile === null} onPress={() => router.push('/settings/models-json')} />
+              <SmallButton label="Edit JSON" disabled={profile === null} onPress={() => router.push('/settings/models/json')} />
             </View>
           </View>
         </View>

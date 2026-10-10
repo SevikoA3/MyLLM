@@ -76,7 +76,7 @@ describe('EndpointProfilesScreen', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it('offers add and import for an empty collection and keeps back visible', async () => {
+  it('offers add and import for an empty collection without a duplicate Back control', async () => {
     jest.mocked(endpointStore.loadAll).mockResolvedValue([]);
     jest.mocked(endpointStore.load).mockResolvedValue(null);
     const view = await render(<EndpointProfilesScreen />);
@@ -86,8 +86,7 @@ describe('EndpointProfilesScreen', () => {
     expect(view.getByRole('button', { name: 'EXPORT' })).toBeDisabled();
     await fireEvent.press(view.getByRole('button', { name: 'ADD ENDPOINT' }));
     expect(push).toHaveBeenCalledWith('/setup?mode=new');
-    await fireEvent.press(view.getByRole('button', { name: 'Back' }));
-    expect(back).toHaveBeenCalledTimes(1);
+    expect(view.queryByRole('button', { name: 'Back' })).toBeNull();
   });
 
   it('stays on the list and releases controls when edit selection fails', async () => {

@@ -11,7 +11,8 @@ export async function attachmentDataUrls(
   for (const message of history) {
     const attachments = (message.attachments ?? []).map((attachment) => {
       const file = new File(attachment.uri);
-      const valid = validateAttachment({ ...attachment, byteSize: file.exists ? file.size : null });
+      const fileInfo = file.info();
+      const valid = validateAttachment({ ...attachment, byteSize: fileInfo.exists ? fileInfo.size ?? null : null });
       if (!valid.ok) throw new Error('A staged attachment is unavailable or no longer valid.');
       files.set(attachment.id, { file, mimeType: attachment.mimeType });
       return valid.value;

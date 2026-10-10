@@ -6,9 +6,6 @@ import { useActiveEndpoint } from '../../src/features/setup/use-active-endpoint'
 import { credentialStore } from '../../src/services/credentials/store';
 import { fetchAccountUsage, type UsageResult } from '../../src/services/transport/usage';
 
-const mockRouter = { back: jest.fn(), canGoBack: jest.fn(), replace: jest.fn() };
-
-jest.mock('expo-router', () => ({ useRouter: () => mockRouter }));
 jest.mock('../../src/features/setup/use-active-endpoint', () => ({ useActiveEndpoint: jest.fn() }));
 jest.mock('../../src/services/credentials/store', () => ({ credentialStore: { read: jest.fn() } }));
 jest.mock('../../src/services/transport/usage', () => ({ fetchAccountUsage: jest.fn() }));
@@ -42,7 +39,6 @@ describe('UsageScreen', () => {
     activeEndpoint.mockReturnValue({ status: 'ready', profile: profile('first') });
     read.mockResolvedValue('fake-key');
     fetchUsage.mockResolvedValue(result(101));
-    mockRouter.canGoBack.mockReturnValue(true);
   });
 
   it('recovers from a rejected secure read on initial load and refresh', async () => {
@@ -144,25 +140,21 @@ describe('UsageScreen', () => {
     await waitFor(() => expect(view.getByText('101')).toBeTruthy());
   });
 
-  it('keeps a visible back control while the endpoint loads', async () => {
+  it('uses Settings layout navigation while the endpoint loads', async () => {
     activeEndpoint.mockReturnValue({ status: 'loading', profile: null });
     const view = await render(<UsageScreen />);
 
     expect(view.getByText('Loading endpoint…')).toBeTruthy();
     expect(view.getByRole('button', { name: 'Refresh account usage', disabled: true })).toBeTruthy();
     expect(read).not.toHaveBeenCalled();
-    await fireEvent.press(view.getByRole('button', { name: 'Back to settings' }));
-    expect(mockRouter.back).toHaveBeenCalledTimes(1);
-    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(view.queryByRole('button', { name: 'Back to settings' })).toBeNull();
   });
 
-  it('falls back to settings when there is no back history', async () => {
-    mockRouter.canGoBack.mockReturnValue(false);
+  it('shows account usage without a second Settings back control', async () => {
     const view = await render(<UsageScreen />);
 
-    await fireEvent.press(view.getByRole('button', { name: 'Back to settings' }));
-    expect(mockRouter.replace).toHaveBeenCalledWith('/settings');
-    expect(mockRouter.back).not.toHaveBeenCalled();
+    expect(view.getByText('Account Usage')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Back to settings' })).toBeNull();
   });
 
   it('shows unavailable values without inventing account data', async () => {
@@ -183,6 +175,6 @@ describe('UsageScreen', () => {
     await waitFor(() => expect(view.getByRole('alert')).toBeTruthy());
     expect(read).not.toHaveBeenCalled();
     expect(fetchUsage).not.toHaveBeenCalled();
-    expect(view.getByRole('button', { name: 'Back to settings' })).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Back to settings' })).toBeNull();
   });
 });

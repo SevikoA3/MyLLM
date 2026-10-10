@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
@@ -11,7 +10,6 @@ import { credentialStore } from '../../src/services/credentials/store';
 import { fetchAccountUsage, type AccountUsage } from '../../src/services/transport/usage';
 
 export default function UsageScreen() {
-  const router = useRouter();
   const { status, profile } = useActiveEndpoint();
   const [usage, setUsage] = useState<AccountUsage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,12 +57,9 @@ export default function UsageScreen() {
   }, [load]);
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={[]} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={{ gap: spacing.screen, padding: spacing.screen }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to settings" onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/settings'); }} style={({ pressed }) => ({ minHeight: interaction.touchTarget, alignSelf: 'flex-start', justifyContent: 'center', opacity: pressed ? interaction.pressedOpacity : 1 })}>
-          <Text style={{ color: colors.secondary, fontFamily: fonts.headingMedium, fontSize: typography.body }}>← Back to settings</Text>
-        </Pressable>
         <View style={{ gap: 4 }}>
           <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>DOCUMENTED ENDPOINT DATA</Text>
           <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 22 }}>Account Usage</Text>

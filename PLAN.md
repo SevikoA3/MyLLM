@@ -2,11 +2,13 @@
 
 Status: Phase 17 implementation and automated tests completed on 24 September 2026. Phase 16 was skipped by product decision, so generation remains foreground-only. Phase 18 was deferred on 26 September 2026, so command execution remains disabled. Android portability and endpoint-management verification remain manual.
 
-Maintenance audit on 10 October 2026: code and UI consistency fixes verified with TypeScript, direct ESLint, 384 Jest tests after unused scaffolding cleanup, and 85 sequential Node contract tests. See [the audit report](anti-slop/audit-001-2026-10-10.md) for page/control coverage and remaining native layout, keyboard, and accessibility checks. This maintenance does not advance the product phase.
+Maintenance audit on 10 October 2026: code and UI consistency fixes verified with TypeScript, direct ESLint, 384 Jest tests after unused scaffolding cleanup, and 85 sequential Node contract tests. Native layout, keyboard, and accessibility checks remain manual. The owner removed the audit report. This maintenance does not advance the product phase.
+
+Maintenance on 11 October 2026: a fresh launch opens a new chat; saved conversations appear in a swipeable sidebar; Settings owns the General, Models, Endpoints, and supported Usage tabs. Android file selection copies the granted URI into private storage before checking its size, and response tables fit their rows vertically while retaining horizontal scrolling. TypeScript, direct ESLint, and 469 Jest tests pass; the related attachment transport checks passed with 89 sequential Node contracts. Native table geometry, swipe behavior, picker access, keyboard, and accessibility verification remain owner-run. This maintenance does not advance the product phase.
 
 Tanggal: 16 September 2026.
 
-Dokumen sumber: RESEARCH_REACT_NATIVE_ANDROID_LLM_CLIENT.md.
+The owner removed the original research document. This plan remains the requirements source.
 
 Mode perencanaan: Ponytail ultra. Setiap fase harus menghasilkan kemampuan yang dapat dijalankan, diuji, dan didemonstrasikan. Jangan membuat abstraksi untuk fitur fase berikutnya sebelum abstraksi itu benar-benar memiliki lebih dari satu implementasi.
 

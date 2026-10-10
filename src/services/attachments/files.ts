@@ -1,5 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { Platform } from 'react-native';
 
+import { redactText } from '../../domain/error';
 import {
   validateAttachment,
   validateAttachmentSet,
@@ -21,15 +23,19 @@ export async function stageAttachment(
   resolveDocumentPicker: DocumentPickerResolver = () => import('expo-document-picker'),
 ): Promise<
   | { kind: 'cancelled' }
-  | { kind: 'rejected'; reason: AttachmentRejection }
+  | { kind: 'rejected'; reason: AttachmentRejection; detail?: string; operation?: 'select' | 'read' | 'save' }
   | { kind: 'ready'; attachment: Attachment }
 > {
   let source: File | null = null;
+  let target: File | null = null;
+  let keepTarget = false;
+  let operation: 'select' | 'read' | 'save' = 'select';
   try {
     const DocumentPicker = await resolveDocumentPicker();
     const result = await DocumentPicker.getDocumentAsync({
       type: allowedMimeTypes,
-      copyToCacheDirectory: true,
+      // Cache picker Android berada di luar scope proyek Expo Go; salin grant URI ke storage sendiri.
+      copyToCacheDirectory: Platform.OS !== 'android',
       multiple: false,
       base64: false,
     });
@@ -37,30 +43,41 @@ export async function stageAttachment(
 
     const asset = result.assets[0];
     if (!asset) return { kind: 'rejected', reason: 'selection_failed' };
+    operation = 'read';
     source = new File(asset.uri);
     if (!allowedMimeTypes.some((mimeType) => mimeType === asset.mimeType)) {
       return { kind: 'rejected', reason: 'type_not_allowed' };
     }
+    operation = 'save';
+    const id = newId();
+    target = new File(directory(), id);
+    await source.copy(target);
+    operation = 'read';
+    const targetInfo = target.info();
     const candidate = validateAttachment({
-      id: newId(),
+      id,
       name: asset.name,
       mimeType: asset.mimeType ?? null,
-      byteSize: source.exists ? source.size : null,
-      uri: asset.uri,
+      byteSize: targetInfo.exists ? targetInfo.size ?? null : null,
+      uri: target.uri,
     });
     if (!candidate.ok) return { kind: 'rejected', reason: candidate.reason };
 
     const allowed = validateAttachmentSet([...existing, candidate.value]);
     if (!allowed.ok) return { kind: 'rejected', reason: allowed.reason };
 
-    const target = new File(directory(), candidate.value.id);
-    await source.copy(target);
-    return { kind: 'ready', attachment: { ...candidate.value, uri: target.uri } };
-  } catch {
-    return { kind: 'rejected', reason: 'selection_failed' };
+    keepTarget = true;
+    return { kind: 'ready', attachment: candidate.value };
+  } catch (error) {
+    return { kind: 'rejected', reason: 'selection_failed', operation,
+      ...(error instanceof Error ? { detail: redactText(error.message) } : {}),
+    };
   } finally {
+    if (target !== null && !keepTarget) {
+      try { target.delete(); } catch { /* Copy yang gagal mungkin belum membuat file target. */ }
+    }
     if (source?.uri.startsWith(Paths.cache.uri)) {
-      try { if (source.exists) source.delete(); } catch { /* Cache sementara dapat dibersihkan Android tanpa membatalkan staging. */ }
+      try { source.delete(); } catch { /* Cache sementara dapat dibersihkan Android tanpa membatalkan staging. */ }
     }
   }
 }

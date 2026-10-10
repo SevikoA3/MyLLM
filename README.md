@@ -136,6 +136,8 @@ Conversation history is stored in local SQLite without SQLCipher encryption. Tre
 
 MyLLM is developed in phases tracked in [`PLAN.md`](PLAN.md). The current implementation is intended for development and testing rather than a packaged public release.
 
+A fresh app launch opens a new chat. Chat uses a side menu for New chat, saved conversations, and Settings. Swipe right from the left edge to open it, or swipe left inside it to close. Settings contains icon tabs for General, Models, Endpoints, and Usage when supported by the active endpoint. Manage history provides search, rename, delete, and import/export.
+
 Current limitations:
 
 - Android is the primary target.

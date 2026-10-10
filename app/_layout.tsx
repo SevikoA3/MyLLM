@@ -33,11 +33,10 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="setup" />
-        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="chat/index" />
         <Stack.Screen name="history" />
         <Stack.Screen name="chat/[conversationId]" />
-        <Stack.Screen name="settings/endpoints" />
-        <Stack.Screen name="settings/usage" />
+        <Stack.Screen name="settings" />
       </Stack>
     </>
   );

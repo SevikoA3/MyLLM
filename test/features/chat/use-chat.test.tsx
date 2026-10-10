@@ -361,6 +361,20 @@ describe('useChat', () => {
     },
   );
 
+  it('starts fresh without restoring the latest conversation', async () => {
+    const hook = await renderHook(() => useChat(profile, null, true));
+    await act(async () => hook.result.current.reloadModel());
+
+    expect(hook.result.current.conversationId).toBeNull();
+    expect(hook.result.current.messages).toEqual([]);
+    expect(hook.result.current.loadingConversation).toBe(false);
+    expect(mockLoadLatest).not.toHaveBeenCalled();
+    expect(mockLoadConversation).not.toHaveBeenCalled();
+    mockSend.mockResolvedValueOnce(success('resp_fresh', 'Fresh reply'));
+    await act(async () => { await expect(hook.result.current.send('new prompt')).resolves.toBe(true); });
+    expect(mockStartTurn).toHaveBeenCalledWith(expect.objectContaining({ conversationId: null }));
+  });
+
   it('clears stale history and blocks a missing requested conversation', async () => {
     mockLoadConversation.mockResolvedValueOnce({
       id: 'conv_saved', endpointId: profile.id, modelId: 'model-exact',
@@ -454,6 +468,20 @@ describe('useChat', () => {
     let sent = true;
     await act(async () => { sent = await hook.result.current.send('Read this', [{ id: 'file_1', name: 'notes.txt', mimeType: 'text/plain', byteSize: 100, uri: 'file:///notes.txt' }]); });
     expect(sent).toBe(false);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('preserves a redacted native selection cause without sending a request', async () => {
+    mockInputModalities = ['text', 'file'];
+    mockStageImage.mockResolvedValueOnce({ kind: 'rejected', reason: 'selection_failed', operation: 'read', detail: 'Cannot read sk-private1234' });
+    const { result } = await setup();
+    await act(async () => { await result.current.addAttachment(); });
+    expect(result.current.error).toMatchObject({
+      message: 'File selection failed. Try again.',
+      safeDetails: { stage: 'attachment', operation: 'read', detail: 'Cannot read [redacted]' },
+    });
+    expect(result.current.pickingAttachment).toBe(false);
+    expect(result.current.attachments).toEqual([]);
     expect(mockSend).not.toHaveBeenCalled();
   });
 
