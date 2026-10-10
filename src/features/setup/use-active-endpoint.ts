@@ -7,11 +7,6 @@ export type ActiveEndpointState =
   | { status: 'loading'; profile: null }
   | { status: 'ready'; profile: EndpointProfile | null };
 
-/** Nilai awal untuk layar yang sudah menerima profile dari parent. */
-export function readyState(profile: EndpointProfile | null): ActiveEndpointState {
-  return { status: 'ready', profile };
-}
-
 // Endpoint profile tanpa secret dibaca dari kv-store. Fresh install mengembalikan null.
 export function useActiveEndpoint(): ActiveEndpointState {
   const [state, setState] = useState<ActiveEndpointState>({ status: 'loading', profile: null });

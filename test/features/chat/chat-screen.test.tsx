@@ -24,6 +24,15 @@ const model: MergedModel = {
 };
 
 describe('Chat selectors', () => {
+  it('filters the model chooser by display name or exact ID', async () => {
+    const view = await render(<ModelSelector models={[model, { ...model, id: 'vendor/writer', displayName: 'Writing assistant' }]} selectedId={model.id} loading={false} disabled={false} onSelect={() => {}} onManage={() => {}} />);
+    await fireEvent.press(view.getByLabelText('Conversation model, amanai/glm-5.3'));
+    await fireEvent.changeText(view.getByLabelText('Search available models'), 'writing');
+    expect(view.getByLabelText('Model vendor/writer')).toBeTruthy();
+    expect(view.queryByLabelText('Model amanai/glm-5.3')).toBeNull();
+    await fireEvent.changeText(view.getByLabelText('Search available models'), 'no-match');
+    expect(view.getByText('No matching models')).toBeTruthy();
+  });
   it('switches endpoint from the chat dropdown', async () => {
     const first = createEndpointProfile({ id: 'ep_1', name: 'Primary', baseUrl: 'https://one.example/v1' });
     const second = createEndpointProfile({ id: 'ep_2', name: 'Backup', baseUrl: 'https://two.example/v1' });
@@ -32,9 +41,9 @@ describe('Chat selectors', () => {
       <EndpointSelector profiles={[first, second]} selected={first} loading={false} disabled={false} onSelect={onSelect} onAdd={() => {}} onManage={() => {}} />,
     );
 
-    fireEvent.press(view.getByLabelText('Endpoint, Primary'));
+    await fireEvent.press(view.getByLabelText('Endpoint, Primary'));
     await waitFor(() => expect(view.getByLabelText('Endpoint Backup')).toBeTruthy());
-    fireEvent.press(view.getByLabelText('Endpoint Backup'));
+    await fireEvent.press(view.getByLabelText('Endpoint Backup'));
 
     expect(onSelect).toHaveBeenCalledWith('ep_2');
   });
@@ -45,15 +54,32 @@ describe('Chat selectors', () => {
       <ModelSelector models={[model, { ...model, id: 'yr3/gpt-5.6', displayName: 'yr3/gpt-5.6' }]} selectedId={model.id} loading={false} disabled={false} onSelect={onSelect} onManage={() => {}} />,
     );
 
-    fireEvent.press(view.getByLabelText('Conversation model, amanai/glm-5.3'));
+    await fireEvent.press(view.getByLabelText('Conversation model, amanai/glm-5.3'));
     await waitFor(() => expect(view.getByLabelText('Model yr3/gpt-5.6')).toBeTruthy());
-    fireEvent.press(view.getByLabelText('Model yr3/gpt-5.6'));
+    await fireEvent.press(view.getByLabelText('Model yr3/gpt-5.6'));
 
     expect(onSelect).toHaveBeenCalledWith('yr3/gpt-5.6');
   });
 });
 
 describe('MessageBubble', () => {
+  it('contains wide tables in a horizontal scroll region', async () => {
+    const view = await render(<MessageBubble message={{ id: 'a1', role: 'assistant', text: '| Model | Context | Output |\n| --- | --- | --- |\n| example/model | 1000000 | 128000 |', status: 'completed', reasoningSummary: null, attachments: [] }} />);
+    expect(view.getByLabelText('Scrollable response table').props.horizontal).toBe(true);
+    expect(view.getByText('example/model')).toBeTruthy();
+  });
+  it('keeps thinking collapsed until requested', async () => {
+    const view = await render(<MessageBubble message={{ id: 'a1', role: 'assistant', text: 'Answer', status: 'completed', reasoningSummary: 'Reasoning details', attachments: [] }} />);
+    expect(view.queryByText('Reasoning details')).toBeNull();
+    await fireEvent.press(view.getByLabelText('Toggle thinking summary'));
+    expect(view.getByText('Reasoning details')).toBeTruthy();
+  });
+
+  it.each(['failed', 'cancelled'] as const)('shows %s without claiming completion', async (status) => {
+    const view = await render(<MessageBubble message={{ id: 'a1', role: 'assistant', text: 'Partial', status, reasoningSummary: null, attachments: [] }} />);
+    expect(view.queryByText('DONE')).toBeNull();
+    expect(view.getByText(status.toUpperCase())).toBeTruthy();
+  });
   it('uses compact markdown headings and the reference transcript shape', async () => {
     const view = await render(
       <MessageBubble
@@ -80,6 +106,11 @@ describe('MessageBubble', () => {
 });
 
 describe('ReasoningSelector', () => {
+  it('marks Auto selected when effort is inherited', async () => {
+    const view = await render(<ReasoningSelector options={['auto', 'high']} selected={null} disabled={false} onSelect={() => {}} />);
+    await fireEvent.press(view.getByLabelText('Thinking, auto'));
+    expect(view.getByLabelText('Thinking auto').props.accessibilityState).toMatchObject({ checked: true });
+  });
   it('memilih thinking dari dropdown', async () => {
     const onSelect = jest.fn();
     const view = await render(
@@ -93,10 +124,10 @@ describe('ReasoningSelector', () => {
 
     expect(view.getByText('auto')).toBeTruthy();
     expect(view.getByLabelText('Thinking, auto')).toHaveStyle({ borderRadius: 4 });
-    fireEvent.press(view.getByLabelText('Thinking, auto'));
+    await fireEvent.press(view.getByLabelText('Thinking, auto'));
     await waitFor(() => expect(view.getByText('high')).toBeTruthy());
 
-    fireEvent.press(view.getByLabelText('Thinking high'));
+    await fireEvent.press(view.getByLabelText('Thinking high'));
 
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith('high'));
     await waitFor(() => expect(view.queryByLabelText('Thinking high')).toBeNull());
@@ -110,7 +141,7 @@ describe('ToolApprovalControl', () => {
       <ToolApprovalControl enabled={false} disabled={false} onToggle={onResolve} />,
     );
 
-    fireEvent.press(view.getByLabelText('Tool approval, read-only tools require approval'));
+    await fireEvent.press(view.getByLabelText('Tool approval, read-only tools require approval'));
 
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith(true));
   });
@@ -136,7 +167,7 @@ describe('ToolProgress', () => {
 
     expect(view.queryByText('{"timezone":"Asia/Jakarta"}')).toBeNull();
     expect(view.queryByText('{"time":"10:00"}')).toBeNull();
-    fireEvent.press(view.getByLabelText('Tool request, get_current_time, Tool completed'));
+    await fireEvent.press(view.getByLabelText('Tool request, get_current_time, Tool completed'));
     await waitFor(() => expect(view.getByText('{"timezone":"Asia/Jakarta"}')).toBeTruthy());
     expect(view.getByText('{"time":"10:00"}')).toBeTruthy();
   });
@@ -160,7 +191,7 @@ describe('ToolProgress', () => {
       />,
     );
 
-    fireEvent.press(view.getByLabelText('Approve tool request'));
+    await fireEvent.press(view.getByLabelText('Approve tool request'));
 
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith(true));
   });

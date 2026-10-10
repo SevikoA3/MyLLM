@@ -1,4 +1,4 @@
-import { act, cleanup, renderHook } from '@testing-library/react-native';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 
 import { createEndpointProfile } from '../../../src/domain/endpoint';
 import type { ConversationInputMessage } from '../../../src/domain/conversation';
@@ -187,6 +187,221 @@ describe('useChat', () => {
     mockDeleteStagedImages.mockClear();
     mockDeleteUnreferencedStagedImages.mockClear();
     mockLoadWebTools.mockClear();
+  });
+
+  it.each(['credentials', 'model snapshot'] as const)(
+    'releases pending after a preflight %s failure and allows sending again',
+    async (boundary) => {
+      const { result } = await setup();
+      const onAccepted = jest.fn();
+      const diagnostic = 'private preflight diagnostic sk-test';
+      if (boundary === 'credentials') {
+        mockCredentialRead.mockRejectedValueOnce(new Error(diagnostic));
+      } else {
+        mockLoadModelConfig.mockRejectedValueOnce(new Error(diagnostic));
+      }
+
+      await act(async () => {
+        await expect(result.current.send('hello', [], onAccepted)).resolves.toBe(false);
+      });
+
+      expect(onAccepted).not.toHaveBeenCalled();
+      expect(result.current.pending).toBe(false);
+      expect(result.current.messages).toEqual([]);
+      expect(result.current.canRetry).toBe(false);
+      expect(result.current.error).toMatchObject({
+        message: boundary === 'credentials'
+          ? 'Request could not be prepared. Try again.'
+          : 'Model configuration is invalid. Check model details.',
+        httpStatus: null,
+        providerCode: null,
+        requestId: null,
+        safeDetails: {},
+      });
+      expect(JSON.stringify(result.current.error)).not.toContain(diagnostic);
+      expect(JSON.stringify(result.current.error)).not.toContain('sk-test');
+      expect(mockStartTurn).not.toHaveBeenCalled();
+      expect(mockRunLocalCompaction).not.toHaveBeenCalled();
+      expect(mockSend).not.toHaveBeenCalled();
+
+      mockSend.mockResolvedValueOnce(success('resp_recovered', 'Recovered'));
+      await act(async () => {
+        await expect(result.current.send('hello', [], onAccepted)).resolves.toBe(true);
+      });
+
+      expect(onAccepted).toHaveBeenCalledTimes(1);
+      expect(result.current.pending).toBe(false);
+      expect(result.current.error).toBeNull();
+      expect(result.current.messages.map((entry) => entry.text)).toEqual(['hello', 'Recovered']);
+      expect(mockStartTurn).toHaveBeenCalledTimes(1);
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('accepts a persisted turn once even when transport fails and retry succeeds', async () => {
+    let finishStart!: () => void;
+    mockStartTurn.mockReturnValueOnce(new Promise<{ conversationId: string }>((resolve) => {
+      finishStart = () => resolve({ conversationId: 'conv_1' });
+    }));
+    mockSend.mockResolvedValueOnce(failure()).mockResolvedValueOnce(success('resp_retry', 'Recovered'));
+    const { result } = await setup();
+    const onAccepted = jest.fn(() => { expect(mockSend).not.toHaveBeenCalled(); });
+    let sending: Promise<boolean> | undefined;
+    await act(async () => { sending = result.current.send('hello', [], onAccepted); });
+
+    expect(mockStartTurn).toHaveBeenCalledTimes(1);
+    expect(onAccepted).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishStart();
+      await expect(sending).resolves.toBe(false);
+    });
+    expect(onAccepted).toHaveBeenCalledTimes(1);
+    expect(result.current.messages.map((entry) => entry.status)).toEqual(['completed', 'failed']);
+    expect(result.current.canRetry).toBe(true);
+
+    await act(async () => { await expect(result.current.retry()).resolves.toBe(true); });
+    expect(onAccepted).toHaveBeenCalledTimes(1);
+    expect(mockStartTurn).toHaveBeenCalledTimes(1);
+    expect(mockRestartTurn).toHaveBeenCalledTimes(1);
+    expect(result.current.messages.map((entry) => entry.text)).toEqual(['hello', 'Recovered']);
+  });
+
+  it('does not accept a turn when starting local persistence fails', async () => {
+    const { result } = await setup();
+    const onAccepted = jest.fn();
+    mockStartTurn.mockRejectedValueOnce(new Error('Storage unavailable'));
+
+    await act(async () => {
+      await expect(result.current.send('hello', [], onAccepted)).resolves.toBe(false);
+    });
+
+    expect(onAccepted).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(result.current.pending).toBe(false);
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it('exposes conversation loading and blocks send until loading completes', async () => {
+    let finishLoad!: () => void;
+    mockLoadLatest.mockReturnValueOnce(new Promise<null>((resolve) => { finishLoad = () => resolve(null); }));
+    const { result } = await setup();
+
+    expect(result.current.loadingConversation).toBe(true);
+    expect(result.current.activeModelId).toBe('model-exact');
+    await act(async () => {
+      await expect(result.current.send('hello')).resolves.toBe(false);
+    });
+    expect(result.current.pending).toBe(false);
+    expect(mockCredentialRead).not.toHaveBeenCalled();
+    expect(mockStartTurn).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+
+    await act(async () => { finishLoad(); });
+    expect(result.current.loadingConversation).toBe(false);
+    mockSend.mockResolvedValueOnce(success('resp_loaded', 'Ready'));
+    await act(async () => {
+      await expect(result.current.send('hello')).resolves.toBe(true);
+    });
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['requested', 'latest'] as const)(
+    'blocks sending after a %s conversation load rejection and recovers through reloadModel',
+    async (source) => {
+      const load = source === 'requested' ? mockLoadConversation : mockLoadLatest;
+      let rejectLoad!: (error: Error) => void;
+      load.mockReturnValueOnce(new Promise((_, reject) => { rejectLoad = reject; }));
+      const hook = await renderHook(() => useChat(profile, source === 'requested' ? 'conv_saved' : null));
+      await act(async () => hook.result.current.reloadModel());
+      expect(hook.result.current.activeModelId).toBe('model-exact');
+      await act(async () => { rejectLoad(new Error('private storage diagnostic sk-test')); });
+
+      expect(hook.result.current.loadingConversation).toBe(false);
+      expect(hook.result.current.readOnly).toBe(true);
+      expect(hook.result.current.error).toMatchObject({
+        message: 'Request could not be prepared. Try again.', safeDetails: { stage: 'conversation-load' },
+      });
+      expect(JSON.stringify(hook.result.current.error)).not.toContain('sk-test');
+      const onAccepted = jest.fn();
+      await act(async () => {
+        await expect(hook.result.current.send('hello', [], onAccepted)).resolves.toBe(false);
+      });
+      expect(onAccepted).not.toHaveBeenCalled();
+      expect(mockStartTurn).not.toHaveBeenCalled();
+      expect(mockSend).not.toHaveBeenCalled();
+
+      let finishReload!: () => void;
+      load.mockReturnValueOnce(new Promise((resolve) => {
+        finishReload = () => resolve({
+          id: 'conv_saved', endpointId: profile.id, modelId: 'model-exact',
+          messages: [{ id: 'saved_message', role: 'user', text: 'Saved history', reasoningSummary: null, status: 'completed', attachments: [] }],
+          metrics: [], previousResponseId: null, previousResponseModelId: null, retry: null,
+        });
+      }));
+      await act(async () => hook.result.current.reloadModel());
+      expect(hook.result.current.loadingConversation).toBe(true);
+      await act(async () => { await expect(hook.result.current.send('hello')).resolves.toBe(false); });
+      expect(mockStartTurn).not.toHaveBeenCalled();
+      await act(async () => { finishReload(); });
+
+      expect(hook.result.current.loadingConversation).toBe(false);
+      expect(hook.result.current.conversationId).toBe('conv_saved');
+      expect(hook.result.current.messages.map((entry) => entry.text)).toEqual(['Saved history']);
+      expect(hook.result.current.readOnly).toBe(false);
+      expect(hook.result.current.error).toBeNull();
+      expect(load).toHaveBeenCalledTimes(2);
+      await act(async () => hook.result.current.reloadModel());
+      expect(load).toHaveBeenCalledTimes(2);
+      mockSend.mockResolvedValueOnce(success('resp_reloaded', 'Recovered'));
+      await act(async () => { await expect(hook.result.current.send('hello')).resolves.toBe(true); });
+      expect(mockStartTurn).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv_saved' }));
+    },
+  );
+
+  it('clears stale history and blocks a missing requested conversation', async () => {
+    mockLoadConversation.mockResolvedValueOnce({
+      id: 'conv_saved', endpointId: profile.id, modelId: 'model-exact',
+      messages: [{ id: 'saved_message', role: 'user', text: 'Other history', reasoningSummary: null, status: 'completed', attachments: [] }],
+      metrics: [], previousResponseId: null, previousResponseModelId: null,
+      retry: { prompt: 'old request', turnId: 'old_turn', assistantItemId: 'old_assistant' },
+    }).mockResolvedValueOnce(null);
+    const hook = await renderHook<ReturnType<typeof useChat>, { id: string }>(
+      ({ id }) => useChat(profile, id), { initialProps: { id: 'conv_saved' } },
+    );
+    await act(async () => hook.result.current.reloadModel());
+    expect(hook.result.current.messages.map((entry) => entry.text)).toEqual(['Other history']);
+    await hook.rerender({ id: 'conv_missing' });
+    await waitFor(() => expect(mockLoadConversation).toHaveBeenLastCalledWith('conv_missing'));
+
+    expect(hook.result.current.loadingConversation).toBe(false);
+    expect(hook.result.current.conversationId).toBeNull();
+    expect(hook.result.current.conversationEndpointId).toBeNull();
+    expect(hook.result.current.conversationModelId).toBeNull();
+    expect(hook.result.current.messages).toEqual([]);
+    expect(hook.result.current.readOnly).toBe(true);
+    expect(hook.result.current.canRetry).toBe(false);
+    expect(hook.result.current.error?.message).toBe('Conversation not found. Return to history or start a new chat.');
+    expect(hook.result.current.error?.safeDetails).toEqual({ stage: 'conversation-load' });
+    await act(async () => {
+      await expect(hook.result.current.send('hello')).resolves.toBe(false);
+      await expect(hook.result.current.retry()).resolves.toBe(false);
+    });
+    expect(mockLoadLatest).not.toHaveBeenCalled();
+    expect(mockStartTurn).not.toHaveBeenCalled();
+    expect(mockRestartTurn).not.toHaveBeenCalled();
+    expect(mockSend).not.toHaveBeenCalled();
+
+    await act(async () => hook.result.current.newChat());
+    expect(hook.result.current.readOnly).toBe(false);
+    expect(hook.result.current.error).toBeNull();
+    await act(async () => hook.result.current.reloadModel());
+    expect(mockLoadConversation).toHaveBeenCalledTimes(2);
+    expect(mockLoadLatest).not.toHaveBeenCalled();
+    mockSend.mockResolvedValueOnce(success('resp_new', 'Fresh reply'));
+    await act(async () => { await expect(hook.result.current.send('new prompt')).resolves.toBe(true); });
+    expect(mockStartTurn).toHaveBeenCalledWith(expect.objectContaining({ conversationId: null }));
   });
 
   it('loads a conversation owned by another endpoint as read-only', async () => {

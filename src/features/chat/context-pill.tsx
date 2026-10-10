@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SymbolView } from 'expo-symbols';
-import { Pressable, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 
 import { DEFAULT_CONTEXT_POLICY, type ContextBudgetResult, type ContextPolicy } from '../../domain/context';
 import { formatCount, formatDuration, formatPercent, formatRate, type TurnMetrics } from '../../domain/usage';
@@ -16,6 +16,7 @@ export function ContextPill({
   policy = DEFAULT_CONTEXT_POLICY,
   autoCompact = true,
   compacting = false,
+  disabled = false,
   canCompact = false,
   onCompact = () => undefined,
   onToggleAutoCompact = () => undefined,
@@ -26,6 +27,7 @@ export function ContextPill({
   policy?: ContextPolicy;
   autoCompact?: boolean;
   compacting?: boolean;
+  disabled?: boolean;
   canCompact?: boolean;
   onCompact?: () => void;
   onToggleAutoCompact?: (enabled: boolean) => void;
@@ -70,14 +72,14 @@ export function ContextPill({
         visible={expanded}
         dismissLabel="Dismiss context usage"
         onRequestClose={() => setExpanded(false)}>
-          <View style={{ gap: 12, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
+          <ScrollView style={{ maxHeight: '100%', borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet }} contentContainerStyle={{ gap: 12, paddingHorizontal: theme.spacing.screen, paddingTop: theme.spacing.medium, paddingBottom: theme.spacing.large }}>
             <View style={{ alignItems: 'center' }}>
               <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: theme.colors.border }} />
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <SymbolView name={{ ios: 'chart.bar.xaxis', android: 'analytics' }} size={20} tintColor={theme.colors.secondary} />
-                <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.subtitle }}>Context &amp; telemetry</Text>
+                <Text style={{ flexShrink: 1, color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.subtitle }}>Context &amp; telemetry</Text>
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel="Dismiss context usage" onPress={() => setExpanded(false)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
                 <Text style={{ color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>CLOSE</Text>
@@ -103,8 +105,9 @@ export function ContextPill({
                   accessibilityLabel="Auto-compact"
                   accessibilityHint="Automatically summarize when context reaches the configured trigger"
                   value={autoCompact}
-                  disabled={compacting}
-                  trackColor={{ false: theme.colors.border, true: theme.colors.secondary }}
+                  disabled={compacting || disabled}
+                  accessibilityState={{ disabled: compacting || disabled, checked: autoCompact }}
+                  trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
                   thumbColor={theme.colors.text}
                   onValueChange={onToggleAutoCompact}
                 />
@@ -143,7 +146,7 @@ export function ContextPill({
                 Context limit reached. Compact, start a new chat, or reduce output reserve.
               </Text>
             )}
-        </View>
+        </ScrollView>
       </BottomSheet>
     </>
   );

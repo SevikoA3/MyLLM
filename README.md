@@ -76,10 +76,10 @@ npm run android
 On first launch:
 
 1. Enter a profile name, endpoint base URL, and API key.
-2. Choose Responses, Chat Completions, or Auto protocol mode.
-3. Adjust the route settings if the endpoint uses nonstandard paths.
+2. Open Advanced to change authentication or choose Responses, Chat Completions, or Auto protocol mode.
+3. Adjust the model discovery path in Advanced if the endpoint uses a nonstandard route.
 4. Connect to validate the endpoint and discover its models.
-5. Select a model in the Catalog tab and start a conversation.
+5. Select a model from the Chat model picker and start a conversation. Use Catalog to change model visibility or metadata.
 
 The base URL usually includes the provider API prefix, such as `https://api.example.com/v1`. Enter credentials only in the app. Do not add API keys to `.env` or an `EXPO_PUBLIC_*` variable.
 

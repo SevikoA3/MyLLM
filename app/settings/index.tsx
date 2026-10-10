@@ -1,7 +1,7 @@
 import { Link, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,26 +16,28 @@ import { clearStagedImages } from '../../src/services/attachments/images';
 import { conversationRepository } from '../../src/services/persistence/conversation-store';
 import { endpointStore } from '../../src/services/persistence/endpoint-store';
 import { webToolsCredentialId, webToolsStore } from '../../src/services/persistence/web-tools-store';
-import { createWebToolsSettings, normalizeGatewayUrl, type WebSearchProvider } from '../../src/domain/web-tools';
+import { createWebToolsSettings, normalizeGatewayUrl, type WebSearchProvider, type WebToolsSettings } from '../../src/domain/web-tools';
 import { testWebGateway } from '../../src/services/tools/gateway';
-import { colors, fonts, typography } from '../../src/ui/tokens';
+import { colors, fonts, interaction, radius, spacing, typography } from '../../src/ui/tokens';
 import { BottomSheet } from '../../src/ui/bottom-sheet';
 
 const cardStyle = {
-  gap: 12,
-  padding: 12,
-  borderRadius: 8,
+  gap: spacing.medium,
+  padding: spacing.medium,
+  borderRadius: radius.card,
   backgroundColor: colors.surfaceLow,
 } as const;
+
+type SettingsOperation = 'load' | 'provider' | 'save' | 'test' | 'reset' | 'export' | 'confirm' | 'delete' | null;
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { status, profile } = useActiveEndpoint();
   const [notice, setNotice] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [resetting, setResetting] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
-  const [clearing, setClearing] = useState(false);
+  const [operation, setOperation] = useState<SettingsOperation>('load');
+  const operationGuard = useRef({ version: 0, operation: 'load' as SettingsOperation });
+  const [savedWebTools, setSavedWebTools] = useState<WebToolsSettings | null>(null);
   const [webToolsReady, setWebToolsReady] = useState(false);
   const [webToolsEnabled, setWebToolsEnabled] = useState(false);
   const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProvider>('gateway');
@@ -43,14 +45,39 @@ export default function SettingsScreen() {
   const [gatewayEngines, setGatewayEngines] = useState('bing');
   const [gatewayToken, setGatewayToken] = useState('');
   const [gatewayTokenSaved, setGatewayTokenSaved] = useState(false);
-  const [savingWebTools, setSavingWebTools] = useState(false);
-  const [testingGateway, setTestingGateway] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const exporting = operation === 'export';
+  const resetting = operation === 'reset';
+  const clearing = operation === 'delete';
+  const savingWebTools = operation === 'save';
+  const testingGateway = operation === 'test';
+  const actionsBlocked = operation !== null;
+  const providerBlocked = !webToolsReady || (actionsBlocked && operation !== 'provider');
+  const draftChanged = savedWebTools === null || gatewayToken.length > 0
+    || webToolsEnabled !== savedWebTools.enabled || webSearchProvider !== savedWebTools.provider
+    || (webSearchProvider === 'gateway' && (gatewayUrl !== (savedWebTools.baseUrl ?? '') || gatewayEngines !== savedWebTools.engines));
+
+  function startOperation(next: SettingsOperation) {
+    operationGuard.current.operation = next;
+    const version = ++operationGuard.current.version;
+    setOperation(next);
+    return version;
+  }
+
+  function finishOperation(version: number) {
+    if (operationGuard.current.version !== version) return;
+    operationGuard.current.operation = null;
+    setOperation(null);
+  }
 
   useEffect(() => {
-    let active = true;
+    const guard = operationGuard.current;
+    const version = ++guard.version;
     void webToolsStore.load().then(async (settings) => {
+      if (operationGuard.current.version !== version) return;
       const token = await credentialStore.read(webToolsCredentialId(settings.provider));
-      if (!active) return;
+      if (operationGuard.current.version !== version) return;
+      setSavedWebTools(settings);
       setWebToolsEnabled(settings.enabled);
       setWebSearchProvider(settings.provider);
       setGatewayUrl(settings.baseUrl ?? '');
@@ -58,115 +85,159 @@ export default function SettingsScreen() {
       setGatewayTokenSaved(token !== null && token.trim().length > 0);
       setWebToolsReady(true);
     }).catch(() => {
-      if (!active) return;
+      if (operationGuard.current.version !== version) return;
       setNotice('Web tools settings could not be loaded.');
       setWebToolsReady(true);
+    }).finally(() => {
+      finishOperation(version);
     });
-    return () => { active = false; };
+    return () => { ++guard.version; };
   }, []);
 
   async function selectWebSearchProvider(provider: WebSearchProvider) {
+    if (!webToolsReady || (operationGuard.current.operation !== null && operationGuard.current.operation !== 'provider')) return;
+    const version = startOperation('provider');
     setNotice(null);
     setWebSearchProvider(provider);
     setGatewayToken('');
+    setGatewayTokenSaved(false);
     try {
       const token = await credentialStore.read(webToolsCredentialId(provider));
+      if (operationGuard.current.version !== version) return;
       setGatewayTokenSaved(token !== null && token.trim().length > 0);
     } catch {
-      setGatewayTokenSaved(false);
+      if (operationGuard.current.version !== version) return;
       setNotice('Web tools credentials could not be loaded.');
+    } finally {
+      finishOperation(version);
     }
   }
 
   async function exportDiagnostics() {
-    setExporting(true);
+    if (operationGuard.current.operation !== null) return;
+    const version = startOperation('export');
     try {
       await shareDiagnostics();
     } catch {
       Alert.alert('Could not export diagnostics', 'The system share sheet is unavailable.');
     } finally {
-      setExporting(false);
+      finishOperation(version);
     }
   }
 
   async function resetProtocol() {
-    if (profile === null) {
+    if (profile === null || operationGuard.current.operation !== null) {
       return;
     }
     setNotice(null);
-    setResetting(true);
+    const version = startOperation('reset');
     try {
       await endpointStore.clearProtocol(profile.id);
       setNotice('Protocol cache cleared. Auto mode will try Responses first on the next request.');
     } catch {
       Alert.alert('Could not reset protocol compatibility', 'Try again later.');
     } finally {
-      setResetting(false);
+      finishOperation(version);
     }
   }
 
   async function saveWebTools() {
+    if (!webToolsReady || operationGuard.current.operation !== null) return;
+    const version = startOperation('save');
     setNotice(null);
-    let settings;
+    const token = gatewayToken.trim();
+    const credentialId = webToolsCredentialId(webSearchProvider);
+    let previousToken: string | null = null;
+    let credentialWriteAttempted = false;
     try {
-      settings = createWebToolsSettings({
-        enabled: webToolsEnabled,
-        provider: webSearchProvider,
-        baseUrl: gatewayUrl.trim().length === 0 ? null : gatewayUrl,
-        engines: gatewayEngines,
-      });
-    } catch (error) {
-      Alert.alert('Could not save web tools', error instanceof Error ? error.message : 'Check the gateway URL.');
-      return;
-    }
-    if (settings.enabled && gatewayToken.trim().length === 0 && !gatewayTokenSaved) {
-      Alert.alert(
-        webSearchProvider === 'exa' ? 'Exa API key required' : 'Gateway token required',
-        webSearchProvider === 'exa' ? 'Enter an Exa API key before enabling web search.' : 'Enter a bearer token before enabling web tools.',
-      );
-      return;
-    }
-    setSavingWebTools(true);
-    try {
-      if (gatewayToken.trim().length > 0) {
-        await credentialStore.save(webToolsCredentialId(settings.provider), gatewayToken.trim());
-        setGatewayToken('');
-        setGatewayTokenSaved(true);
+      let settings: WebToolsSettings;
+      try {
+        settings = createWebToolsSettings({
+          enabled: webToolsEnabled,
+          provider: webSearchProvider,
+          baseUrl: gatewayUrl.trim().length === 0 ? null : gatewayUrl,
+          engines: gatewayEngines,
+        });
+      } catch {
+        Alert.alert('Could not save web tools', 'Check the HTTPS gateway URL and SearXNG engines.');
+        return;
+      }
+      previousToken = await credentialStore.read(credentialId);
+      const tokenSaved = previousToken !== null && previousToken.trim().length > 0;
+      setGatewayTokenSaved(tokenSaved);
+      if (settings.enabled && token.length === 0 && !tokenSaved) {
+        Alert.alert(
+          settings.provider === 'exa' ? 'Exa API key required' : 'Gateway token required',
+          settings.provider === 'exa' ? 'Enter an Exa API key before enabling web search.' : 'Enter a bearer token before enabling web tools.',
+        );
+        return;
+      }
+      if (token.length > 0) {
+        credentialWriteAttempted = true;
+        await credentialStore.save(credentialId, token);
       }
       await webToolsStore.save(settings);
+      setSavedWebTools(settings);
+      setGatewayTokenSaved(token.length > 0 || tokenSaved);
       setWebSearchProvider(settings.provider);
       setGatewayUrl(settings.baseUrl ?? '');
       setGatewayEngines(settings.engines);
       setNotice('Web tools settings saved.');
     } catch {
+      if (credentialWriteAttempted) {
+        try {
+          if (previousToken === null) await credentialStore.remove(credentialId);
+          else await credentialStore.save(credentialId, previousToken);
+          setGatewayTokenSaved(previousToken !== null && previousToken.trim().length > 0);
+        } catch {
+          setGatewayTokenSaved(false);
+          Alert.alert('Could not restore web tools credential', 'Secure storage failed during recovery. Re-enter the credential for the saved settings before using web search.');
+          return;
+        }
+      }
       Alert.alert('Could not save web tools', 'Secure storage is unavailable. Try again later.');
     } finally {
-      setSavingWebTools(false);
+      setGatewayToken('');
+      finishOperation(version);
     }
   }
 
   async function testGateway() {
+    if (!webToolsReady || webSearchProvider !== 'gateway' || operationGuard.current.operation !== null) return;
     let baseUrl: string;
     try {
       baseUrl = normalizeGatewayUrl(gatewayUrl);
-    } catch (error) {
-      Alert.alert('Could not test gateway', error instanceof Error ? error.message : 'Check the gateway URL.');
+    } catch {
+      Alert.alert('Could not test gateway', 'Enter a valid HTTPS gateway URL without a query or fragment.');
       return;
     }
     setNotice(null);
-    setTestingGateway(true);
+    const version = startOperation('test');
     try {
       await testWebGateway(baseUrl);
-      setNotice('Connected');
+      setNotice('Gateway health check passed. Search authentication was not tested.');
     } catch {
       Alert.alert('Could not connect to gateway', 'The gateway health check failed. Verify the HTTPS URL and try again.');
     } finally {
-      setTestingGateway(false);
+      finishOperation(version);
     }
   }
 
+  function openClearData() {
+    if (operationGuard.current.operation !== null) return;
+    startOperation('confirm');
+    setClearOpen(true);
+  }
+
+  function cancelClearData() {
+    if (operationGuard.current.operation !== 'confirm') return;
+    setClearOpen(false);
+    finishOperation(operationGuard.current.version);
+  }
+
   async function clearData() {
-    setClearing(true);
+    if (operationGuard.current.operation !== 'confirm') return;
+    const version = startOperation('delete');
     try {
       await clearAllData({
         loadAllEndpoints: endpointStore.loadAll,
@@ -182,7 +253,7 @@ export default function SettingsScreen() {
       });
       router.replace('/setup');
     } catch {
-      setClearing(false);
+      if (operationGuard.current.version === version) startOperation('confirm');
       Alert.alert('Could not delete all data', 'Close the app and try again.');
     }
   }
@@ -199,17 +270,11 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 32 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: spacing.screen, padding: spacing.screen, paddingBottom: spacing.xlarge }}>
         <View style={{ gap: 6, paddingVertical: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={14} tintColor={colors.primary} />
-            <Text style={{ color: colors.primary, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.8 }}>
-              CONFIG // SYS.PREFS
-            </Text>
-          </View>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.heading, fontSize: 22, lineHeight: 28 }}>
-              Settings &amp; Maintenance
+            <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.heading, fontSize: typography.title, lineHeight: 28 }}>
+              Settings
             </Text>
             <StatusBadge label={profile === null ? 'SETUP REQUIRED' : 'SECURE STORAGE'} tone={profile === null ? 'warning' : 'secondary'} />
           </View>
@@ -217,15 +282,16 @@ export default function SettingsScreen() {
 
         {notice !== null && (
           <View accessibilityRole="alert" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 8, backgroundColor: colors.surfaceHigh, padding: 12 }}>
-            <SymbolView name={{ ios: 'checkmark.circle.fill', android: 'check_circle' }} size={18} tintColor={colors.primary} />
-            <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.mono, fontSize: 11, lineHeight: 16 }}>{notice}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Dismiss protocol reset message" onPress={() => setNotice(null)} hitSlop={6}>
+            <SymbolView name={{ ios: 'info.circle', android: 'info' }} size={18} tintColor={colors.secondary} />
+            <Text style={{ flex: 1, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, lineHeight: 20 }}>{notice}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notice" onPress={() => setNotice(null)}
+              style={({ pressed }) => ({ minWidth: interaction.compactTouchTarget, minHeight: interaction.compactTouchTarget, alignItems: 'center', justifyContent: 'center', opacity: pressed ? interaction.pressedOpacity : 1 })}>
               <SymbolView name={{ ios: 'xmark', android: 'close' }} size={16} tintColor={colors.muted} />
             </Pressable>
           </View>
         )}
 
-        <Section label="ENDPOINT &amp; SECURITY" icon="endpoint" tone="primary">
+        <Section label="Endpoint and security" icon="endpoint" tone="primary">
           <View style={{ gap: 8, borderRadius: 4, backgroundColor: colors.surface, padding: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
               <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
@@ -245,6 +311,7 @@ export default function SettingsScreen() {
           </View>
 
           <SettingsLink
+            disabled={actionsBlocked}
             href="/settings/endpoints"
             icon={{ ios: 'server.rack', android: 'dns' }}
             title="Endpoint profiles"
@@ -252,6 +319,7 @@ export default function SettingsScreen() {
           />
 
           <SettingsLink
+            disabled={actionsBlocked}
             href="/setup"
             icon={{ ios: 'slider.horizontal.3', android: 'tune' }}
             title="Edit endpoint &amp; API key"
@@ -260,6 +328,7 @@ export default function SettingsScreen() {
 
           {profile?.compat.usagePath !== null && profile?.compat.usagePath !== undefined && (
             <SettingsLink
+              disabled={actionsBlocked}
               href="/settings/usage"
               icon={{ ios: 'chart.bar.xaxis', android: 'monitoring' }}
               title="Account usage"
@@ -275,9 +344,10 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
-        <Section label="MODEL &amp; PROTOCOL" icon="model" tone="secondary">
+        <Section label="Model and protocol" icon="model" tone="secondary">
           <SettingsLink
-            href="/models"
+            disabled={actionsBlocked}
+            href="/(tabs)/models"
             icon={{ ios: 'cpu', android: 'memory' }}
             title="Model catalog &amp; overrides"
             body="Show or hide models and edit local metadata overrides."
@@ -291,8 +361,8 @@ export default function SettingsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Reset protocol compatibility"
                 accessibilityHint="Clears the cached protocol choice for this endpoint"
-                accessibilityState={{ busy: resetting, disabled: profile === null || resetting }}
-                disabled={profile === null || resetting}
+                accessibilityState={{ busy: resetting, disabled: profile === null || actionsBlocked }}
+                disabled={profile === null || actionsBlocked}
                 onPress={() => void resetProtocol()}
                 style={({ pressed }) => ({
                   minHeight: 44,
@@ -303,11 +373,11 @@ export default function SettingsScreen() {
                   borderRadius: 4,
                   backgroundColor: colors.surfaceHigh,
                   paddingHorizontal: 10,
-                  opacity: profile === null || resetting ? 0.45 : pressed ? 0.75 : 1,
+                  opacity: profile === null || actionsBlocked ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
                 })}>
                 {resetting ? <ActivityIndicator size="small" color={colors.secondary} /> : <SymbolView name={{ ios: 'arrow.counterclockwise', android: 'refresh' }} size={15} tintColor={colors.primary} />}
-                <Text style={{ color: colors.primary, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-                  {resetting ? 'RESETTING' : 'RESET'}
+                <Text style={{ color: colors.primary, fontFamily: fonts.heading, fontSize: typography.body }}>
+                  {resetting ? 'Resetting...' : 'Reset'}
                 </Text>
               </Pressable>
             </View>
@@ -317,7 +387,7 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
-        <Section label="WEB TOOLS" icon="web" tone="secondary">
+        <Section label="Web tools" icon="web" tone="secondary">
           <View style={{ gap: 10, borderRadius: 4, backgroundColor: colors.surface, padding: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <View style={{ flex: 1, gap: 3 }}>
@@ -332,35 +402,37 @@ export default function SettingsScreen() {
               </View>
               <Switch
                 accessibilityLabel="Enable web search and fetch"
-                accessibilityState={{ checked: webToolsEnabled, disabled: !webToolsReady || savingWebTools }}
-                disabled={!webToolsReady || savingWebTools}
+                accessibilityState={{ checked: webToolsEnabled, disabled: !webToolsReady || actionsBlocked }}
+                disabled={!webToolsReady || actionsBlocked}
                 value={webToolsEnabled}
-                onValueChange={setWebToolsEnabled}
+                onValueChange={(value) => { if (operationGuard.current.operation !== null) return; setNotice(null); setWebToolsEnabled(value); }}
                 trackColor={{ false: colors.surfaceHigh, true: colors.primary }}
                 thumbColor={colors.text}
               />
             </View>
             <StatusBadge
-              label={!webToolsReady ? 'LOADING' : !webToolsEnabled ? 'DISABLED' : gatewayTokenSaved ? 'CONFIGURED' : 'TOKEN REQUIRED'}
-              tone={!webToolsReady || !webToolsEnabled || !gatewayTokenSaved ? 'warning' : 'secondary'}
+              label={!webToolsReady || operation === 'provider' ? 'Loading credentials' : draftChanged ? 'Save to apply changes' : !webToolsEnabled ? 'Disabled' : gatewayTokenSaved ? 'Configured' : webSearchProvider === 'exa' ? 'API key required' : 'Token required'}
+              tone={!webToolsReady || operation === 'provider' || draftChanged || !gatewayTokenSaved ? 'warning' : 'secondary'}
             />
           </View>
 
           <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>WEB SEARCH PROVIDER</Text>
+            <Text style={{ color: colors.text, fontFamily: fonts.headingMedium, fontSize: typography.body }}>Web search provider</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <SettingsAction
-                  label="GATEWAY"
-                  disabled={!webToolsReady || savingWebTools}
+                  label="Gateway"
+                  checked={webSearchProvider === 'gateway'}
+                  disabled={providerBlocked}
                   onPress={() => void selectWebSearchProvider('gateway')}
                   tone={webSearchProvider === 'gateway' ? 'primary' : 'secondary'}
                 />
               </View>
               <View style={{ flex: 1 }}>
                 <SettingsAction
-                  label="EXA"
-                  disabled={!webToolsReady || savingWebTools}
+                  label="Exa"
+                  checked={webSearchProvider === 'exa'}
+                  disabled={providerBlocked}
                   onPress={() => void selectWebSearchProvider('exa')}
                   tone={webSearchProvider === 'exa' ? 'primary' : 'secondary'}
                 />
@@ -369,38 +441,44 @@ export default function SettingsScreen() {
           </View>
 
           {webSearchProvider === 'gateway' && <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>GATEWAY URL</Text>
+            <Text style={{ color: colors.text, fontFamily: fonts.headingMedium, fontSize: typography.body }}>Gateway URL</Text>
             <TextInput
               accessibilityLabel="Gateway URL"
               autoCapitalize="none"
               autoCorrect={false}
-              editable={webToolsReady && !savingWebTools}
+              editable={webToolsReady && !actionsBlocked}
               keyboardType="url"
-              onChangeText={setGatewayUrl}
+              onChangeText={(value) => { if (operationGuard.current.operation !== null) return; setNotice(null); setGatewayUrl(value); }}
+              onFocus={() => setFocusedField('url')}
+              onBlur={() => setFocusedField(null)}
+              selectionColor={colors.primary}
               placeholder="https://gateway.example.com"
               placeholderTextColor={colors.outline}
               value={gatewayUrl}
-              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: 10 }}
+              style={{ minHeight: interaction.touchTarget, borderWidth: 1, borderColor: focusedField === 'url' ? colors.primary : colors.border, borderRadius: radius.control, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: spacing.medium, opacity: actionsBlocked ? interaction.disabledOpacity : 1 }}
             />
           </View>}
 
           <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-              {webSearchProvider === 'exa' ? 'EXA API KEY' : 'GATEWAY TOKEN'}
+            <Text style={{ color: colors.text, fontFamily: fonts.headingMedium, fontSize: typography.body }}>
+              {webSearchProvider === 'exa' ? 'Exa API key' : 'Gateway token'}
             </Text>
             <TextInput
               accessibilityLabel={webSearchProvider === 'exa' ? 'Exa API key' : 'Gateway token'}
               autoCapitalize="none"
               autoCorrect={false}
-              editable={webToolsReady && !savingWebTools}
-              onChangeText={setGatewayToken}
+              editable={webToolsReady && !actionsBlocked}
+              onChangeText={(value) => { if (operationGuard.current.operation !== null) return; setNotice(null); setGatewayToken(value); }}
+              onFocus={() => setFocusedField('token')}
+              onBlur={() => setFocusedField(null)}
+              selectionColor={colors.primary}
               placeholder={gatewayTokenSaved
                 ? 'Saved securely. Enter a new value to replace it.'
                 : webSearchProvider === 'exa' ? 'Exa API key' : 'Bearer token'}
               placeholderTextColor={colors.outline}
               secureTextEntry
               value={gatewayToken}
-              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: 10 }}
+              style={{ minHeight: interaction.touchTarget, borderWidth: 1, borderColor: focusedField === 'token' ? colors.primary : colors.border, borderRadius: radius.control, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: spacing.medium, opacity: actionsBlocked ? interaction.disabledOpacity : 1 }}
             />
             <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
               The credential is stored securely and is never included in diagnostics or tool output.
@@ -408,17 +486,20 @@ export default function SettingsScreen() {
           </View>
 
           {webSearchProvider === 'gateway' && <View style={{ gap: 6 }}>
-            <Text style={{ color: colors.muted, fontFamily: fonts.monoMedium, fontSize: 10 }}>SEARXNG ENGINES</Text>
+            <Text style={{ color: colors.text, fontFamily: fonts.headingMedium, fontSize: typography.body }}>SearXNG engines</Text>
             <TextInput
               accessibilityLabel="SearXNG engines"
               autoCapitalize="none"
               autoCorrect={false}
-              editable={webToolsReady && !savingWebTools}
-              onChangeText={setGatewayEngines}
+              editable={webToolsReady && !actionsBlocked}
+              onChangeText={(value) => { if (operationGuard.current.operation !== null) return; setNotice(null); setGatewayEngines(value); }}
+              onFocus={() => setFocusedField('engines')}
+              onBlur={() => setFocusedField(null)}
+              selectionColor={colors.primary}
               placeholder="bing"
               placeholderTextColor={colors.outline}
               value={gatewayEngines}
-              style={{ minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 4, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: 10 }}
+              style={{ minHeight: interaction.touchTarget, borderWidth: 1, borderColor: focusedField === 'engines' ? colors.primary : colors.border, borderRadius: radius.control, backgroundColor: colors.surfaceLowest, color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, paddingHorizontal: spacing.medium, opacity: actionsBlocked ? interaction.disabledOpacity : 1 }}
             />
             <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
               Comma-separated engine names for your SearXNG instance. Default: bing.
@@ -434,16 +515,16 @@ export default function SettingsScreen() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {webSearchProvider === 'gateway' && <View style={{ flex: 1 }}>
               <SettingsAction
-                label={testingGateway ? 'TESTING...' : 'TEST CONNECTION'}
-                disabled={!webToolsReady || testingGateway || savingWebTools}
+                label={testingGateway ? 'Testing gateway health...' : 'Test gateway health'}
+                disabled={!webToolsReady || actionsBlocked}
                 onPress={() => void testGateway()}
                 tone="secondary"
               />
             </View>}
             <View style={{ flex: 1 }}>
               <SettingsAction
-                label={savingWebTools ? 'SAVING...' : 'SAVE WEB TOOLS'}
-                disabled={!webToolsReady || savingWebTools || testingGateway}
+                label={savingWebTools ? 'Saving...' : 'Save web tools'}
+                disabled={!webToolsReady || actionsBlocked}
                 onPress={() => void saveWebTools()}
                 tone="primary"
               />
@@ -451,7 +532,7 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
-        <Section label="DIAGNOSTICS &amp; AUDIT" icon="diagnostics" tone="warning">
+        <Section label="Diagnostics and audit" icon="diagnostics" tone="warning">
           <View style={{ gap: 8, borderRadius: 4, backgroundColor: colors.surface, padding: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
               <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>Export diagnostics bundle</Text>
@@ -465,8 +546,8 @@ export default function SettingsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Export diagnostics"
             accessibilityHint="Open the system share sheet with sanitized diagnostics"
-            accessibilityState={{ busy: exporting, disabled: exporting }}
-            disabled={exporting}
+            accessibilityState={{ busy: exporting, disabled: actionsBlocked }}
+            disabled={actionsBlocked}
             onPress={() => void exportDiagnostics()}
             style={({ pressed }) => ({
               minHeight: 48,
@@ -476,29 +557,31 @@ export default function SettingsScreen() {
               gap: 8,
               borderRadius: 4,
               backgroundColor: colors.surfaceHigh,
-              opacity: exporting ? 0.7 : pressed ? 0.75 : 1,
+              opacity: actionsBlocked ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
             })}>
             {exporting ? <ActivityIndicator size="small" color={colors.secondary} /> : <SymbolView name={{ ios: 'square.and.arrow.up', android: 'ios_share' }} size={16} tintColor={colors.secondary} />}
-            <Text style={{ color: colors.text, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-              {exporting ? 'OPENING SHARE SHEET' : 'SHARE DIAGNOSTIC JSON'}
+            <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.body }}>
+              {exporting ? 'Opening share sheet...' : 'Share diagnostic JSON'}
             </Text>
           </Pressable>
         </Section>
 
-        <Section label="DANGER ZONE // ZERO RETENTION" icon="danger" tone="error">
+        <Section label="Delete local data" icon="danger" tone="error">
           <View style={{ gap: 10, borderRadius: 4, backgroundColor: colors.surface, padding: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <SymbolView name={{ ios: 'trash.fill', android: 'delete_forever' }} size={20} tintColor={colors.error} />
               <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18 }}>Delete all app data</Text>
             </View>
-            <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
+            <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: typography.body, lineHeight: 20 }}>
               Permanently deletes endpoints, saved credentials, conversations, model data, diagnostics, and transfer files.
             </Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Delete all app data"
               accessibilityHint="Open a confirmation before permanently deleting local data"
-              onPress={() => setClearOpen(true)}
+              accessibilityState={{ disabled: actionsBlocked }}
+              disabled={actionsBlocked}
+              onPress={openClearData}
               style={({ pressed }) => ({
                 minHeight: 48,
                 flexDirection: 'row',
@@ -507,15 +590,15 @@ export default function SettingsScreen() {
                 gap: 8,
                 borderRadius: 4,
                 backgroundColor: colors.error,
-                opacity: pressed ? 0.8 : 1,
+                opacity: actionsBlocked ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
               })}>
               <SymbolView name={{ ios: 'trash.fill', android: 'delete_forever' }} size={18} tintColor={colors.errorButtonText} />
-              <Text style={{ color: colors.errorButtonText, fontFamily: fonts.heading, fontSize: 13 }}>DELETE ALL APP DATA</Text>
+              <Text style={{ color: colors.errorButtonText, fontFamily: fonts.heading, fontSize: typography.body }}>Delete all app data</Text>
             </Pressable>
           </View>
         </Section>
       </ScrollView>
-      <ClearDataSheet visible={clearOpen} busy={clearing} onCancel={() => setClearOpen(false)} onConfirm={() => void clearData()} />
+      <ClearDataSheet visible={clearOpen} busy={clearing} onCancel={cancelClearData} onConfirm={() => void clearData()} />
     </SafeAreaView>
   );
 }
@@ -545,36 +628,38 @@ function Section({ label, icon, tone, children }: { label: string; icon: 'endpoi
     <View style={{ gap: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 4 }}>
         <SymbolView name={symbol[icon]} size={14} tintColor={color} />
-        <Text style={{ color, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.7 }}>{label}</Text>
+        <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.componentTitle }}>{label}</Text>
       </View>
       <View style={cardStyle}>{children}</View>
     </View>
   );
 }
 
-function SettingsAction({ label, disabled, onPress, tone }: { label: string; disabled: boolean; onPress: () => void; tone: 'primary' | 'secondary' }) {
+function SettingsAction({ label, disabled, onPress, tone, checked }: { label: string; disabled: boolean; onPress: () => void; tone: 'primary' | 'secondary'; checked?: boolean }) {
   const color = colors[tone];
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={checked === undefined ? 'button' : 'radio'}
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
+      accessibilityState={{ disabled, ...(checked === undefined ? {} : { checked }) }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 48,
+        minHeight: interaction.touchTarget,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 4,
+        borderRadius: radius.control,
+        paddingHorizontal: spacing.small,
+        paddingVertical: spacing.small,
         backgroundColor: tone === 'primary' ? color : colors.surfaceHigh,
-        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+        opacity: disabled ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
       })}>
-      <Text style={{ color: tone === 'primary' ? colors.surfaceLowest : color, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text>
+      <Text style={{ color: tone === 'primary' ? colors.surfaceLowest : color, fontFamily: fonts.heading, fontSize: typography.body, textAlign: 'center' }}>{label}</Text>
     </Pressable>
   );
 }
 
-function SettingsLink({ href, icon, title, body }: {
+function SettingsLink({ href, icon, title, body, disabled }: {
   href: string;
   icon: {
     ios: 'slider.horizontal.3' | 'cpu' | 'server.rack' | 'chart.bar.xaxis';
@@ -582,6 +667,7 @@ function SettingsLink({ href, icon, title, body }: {
   };
   title: string;
   body: string;
+  disabled: boolean;
 }) {
   return (
     <Link href={href as never} asChild>
@@ -589,6 +675,8 @@ function SettingsLink({ href, icon, title, body }: {
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityHint={body}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         style={({ pressed }) => ({
           minHeight: 64,
           flexDirection: 'row',
@@ -597,14 +685,14 @@ function SettingsLink({ href, icon, title, body }: {
           borderRadius: 4,
           backgroundColor: colors.surfaceHigh,
           paddingHorizontal: 10,
-          opacity: pressed ? 0.75 : 1,
+          opacity: disabled ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
         })}>
         <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: colors.surface }}>
           <SymbolView name={icon} size={18} tintColor={colors.primary} />
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>{title}</Text>
-          <Text numberOfLines={2} style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>{body}</Text>
+          <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.componentTitle }}>{title}</Text>
+          <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: typography.label, lineHeight: 16 }}>{body}</Text>
         </View>
         <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={16} tintColor={colors.muted} />
       </Pressable>
@@ -637,7 +725,7 @@ function ClearDataSheet({ visible, busy, onCancel, onConfirm }: { visible: boole
       dismissLabel="Dismiss delete confirmation"
       dismissDisabled={busy}
       onRequestClose={busy ? () => undefined : onCancel}>
-        <View style={{ gap: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.surfaceLow, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}>
+        <View style={{ gap: spacing.screen, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.surfaceLow, paddingHorizontal: spacing.screen, paddingTop: spacing.medium, paddingBottom: spacing.large }}>
           <View style={{ alignItems: 'center' }}>
             <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: colors.outline }} />
           </View>
@@ -646,21 +734,20 @@ function ClearDataSheet({ visible, busy, onCancel, onConfirm }: { visible: boole
               <SymbolView name={{ ios: 'exclamationmark.triangle.fill', android: 'warning' }} size={22} tintColor={colors.errorText} />
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18, lineHeight: 24 }}>Delete all app data?</Text>
-              <Text style={{ color: colors.error, fontFamily: fonts.monoMedium, fontSize: 10 }}>PERMANENT SYSTEM PURGE</Text>
+              <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.subtitle, lineHeight: 24 }}>Delete all app data?</Text>
             </View>
           </View>
           <View style={{ gap: 4, borderRadius: 4, backgroundColor: colors.surfaceLowest, padding: 10 }}>
-            <Text style={{ color: colors.text, fontFamily: fonts.mono, fontSize: 11, lineHeight: 16 }}>
+            <Text style={{ color: colors.text, fontFamily: fonts.mono, fontSize: typography.body, lineHeight: 20 }}>
               This removes all local data, clears saved credentials, and returns this device to endpoint setup.
             </Text>
-            <Text style={{ color: colors.errorText, fontFamily: fonts.monoMedium, fontSize: 10, lineHeight: 14 }}>
+            <Text style={{ color: colors.errorText, fontFamily: fonts.monoMedium, fontSize: typography.body, lineHeight: 20 }}>
               This action cannot be undone.
             </Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 1 }}><SheetButton label="Cancel" disabled={busy} onPress={onCancel} /></View>
-            <View style={{ flex: 1 }}><SheetButton label={busy ? 'Deleting...' : 'Erase everything'} danger busy={busy} disabled={busy} onPress={onConfirm} /></View>
+            <View style={{ flex: 1 }}><SheetButton label={busy ? 'Deleting...' : 'Delete data'} danger busy={busy} disabled={busy} onPress={onConfirm} /></View>
           </View>
         </View>
     </BottomSheet>
@@ -676,12 +763,12 @@ function SheetButton({ label, danger = false, busy = false, disabled, onPress }:
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 48,
+        minHeight: interaction.touchTarget,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 4,
+        borderRadius: radius.control,
         backgroundColor: danger ? colors.error : colors.surfaceHigh,
-        opacity: disabled ? 0.5 : pressed ? 0.8 : 1,
+        opacity: disabled ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
       })}>
       <Text style={{ color: danger ? colors.errorButtonText : colors.text, fontFamily: fonts.heading, fontSize: typography.body }}>{label}</Text>
     </Pressable>

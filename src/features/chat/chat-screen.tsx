@@ -2,7 +2,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import Markdown from 'react-native-markdown-display';
+import Markdown, { type RenderRules } from 'react-native-markdown-display';
 import {
   ActivityIndicator,
   FlatList,
@@ -57,7 +57,7 @@ const MARKDOWN_STYLE: Record<string, ImageStyle | TextStyle | ViewStyle> = {
   heading4: { color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: 15, lineHeight: 24, fontWeight: '600', marginTop: 4, marginBottom: 4 },
   heading5: { color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontSize: 13, lineHeight: 20, marginTop: 4, marginBottom: 4 },
   heading6: { color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: 11, lineHeight: 16, marginTop: 4, marginBottom: 4 },
-  strong: { color: theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontWeight: '600' },
+  strong: { color: theme.colors.text, fontFamily: theme.fonts.monoMedium, fontWeight: '600' },
   blockquote: { marginVertical: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas },
   bullet_list: { marginBottom: 8 },
   ordered_list: { marginBottom: 8 },
@@ -67,15 +67,22 @@ const MARKDOWN_STYLE: Record<string, ImageStyle | TextStyle | ViewStyle> = {
   ordered_list_icon: { marginLeft: 4, marginRight: 8, color: theme.colors.textMuted },
   ordered_list_content: { flex: 1, paddingRight: 4 },
   code_inline: { color: theme.colors.secondary, fontFamily: theme.fonts.mono, paddingHorizontal: 4, paddingVertical: 2, borderWidth: 0, borderRadius: theme.radius.micro, backgroundColor: theme.colors.surface },
-  code_block: { color: theme.colors.accent, fontFamily: theme.fonts.mono, fontSize: 11, lineHeight: 20, padding: 12, borderWidth: 0, borderRadius: theme.radius.sheet, backgroundColor: theme.colors.canvas },
-  fence: { color: theme.colors.accent, fontFamily: theme.fonts.mono, fontSize: 11, lineHeight: 20, padding: 12, borderWidth: 0, borderRadius: theme.radius.sheet, backgroundColor: theme.colors.canvas },
+  code_block: { color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.body, lineHeight: 20, padding: 12, borderWidth: 0, borderRadius: theme.radius.card, backgroundColor: theme.colors.canvas },
+  fence: { color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.body, lineHeight: 20, padding: 12, borderWidth: 0, borderRadius: theme.radius.card, backgroundColor: theme.colors.canvas },
   table: { marginVertical: 4, borderWidth: 0, borderRadius: theme.radius.control, overflow: 'hidden', backgroundColor: theme.colors.canvas },
   thead: { backgroundColor: theme.colors.surfaceHigh },
   tr: { flexDirection: 'row', borderBottomWidth: 1, borderColor: theme.colors.surfaceHigh },
-  th: { flex: 1, paddingVertical: 8, paddingHorizontal: 6, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: 10 },
-  td: { flex: 1, paddingVertical: 8, paddingHorizontal: 6 },
+  th: { flex: 1, minWidth: theme.interaction.touchTarget * 3, paddingVertical: 8, paddingHorizontal: 6, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: 10 },
+  td: { flex: 1, minWidth: theme.interaction.touchTarget * 3, paddingVertical: 8, paddingHorizontal: 6 },
   hr: { height: 1, marginVertical: 8, backgroundColor: theme.colors.surfaceHigh },
   link: { color: theme.colors.secondary, textDecorationLine: 'underline' },
+};
+const MARKDOWN_RULES: RenderRules = {
+  table: (node, children) => (
+    <ScrollView key={node.key} horizontal accessibilityLabel="Scrollable response table" style={{ maxWidth: '100%' }}>
+      <View style={MARKDOWN_STYLE.table as ViewStyle}>{children}</View>
+    </ScrollView>
+  ),
 };
 
 export default function ChatScreen() {
@@ -87,6 +94,7 @@ export default function ChatScreen() {
   const chat = useChat(profile, requestedConversationId, startFresh);
   const catalog = useModelCatalog(profile);
   const [draft, setDraft] = useState('');
+  const [composerFocused, setComposerFocused] = useState(false);
   const [profiles, setProfiles] = useState<EndpointProfile[]>([]);
   const [endpointsLoading, setEndpointsLoading] = useState(true);
   const [endpointSwitching, setEndpointSwitching] = useState(false);
@@ -99,6 +107,8 @@ export default function ChatScreen() {
   const displayModelId = chat.readOnly ? chat.conversationModelId : chat.activeModelId;
   const visibleModels = catalog.runtime === null ? EMPTY_MODELS : pickerModels(catalog.runtime);
   const activeAssistantId = chat.messages.at(-1)?.id ?? null;
+  const conversationLoadError = chat.error?.safeDetails.stage === 'conversation-load';
+  const newChatDisabled = chat.pending || chat.compacting || chat.loadingConversation || (chat.messages.length === 0 && !chat.readOnly);
   const listContentStyle = useMemo<ViewStyle>(() => ({
     flexGrow: 1,
     gap: 16,
@@ -139,6 +149,8 @@ export default function ChatScreen() {
       try {
         const next = await endpointStore.loadAll();
         if (alive) setProfiles(next);
+      } catch {
+        if (alive) setSelectionError('Could not load endpoints. Open Settings to try again.');
       } finally {
         if (alive) setEndpointsLoading(false);
       }
@@ -162,18 +174,19 @@ export default function ChatScreen() {
       chat.pending ||
       chat.compacting ||
       chat.loadingModel ||
+      chat.loadingConversation ||
       chat.readOnly ||
       chat.activeModelId === null
     ) {
       return;
     }
-    setDraft('');
-    void chat.send(prompt, chat.attachments);
+    void chat.send(prompt, chat.attachments, () => setDraft(''));
   }, [chat, draft]);
   const sendDisabled =
     !chat.pending &&
     (chat.compacting ||
       chat.loadingModel ||
+      chat.loadingConversation ||
       chat.readOnly ||
       chat.activeModelId === null ||
       (draft.trim().length === 0 && chat.attachments.length === 0));
@@ -266,7 +279,7 @@ export default function ChatScreen() {
               catalog.loading
             }
             onSelect={(modelId) => void selectModel(modelId)}
-            onManage={() => router.push('/models')}
+            onManage={() => router.push('/(tabs)/models')}
           />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Pressable
@@ -289,11 +302,12 @@ export default function ChatScreen() {
               accessibilityRole="button"
               accessibilityLabel="Start new chat"
               hitSlop={6}
-              disabled={chat.pending || chat.messages.length === 0}
+              accessibilityState={{ disabled: newChatDisabled }}
+              disabled={newChatDisabled}
               onPress={() => {
                 chat.newChat();
                 setDraft('');
-                if (requestedConversationId !== null) {
+                if (requestedConversationId !== null || conversationLoadError) {
                   router.replace({
                     pathname: '/chat/[conversationId]',
                     params: { conversationId: 'new' },
@@ -307,7 +321,7 @@ export default function ChatScreen() {
                 justifyContent: 'center',
                 borderRadius: theme.radius.control,
                 backgroundColor: theme.colors.accent,
-                opacity: chat.pending || chat.messages.length === 0
+                opacity: newChatDisabled
                   ? theme.interaction.disabledOpacity
                   : pressed ? theme.interaction.pressedOpacity : 1,
               })}>
@@ -324,11 +338,7 @@ export default function ChatScreen() {
           </View>
         )}
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, alignItems: 'center', paddingHorizontal: theme.spacing.screen, paddingVertical: 6 }}
-          style={{ height: 56, flexGrow: 0, flexShrink: 0, backgroundColor: theme.colors.canvas }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingHorizontal: theme.spacing.screen, paddingVertical: 6, backgroundColor: theme.colors.canvas }}>
           {chat.reasoningOptions.length > 0 && (
             <ReasoningSelector
               options={chat.reasoningOptions}
@@ -345,6 +355,7 @@ export default function ChatScreen() {
               policy={chat.contextPolicy}
               autoCompact={chat.autoCompact}
               compacting={chat.compacting}
+              disabled={chat.readOnly || chat.pending || chat.loadingConversation}
               canCompact={chat.conversationId !== null && !chat.pending && !chat.readOnly}
               onCompact={() => void chat.compactNow()}
               onToggleAutoCompact={(enabled) => void chat.setAutoCompact(enabled)}
@@ -355,14 +366,15 @@ export default function ChatScreen() {
             disabled={chat.pending || chat.readOnly}
             onToggle={(enabled) => chat.setAutoApproveTools(enabled)}
           />
-        </ScrollView>
+        </View>
 
         {chat.readOnly && (
           <View style={{ paddingHorizontal: theme.spacing.screen, paddingTop: 8 }}>
             <ChatInfoBlock
               title="Read-only conversation"
-              body="This conversation belongs to an unavailable endpoint. Its transcript remains readable, but sending and local compaction are disabled."
+              body={conversationLoadError ? 'The conversation could not be loaded. Retry loading it or start a new chat.' : 'This conversation belongs to an unavailable endpoint. Its transcript remains readable, but sending and local compaction are disabled.'}
             />
+            {conversationLoadError && <SelectorAction label="Retry loading conversation" onPress={() => void reloadModel()} />}
           </View>
         )}
 
@@ -373,6 +385,11 @@ export default function ChatScreen() {
         ) : !chat.readOnly && chat.activeModelId === null && !chat.loadingModel ? (
           <View style={{ flex: 1, gap: 12, padding: theme.spacing.screen }}>
             <ChatInfoBlock title="Choose a model" body="Use the model dropdown above before starting a chat." />
+          </View>
+        ) : chat.loadingConversation ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <ActivityIndicator accessibilityLabel="Loading conversation" color={theme.colors.accent} />
+            <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>Loading conversation...</Text>
           </View>
         ) : (
           <FlatList
@@ -421,7 +438,7 @@ export default function ChatScreen() {
               </Text>
             </Text>
             <Text style={{ color: chat.pending ? theme.colors.tertiary : theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-              {chat.pending ? 'Streaming' : chat.error === null ? 'Ready' : 'Error'}
+              {chat.compacting ? 'Compacting' : chat.pending ? 'Generating' : chat.error !== null ? 'Error' : chat.loadingConversation || chat.loadingModel ? 'Loading' : chat.readOnly ? 'Read-only' : profile === null ? 'Connect endpoint' : chat.activeModelId === null ? 'Choose model' : 'Ready'}
             </Text>
           </View>
           <View
@@ -430,6 +447,8 @@ export default function ChatScreen() {
               padding: 8,
               borderRadius: theme.radius.bubble,
               backgroundColor: theme.colors.surfaceHigh,
+              borderWidth: 1,
+              borderColor: composerFocused ? theme.colors.accent : theme.colors.border,
             }}>
             {chat.attachments.length > 0 && (
               <ScrollView
@@ -437,19 +456,20 @@ export default function ChatScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
                 {chat.attachments.map((attachment) => (
-                  <View key={attachment.id} style={{ position: 'relative', width: 48, height: 48 }}>
+                  <View key={attachment.id} style={{ width: 64, gap: theme.spacing.xsmall }}>
                     <Image
                       accessibilityLabel={`Attached image, ${attachment.name}`}
                       source={{ uri: attachment.uri }}
-                      style={{ width: 48, height: 48, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}
+                      style={{ width: 64, height: 64, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}
                     />
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Remove ${attachment.name}`}
-                      hitSlop={12}
+                      accessibilityState={{ disabled: chat.pending || chat.compacting }}
+                      disabled={chat.pending || chat.compacting}
                       onPress={() => chat.removeImage(attachment.id)}
-                      style={{ position: 'absolute', top: -4, right: -4, width: 20, height: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: theme.colors.danger }}>
-                      <Text style={{ color: theme.colors.accentText, fontWeight: '800' }}>×</Text>
+                      style={({ pressed }) => ({ minHeight: theme.interaction.compactTouchTarget, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1 })}>
+                      <SymbolView name={{ ios: 'xmark', android: 'close' }} size={18} tintColor={theme.colors.error} />
                     </Pressable>
                   </View>
                 ))}
@@ -462,6 +482,7 @@ export default function ChatScreen() {
                   accessibilityLabel="Attach image"
                   accessibilityHint="Choose a PNG, JPEG, or WebP image up to 8 MB"
                   disabled={chat.pending || chat.compacting || chat.attachments.length >= 4}
+                  accessibilityState={{ disabled: chat.pending || chat.compacting || chat.attachments.length >= 4 }}
                   onPress={() => void chat.addImage()}
                   style={({ pressed }) => ({
                     width: theme.interaction.compactTouchTarget, height: theme.interaction.compactTouchTarget, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting || chat.attachments.length >= 4 ? 0.4 : pressed ? 0.7 : 1,
@@ -474,12 +495,17 @@ export default function ChatScreen() {
                 accessibilityHint="Write a message to send to the active model"
                 value={draft}
                 onChangeText={setDraft}
+                selectionColor={theme.colors.accent}
+                cursorColor={theme.colors.accent}
+                onFocus={() => setComposerFocused(true)}
+                onBlur={() => setComposerFocused(false)}
                 placeholder={chat.readOnly ? 'Read-only conversation' : chat.activeModelId === null ? 'Choose a model to start...' : `Message ${chat.activeModelId}...`}
                 placeholderTextColor={theme.colors.outline}
                 editable={
                   !chat.pending &&
                   !chat.compacting &&
                   !chat.loadingModel &&
+                  !chat.loadingConversation &&
                   !chat.readOnly &&
                   chat.activeModelId !== null
                 }
@@ -500,6 +526,7 @@ export default function ChatScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={chat.pending ? 'Stop' : 'Send'}
+                accessibilityState={{ disabled: sendDisabled }}
                 accessibilityHint={chat.pending ? 'Stop the current response' : 'Send message'}
                 disabled={sendDisabled}
                 onPress={chat.pending ? chat.stop : submit}
@@ -516,7 +543,7 @@ export default function ChatScreen() {
                   <SymbolView
                     name={{ ios: 'stop.fill', android: 'stop' }}
                     size={21}
-                    tintColor={theme.colors.danger}
+                  tintColor={theme.colors.error}
                   />
                 ) : (
                   <SymbolView
@@ -638,8 +665,9 @@ export function EndpointSelector({
         <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={16} tintColor={theme.colors.textMuted} />
       </Pressable>
       <BottomSheet visible={open} dismissLabel="Close endpoint menu" onRequestClose={() => setOpen(false)}>
-        <View
-          style={{
+        <ScrollView
+          style={{ flexShrink: 1, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet }}
+          contentContainerStyle={{
             gap: 12,
             paddingHorizontal: 16,
             paddingTop: 12,
@@ -666,7 +694,7 @@ export function EndpointSelector({
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>Add an endpoint to start chatting.</Text>
             </View>
           ) : (
-            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 8 }}>
+            <View style={{ gap: 8 }}>
               {profiles.map((endpointProfile) => {
                 const active = selected?.id === endpointProfile.id;
                 return (
@@ -699,13 +727,13 @@ export function EndpointSelector({
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </View>
           )}
           <View style={{ flexDirection: 'row', gap: 8, paddingTop: 8 }}>
             <SelectorAction label="Add endpoint" primary onPress={() => { setOpen(false); onAdd(); }} />
             <SelectorAction label="Manage" onPress={() => { setOpen(false); onManage(); }} />
           </View>
-        </View>
+        </ScrollView>
       </BottomSheet>
     </View>
   );
@@ -750,6 +778,9 @@ export function ModelSelector({
 }) {
   const [open, setOpen] = useState(false);
   const selectedModel = models.find((model) => model.id === selectedId);
+  const [query, setQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const filteredModels = models.filter((model) => [model.id, model.displayName].some((value) => value.toLowerCase().includes(query.trim().toLowerCase())));
   const selectedName = selectedModel === undefined
     ? selectedId === null ? 'Choose a model' : modelPickerName(selectedId)
     : selectedModel.displayName === selectedModel.id
@@ -767,7 +798,7 @@ export function ModelSelector({
         accessibilityHint="Switch the active model"
         accessibilityState={{ disabled: disabled || loading, expanded: open }}
         disabled={disabled || loading}
-        onPress={() => setOpen((value) => !value)}
+        onPress={() => { setQuery(''); setOpen((value) => !value); }}
         style={({ pressed }) => ({
           minHeight: 52,
           flexDirection: 'row',
@@ -789,8 +820,10 @@ export function ModelSelector({
         <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={16} tintColor={theme.colors.textMuted} />
       </Pressable>
       <BottomSheet visible={open} dismissLabel="Close model menu" onRequestClose={() => setOpen(false)}>
-        <View
-          style={{
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={{ flexShrink: 1, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet }}
+          contentContainerStyle={{
             gap: 12,
             paddingHorizontal: 16,
             paddingTop: 12,
@@ -806,19 +839,33 @@ export function ModelSelector({
             closeLabel="Close model menu"
             onClose={() => setOpen(false)}
           />
+          <TextInput
+            accessibilityLabel="Search available models"
+            placeholder="Search by name or ID"
+            placeholderTextColor={theme.colors.outline}
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+            selectionColor={theme.colors.accent}
+            cursorColor={theme.colors.accent}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            style={{ minHeight: theme.interaction.touchTarget, borderWidth: 1, borderColor: searchFocused ? theme.colors.accent : theme.colors.border, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas, paddingHorizontal: theme.spacing.medium, color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}
+          />
           {loading ? (
             <View style={{ minHeight: 88, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <ActivityIndicator color={theme.colors.accent} />
               <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>Loading models...</Text>
             </View>
-          ) : models.length === 0 ? (
+          ) : filteredModels.length === 0 ? (
             <View style={{ gap: 4, padding: 12, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }}>
-              <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>No visible models</Text>
-              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>Show at least one model in Catalog.</Text>
+              <Text style={{ color: theme.colors.text, fontFamily: theme.fonts.heading, fontSize: theme.typography.componentTitle }}>{models.length === 0 ? 'No visible models' : 'No matching models'}</Text>
+              <Text style={{ color: theme.colors.textMuted, fontFamily: theme.fonts.mono, fontSize: theme.typography.body }}>{models.length === 0 ? 'Show at least one model in Catalog.' : 'Try another model name or ID.'}</Text>
             </View>
           ) : (
-            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 8 }}>
-              {models.map((model) => {
+            <View style={{ gap: 8 }}>
+              {filteredModels.map((model) => {
                 const active = model.id === selectedId;
                 const displayName = model.displayName === model.id ? modelPickerName(model.id) : model.displayName;
                 return (
@@ -853,10 +900,10 @@ export function ModelSelector({
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </View>
           )}
           <SelectorAction label="Manage catalog" onPress={() => { setOpen(false); onManage(); }} />
-        </View>
+        </ScrollView>
       </BottomSheet>
     </View>
   );
@@ -988,8 +1035,9 @@ export function ReasoningSelector({
         visible={open}
         dismissLabel="Close thinking menu"
         onRequestClose={() => setOpen(false)}>
-        <View
-          style={{
+        <ScrollView
+          style={{ flexShrink: 1, borderTopLeftRadius: theme.radius.sheet, borderTopRightRadius: theme.radius.sheet, backgroundColor: theme.colors.sheet }}
+          contentContainerStyle={{
             width: '100%',
             alignSelf: 'center',
             gap: 4,
@@ -1010,7 +1058,7 @@ export function ReasoningSelector({
             Thinking level
           </Text>
           {options.map((effort) => {
-            const active = effort === selected;
+            const active = effort === selectedLabel;
             return (
               <Pressable
                 key={effort}
@@ -1041,7 +1089,7 @@ export function ReasoningSelector({
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
       </BottomSheet>
     </View>
   );
@@ -1049,7 +1097,7 @@ export function ReasoningSelector({
 
 export const MessageBubble = memo(function MessageBubble({ message, modelId = null }: { message: ChatMessage; modelId?: string | null }) {
   const user = message.role === 'user';
-  const [reasoningOpen, setReasoningOpen] = useState(true);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
   const live = message.status === 'sending' || message.status === 'streaming';
   return (
     <View
@@ -1064,14 +1112,14 @@ export const MessageBubble = memo(function MessageBubble({ message, modelId = nu
         borderTopRightRadius: user ? theme.radius.micro : theme.radius.bubble,
         backgroundColor: user ? theme.colors.surfaceHigh : theme.colors.surfaceLow,
       }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: user ? theme.colors.secondary : live ? theme.colors.accent : theme.colors.textMuted }} />
-        <Text style={{ color: user ? theme.colors.textMuted : theme.colors.accent, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+        <Text style={{ flexShrink: 1, color: theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
           {user ? 'YOU' : (modelId ?? 'ASSISTANT')}
         </Text>
         {!user && (
-          <Text style={{ color: live ? theme.colors.accent : theme.colors.textMuted, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
-            {live ? 'LIVE' : message.status === 'interrupted' ? 'INTERRUPTED' : 'DONE'}
+        <Text style={{ color: live ? theme.colors.accent : message.status === 'completed' ? theme.colors.textMuted : theme.colors.error, fontFamily: theme.fonts.monoMedium, fontSize: theme.typography.meta }}>
+            {live ? 'LIVE' : message.status === 'completed' ? 'DONE' : message.status.toUpperCase()}
           </Text>
         )}
       </View>
@@ -1111,6 +1159,7 @@ export const MessageBubble = memo(function MessageBubble({ message, modelId = nu
       {!user && message.status === 'completed' ? (
         <Markdown
           style={MARKDOWN_STYLE}
+          rules={MARKDOWN_RULES}
           onLinkPress={(url) => {
             if (/^https?:\/\//i.test(url)) {
               void Linking.openURL(url).catch(() => undefined);
@@ -1494,7 +1543,7 @@ function ErrorCard({
         borderRadius: theme.radius.control,
         backgroundColor: theme.colors.surfaceLow,
       }}>
-      <Text style={{ color: theme.colors.danger, fontSize: theme.typography.meta, fontWeight: '700' }}>
+      <Text style={{ color: theme.colors.error, fontSize: theme.typography.meta, fontWeight: '700' }}>
         {persistenceFailure ? 'Response save failed' : 'Request failed'}
       </Text>
       <Text style={{ color: theme.colors.text, fontSize: theme.typography.meta }}>{error.message}</Text>

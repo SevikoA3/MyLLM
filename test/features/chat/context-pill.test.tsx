@@ -21,6 +21,11 @@ function result(overrides: Partial<ContextBudgetResult> = {}): ContextBudgetResu
 }
 
 describe('ContextPill', () => {
+  it('disables auto-compaction changes in read-only context', async () => {
+    const view = await render(<ContextPill budget={result()} disabled onToggleAutoCompact={() => {}} />);
+    await fireEvent.press(view.getByLabelText('Context usage, 19 percent'));
+    expect(view.getByLabelText('Auto-compact').props.disabled).toBe(true);
+  });
   it('shows usage summary and hides details until opened', async () => {
     const view = await render(<ContextPill budget={result()} cacheHitPercent={42.5} />);
 
@@ -28,14 +33,14 @@ describe('ContextPill', () => {
     expect(view.queryByText('19%')).toBeNull();
     expect(view.queryByText('Context 32,000 · Input ~1,000 tokens · Left 80.9%')).toBeNull();
 
-    fireEvent.press(view.getByLabelText('Context usage, 19 percent'));
+    await fireEvent.press(view.getByLabelText('Context usage, 19 percent'));
 
     await waitFor(() =>
       expect(view.getByText('Context 32,000 · Input ~1,000 tokens · Left 80.9%')).toBeTruthy(),
     );
     expect(view.getByText('Cache hit 42.5%')).toBeTruthy();
 
-    fireEvent.press(view.getByLabelText('Dismiss context usage'));
+    await fireEvent.press(view.getByLabelText('Dismiss context usage'));
 
     await waitFor(() => expect(view.queryByText('Cache hit 42.5%')).toBeNull());
   });

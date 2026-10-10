@@ -2,6 +2,7 @@ import * as z from 'zod';
 
 import { InputModalitySchema } from './model';
 import { ContextPolicySchema } from './context';
+import { redactText } from './error';
 
 /**
  * Tiga lapis katalog: bundled default, snapshot live, lalu override pengguna.
@@ -100,7 +101,10 @@ export const ModelOverrideSchema = z
     /** Dibaca untuk kompatibilitas file fase 3; penulisan baru memakai enabled. */
     disabledAt: z.iso.datetime().nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine((override) => !containsOverrideCredentials(override), {
+    message: 'Model overrides must not contain credentials.',
+  });
 export type ModelOverride = z.infer<typeof ModelOverrideSchema>;
 
 export const ModelOverridesFileSchema = z.object({
@@ -143,7 +147,7 @@ export function parseModelOverridesText(text: string): OverrideValidationResult 
   }
   const issue = parsed.error.issues[0];
   const suffix = issue.path.length === 0 ? '' : '.' + issue.path.map(String).join('.');
-  return { ok: false, path: '$' + suffix, message: issue.message };
+  return { ok: false, path: redactText('$' + suffix), message: redactText(issue.message) };
 }
 
 export function changedOverrideModelIds(
@@ -151,10 +155,14 @@ export function changedOverrideModelIds(
   next: ModelOverridesFile,
   endpointId: string,
 ): string[] {
-  const before = current.endpoints[endpointId]?.models ?? {};
-  const after = next.endpoints[endpointId]?.models ?? {};
-  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
-    .filter((id) => JSON.stringify(before[id]) !== JSON.stringify(after[id]))
+  return [...new Set([...Object.keys(current.endpoints), ...Object.keys(next.endpoints)])]
+    .flatMap((id) => {
+      const before = current.endpoints[id]?.models ?? {};
+      const after = next.endpoints[id]?.models ?? {};
+      return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+        .filter((modelId) => JSON.stringify(before[modelId]) !== JSON.stringify(after[modelId]))
+        .map((modelId) => id === endpointId ? modelId : `${id}/${modelId}`);
+    })
     .sort();
 }
 
@@ -210,6 +218,20 @@ function pricingValue(value: unknown): string | null {
     return String(value);
   }
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function containsOverrideCredentials(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return redactText(value) !== value;
+  }
+  if (Array.isArray(value)) {
+    return value.some(containsOverrideCredentials);
+  }
+  return isRecord(value) && Object.entries(value).some(([key, entry]) =>
+    /^(?:x?apikey|authorization|password|secret|clientsecret|accesstoken|refreshtoken|token|credentials?)$/i
+      .test(key.replace(/[-_\s]/g, '')) ||
+    redactText(key) !== key || containsOverrideCredentials(entry),
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

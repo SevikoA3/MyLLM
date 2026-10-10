@@ -71,11 +71,12 @@ export type ChatState = {
   attachments: ImageAttachment[];
   canAttachImages: boolean;
   loadingModel: boolean;
+  loadingConversation: boolean;
   pending: boolean;
   toolActivities: Record<string, ToolActivity[]>;
   error: AppError | null;
   canRetry: boolean;
-  send: (prompt: string, attachments?: ImageAttachment[]) => Promise<boolean>;
+  send: (prompt: string, attachments?: ImageAttachment[], onAccepted?: () => void) => Promise<boolean>;
   addImage: () => Promise<void>;
   removeImage: (id: string) => void;
   stop: () => void;
@@ -133,6 +134,7 @@ export function useChat(
   const compactingRef = useRef(false);
   const profileIdRef = useRef(profile?.id ?? null);
   const modelLoadVersion = useRef(0);
+  const conversationLoadFailed = useRef(false);
   const alive = useRef(true);
 
   const updateToolProgress = useCallback((assistantItemId: string, activity: ToolActivity) => {
@@ -174,6 +176,10 @@ export function useChat(
   }, []);
 
   const reloadModel = useCallback(async () => {
+    if (conversationLoadFailed.current && !pendingRef.current) {
+      setLoadingConversation(true);
+      setProfileLoadVersion((version) => version + 1);
+    }
     const loadVersion = ++modelLoadVersion.current;
     const current = () => alive.current && loadVersion === modelLoadVersion.current;
     setModelConfig(null);
@@ -259,6 +265,7 @@ export function useChat(
       // request selesai agar switch tidak membatalkan atau mencampur stream.
       if (pendingRef.current) return;
       profileIdRef.current = nextProfileId;
+      conversationLoadFailed.current = false;
       setConversationId(null);
       setConversationEndpointId(null);
       setConversationModelId(null);
@@ -286,17 +293,26 @@ export function useChat(
     }
     let active = true;
     const load = async () => {
-      const saved =
-        requestedConversationId === null
+      let saved: Awaited<ReturnType<typeof conversationRepository.loadConversation>>;
+      let failed = false;
+      try {
+        saved = requestedConversationId === null
           ? await conversationRepository.loadLatest(profile?.id ?? '')
           : await conversationRepository.loadConversation(requestedConversationId);
+      } catch {
+        saved = null;
+        failed = true;
+      }
       const compatible = saved !== null && profile !== null && saved.endpointId === profile.id;
       if (active) {
+        const recovering = conversationLoadFailed.current;
+        const unavailable = failed || (saved === null && requestedConversationId !== null);
+        conversationLoadFailed.current = unavailable;
         if (saved === null) {
           setConversationId(null);
           setConversationEndpointId(null);
           setConversationModelId(null);
-          setReadOnly(false);
+          setReadOnly(unavailable);
           setMessages([]);
           setMetrics([]);
           previousResponseId.current = null;
@@ -319,16 +335,18 @@ export function useChat(
           setCompactionActive(saved.compactionActive ?? false);
           setToolActivities(saved.toolActivities ?? {});
         }
-      }
-      if (active) {
+        if (unavailable) {
+          setError(createAppError({
+            ...(failed ? localRequestError() : modelConfigError('Conversation not found. Return to history or start a new chat.')),
+            safeDetails: { stage: 'conversation-load' },
+          }));
+        } else if (recovering) {
+          setError(null);
+        }
         setLoadingConversation(false);
       }
     };
-    void load().catch(() => {
-      if (active) {
-        setLoadingConversation(false);
-      }
-    });
+    void load();
     return () => {
       active = false;
     };
@@ -346,7 +364,7 @@ export function useChat(
   }, [profile]);
 
   const request = useCallback(
-    async (prompt: string, retry: RetryState | null, inputAttachments: ImageAttachment[] = []): Promise<boolean> => {
+    async (prompt: string, retry: RetryState | null, inputAttachments: ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> => {
       if (
         pendingRef.current ||
         compactingRef.current ||
@@ -398,10 +416,19 @@ export function useChat(
         pendingRef.current = false;
         return false;
       }
-      const apiKey =
-        profile.credentialRef === null
+      let apiKey: string | null;
+      try {
+        apiKey = profile.credentialRef === null
           ? null
           : await credentialStore.read(profile.credentialRef);
+      } catch {
+        pendingRef.current = false;
+        if (alive.current) {
+          setPending(false);
+          setError(localRequestError());
+        }
+        return false;
+      }
       if (apiKey === null) {
         pendingRef.current = false;
         if (alive.current) {
@@ -532,6 +559,7 @@ export function useChat(
             message(assistantItemId, 'assistant', '', null, 'sending'),
           ]);
           setAttachments([]);
+          onAccepted?.();
         } else {
           await conversationRepository.restartTurn(turnId, assistantItemId);
           setMessages((current) =>
@@ -919,10 +947,10 @@ export function useChat(
   );
 
   const send = useCallback(
-    async (prompt: string, inputAttachments: ImageAttachment[] = []) => {
+    async (prompt: string, inputAttachments: ImageAttachment[] = [], onAccepted?: () => void) => {
       const trimmed = prompt.trim();
       if (trimmed.length === 0 && inputAttachments.length === 0) return false;
-      const sent = await request(trimmed, null, inputAttachments);
+      const sent = await request(trimmed, null, inputAttachments, onAccepted);
       if (sent) setAttachments([]);
       return sent;
     },
@@ -972,6 +1000,7 @@ export function useChat(
     if (pendingRef.current || compactingRef.current) {
       return;
     }
+    conversationLoadFailed.current = false;
     setConversationId(null);
     setConversationEndpointId(null);
     setConversationModelId(null);
@@ -1013,6 +1042,7 @@ export function useChat(
     attachments,
     canAttachImages,
     loadingModel: loadingModel || loadingConversation,
+    loadingConversation,
     pending,
     toolActivities,
     error,

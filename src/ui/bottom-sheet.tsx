@@ -73,9 +73,7 @@ export class BottomSheet extends React.Component<BottomSheetProps, BottomSheetSt
         }}>
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
           <Animated.View
-            accessibilityLabel={dismissLabel}
-            accessibilityRole="button"
-            accessible
+            accessible={false}
             style={{
               position: 'absolute',
               top: 0,
@@ -88,6 +86,7 @@ export class BottomSheet extends React.Component<BottomSheetProps, BottomSheetSt
             <Pressable
               accessibilityLabel={dismissLabel}
               accessibilityRole="button"
+              accessibilityState={{ disabled: dismissDisabled }}
               disabled={dismissDisabled}
               onPress={onRequestClose}
               style={{ flex: 1 }}
@@ -95,7 +94,7 @@ export class BottomSheet extends React.Component<BottomSheetProps, BottomSheetSt
           </Animated.View>
           <Animated.View
             accessibilityViewIsModal
-            style={{ transform: [{ translateY: this.sheetPosition }] }}>
+            style={{ maxHeight: '90%', transform: [{ translateY: this.sheetPosition }] }}>
             {children}
           </Animated.View>
         </View>

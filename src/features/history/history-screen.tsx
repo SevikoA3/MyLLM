@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,7 @@ import type { ConversationCursor, ConversationSummary, TurnStatus } from '../../
 import { conversationRepository } from '../../services/persistence/conversation-store';
 import { pickConversation, shareConversation } from '../../services/persistence/catalog-transfer';
 import { deleteStagedImages } from '../../services/attachments/images';
-import { colors, fonts, interaction } from '../../ui/tokens';
+import { colors, fonts, interaction, radius, spacing, typography } from '../../ui/tokens';
 import { BottomSheet } from '../../ui/bottom-sheet';
 
 const PAGE_SIZE = 20;
@@ -47,23 +47,45 @@ export default function HistoryScreen() {
   const [cursor, setCursor] = useState<ConversationCursor | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<'first' | 'more' | null>(null);
+  const firstRequest = useRef<Promise<void> | null>(null);
+  const pageRequest = useRef<Promise<void> | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
+  const [titleError, setTitleError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [query, setQuery] = useState('');
+  const [filterFocused, setFilterFocused] = useState(false);
   const [interruptedOnly, setInterruptedOnly] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const [transferring, setTransferring] = useState(false);
   const router = useRouter();
 
-  const loadFirst = useCallback(async () => {
-    setLoading(true);
-    try {
-      const page = await conversationRepository.list(PAGE_SIZE);
-      setConversations(page.conversations);
-      setCursor(page.nextCursor);
-    } finally {
-      setLoading(false);
-    }
+  const loadFirst = useCallback(() => {
+    if (firstRequest.current !== null) return firstRequest.current;
+    const pendingPage = pageRequest.current;
+    const request = (async () => {
+      setLoading(true);
+      try {
+        // Refresh menunggu halaman aktif agar hasil lama tidak menimpa daftar baru.
+        await pendingPage;
+        setLoadError(null);
+        const page = await conversationRepository.list(PAGE_SIZE);
+        setConversations(page.conversations);
+        setCursor(page.nextCursor);
+      } catch {
+        setLoadError('first');
+      } finally {
+        setLoading(false);
+        firstRequest.current = null;
+      }
+    })();
+    firstRequest.current = request;
+    return request;
   }, []);
 
   useFocusEffect(
@@ -72,38 +94,87 @@ export default function HistoryScreen() {
     }, [loadFirst]),
   );
 
-  const loadMore = useCallback(async () => {
-    if (cursor === null || loadingMore) {
+  const loadMore = useCallback(() => {
+    if (cursor === null || firstRequest.current !== null || pageRequest.current !== null) {
       return;
     }
-    setLoadingMore(true);
-    try {
-      const page = await conversationRepository.list(PAGE_SIZE, cursor);
-      setConversations((current) => [...current, ...page.conversations]);
-      setCursor(page.nextCursor);
-    } finally {
-      setLoadingMore(false);
+    const request = (async () => {
+      setLoadingMore(true);
+      setLoadError(null);
+      try {
+        const page = await conversationRepository.list(PAGE_SIZE, cursor);
+        setConversations((current) => [...current, ...page.conversations]);
+        setCursor(page.nextCursor);
+      } catch {
+        setLoadError('more');
+      } finally {
+        setLoadingMore(false);
+        pageRequest.current = null;
+      }
+    })();
+    pageRequest.current = request;
+    return request;
+  }, [cursor]);
+
+  const filtered = query.trim().length > 0 || interruptedOnly;
+  const searching = filtered && (loading || cursor !== null) && loadError === null;
+
+  useEffect(() => {
+    if (filtered && !loading && !loadingMore && loadError === null) {
+      void loadMore();
     }
-  }, [cursor, loadingMore]);
+  }, [filtered, loadError, loadMore, loading, loadingMore]);
 
   const saveTitle = useCallback(async (id: string) => {
+    if (savingRef.current) return;
     const next = title.trim();
     if (next.length === 0) {
+      setTitleError('Enter a conversation title.');
       return;
     }
-    await conversationRepository.rename(id, next);
-    setEditingId(null);
-    await loadFirst();
+    savingRef.current = true;
+    setSaving(true);
+    setTitleError(null);
+    try {
+      await conversationRepository.rename(id, next);
+      setEditingId(null);
+      await loadFirst();
+    } catch {
+      setTitleError('Could not rename conversation. Try again.');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }, [loadFirst, title]);
 
   const startEditing = useCallback((conversation: ConversationSummary) => {
+    if (savingRef.current) return;
     setEditingId(conversation.id);
     setTitle(conversation.title);
+    setTitleError(null);
   }, []);
 
   const cancelEditing = useCallback(() => {
+    if (savingRef.current) return;
     setEditingId(null);
     setTitle('');
+    setTitleError(null);
+  }, []);
+
+  const changeTitle = useCallback((value: string) => {
+    setTitle(value);
+    setTitleError(null);
+  }, []);
+
+  const startDeleting = useCallback((conversation: ConversationSummary) => {
+    setDeleteTarget(conversation);
+    setDeleteError(null);
+  }, []);
+
+  const cancelDeleting = useCallback(() => {
+    if (deletingRef.current) return;
+    setDeleteTarget(null);
+    setDeleteError(null);
   }, []);
 
   const openConversation = useCallback((id: string) => {
@@ -115,12 +186,22 @@ export default function HistoryScreen() {
   }, [router]);
 
   const deleteConversation = useCallback(async () => {
-    if (deleteTarget === null) {
+    if (deleteTarget === null || deletingRef.current) {
       return;
     }
-    await conversationRepository.remove(deleteTarget.id, deleteStagedImages);
-    setDeleteTarget(null);
-    await loadFirst();
+    deletingRef.current = true;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await conversationRepository.remove(deleteTarget.id, deleteStagedImages);
+      setDeleteTarget(null);
+      await loadFirst();
+    } catch {
+      setDeleteError('Could not delete conversation. Try again.');
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
+    }
   }, [deleteTarget, loadFirst]);
 
   const exportConversation = useCallback(async (conversation: ConversationSummary) => {
@@ -173,55 +254,29 @@ export default function HistoryScreen() {
         conversation={item}
         editing={editingId === item.id}
         title={title}
-        onTitleChange={setTitle}
+        onTitleChange={changeTitle}
+        titleError={titleError}
+        saving={saving}
         onOpen={openConversation}
         onStartEditing={startEditing}
         onCancelEditing={cancelEditing}
         onSave={saveTitle}
-        onDelete={setDeleteTarget}
+        onDelete={startDeleting}
         onExport={exportConversation}
         transferring={transferring}
       />
     ),
-    [cancelEditing, editingId, exportConversation, openConversation, saveTitle, startEditing, title, transferring],
+    [cancelEditing, changeTitle, editingId, exportConversation, openConversation, saveTitle, saving, startDeleting, startEditing, title, titleError, transferring],
   );
-
-  const filtered = query.trim().length > 0 || interruptedOnly;
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
-      <View
-        style={{
-          height: 56,
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 16,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          backgroundColor: colors.background,
-        }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={20} tintColor={colors.primary} />
-          <Text style={{ color: colors.primary, fontFamily: fonts.heading, fontSize: 18, letterSpacing: -0.4 }}>
-            MyLLM
-          </Text>
-        </View>
-      </View>
-
       <View style={{ gap: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary }} />
-              <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 22, lineHeight: 28, letterSpacing: -0.2 }}>
-                Conversation History
-              </Text>
-            </View>
-            <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11, lineHeight: 16 }}>
-              Local runtime history and cached chat sessions
-            </Text>
-          </View>
+        <Text accessibilityRole="header" style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.title }}>
+          History
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.small }}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Import conversation"
@@ -229,15 +284,15 @@ export default function HistoryScreen() {
             disabled={transferring}
             onPress={() => void importConversation()}
             style={({ pressed }) => ({
-              minHeight: 48,
+              minHeight: interaction.touchTarget,
               alignItems: 'center',
               justifyContent: 'center',
               paddingHorizontal: 10,
               borderRadius: 8,
               backgroundColor: colors.surfaceHigh,
-              opacity: transferring ? 0.5 : pressed ? 0.8 : 1,
+              opacity: transferring ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
             })}>
-            <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>IMPORT</Text>
+            <Text style={{ color: colors.secondary, fontFamily: fonts.heading, fontSize: typography.body }}>Import</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -245,7 +300,7 @@ export default function HistoryScreen() {
             onPress={startNewChat}
             hitSlop={4}
             style={({ pressed }) => ({
-              minHeight: 48,
+              minHeight: interaction.touchTarget,
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
@@ -253,47 +308,16 @@ export default function HistoryScreen() {
               paddingHorizontal: 12,
               borderRadius: 8,
               backgroundColor: colors.primary,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pressed ? interaction.pressedOpacity : 1,
             })}>
             <SymbolView name={{ ios: 'plus', android: 'add' }} size={16} tintColor={colors.primaryText} />
-            <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: 13 }}>New Chat</Text>
+            <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: typography.body }}>New chat</Text>
           </Pressable>
         </View>
 
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            padding: 12,
-            borderRadius: 8,
-            backgroundColor: colors.surfaceLow,
-          }}>
-          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <SymbolView name={{ ios: 'cylinder.fill', android: 'database' }} size={18} tintColor={colors.primary} />
-            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <Text style={{ color: colors.text, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.4 }}>
-                {String(conversations.length)} LOADED SESSIONS
-              </Text>
-              <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>
-                Local SQLite history on this device
-              </Text>
-            </View>
-          </View>
-          <Text
-            style={{
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 4,
-              backgroundColor: colors.surfaceHigh,
-              color: colors.primary,
-              fontFamily: fonts.monoMedium,
-              fontSize: 10,
-            }}>
-            LOCAL
-          </Text>
-        </View>
+        <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: typography.label }}>
+          Loaded conversations: {conversations.length}
+        </Text>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View
@@ -304,6 +328,8 @@ export default function HistoryScreen() {
               alignItems: 'center',
               paddingHorizontal: 10,
               borderRadius: 4,
+              borderWidth: 1,
+              borderColor: filterFocused ? colors.primary : colors.border,
               backgroundColor: colors.surfaceHigh,
             }}>
             <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={18} tintColor={colors.outline} />
@@ -311,11 +337,15 @@ export default function HistoryScreen() {
               accessibilityLabel="Filter conversations"
               value={query}
               onChangeText={setQuery}
+              onFocus={() => setFilterFocused(true)}
+              onBlur={() => setFilterFocused(false)}
               autoCapitalize="none"
               autoCorrect={false}
               placeholder="Filter title, model, or status..."
               placeholderTextColor={colors.outline}
-              style={{ flex: 1, minHeight: 40, paddingHorizontal: 8, color: colors.text, fontFamily: fonts.mono, fontSize: 11 }}
+              selectionColor={colors.primary}
+              cursorColor={colors.primary}
+              style={{ flex: 1, minHeight: interaction.compactTouchTarget, paddingHorizontal: 8, color: colors.text, fontFamily: fonts.mono, fontSize: 11 }}
             />
           </View>
           <Pressable
@@ -326,13 +356,13 @@ export default function HistoryScreen() {
             onPress={() => setInterruptedOnly((value) => !value)}
             hitSlop={4}
             style={({ pressed }) => ({
-              width: 40,
-              height: 40,
+              width: interaction.compactTouchTarget,
+              height: interaction.compactTouchTarget,
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 4,
               backgroundColor: interruptedOnly ? colors.primary : colors.surfaceHigh,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pressed ? interaction.pressedOpacity : 1,
             })}>
             <SymbolView
               name={{ ios: 'line.3.horizontal.decrease.circle', android: 'filter_list' }}
@@ -346,7 +376,9 @@ export default function HistoryScreen() {
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>Loading local history.</Text>
+          <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>
+            {filtered ? 'Searching conversations...' : 'Loading conversations...'}
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -357,17 +389,34 @@ export default function HistoryScreen() {
           maxToRenderPerBatch={4}
           windowSize={5}
           contentContainerStyle={{ flexGrow: 1, gap: 8, paddingHorizontal: 16 }}
-          onEndReached={() => void loadMore()}
+          onEndReached={() => { if (!filtered && loadError === null) void loadMore(); }}
           onEndReachedThreshold={0.4}
-          ListEmptyComponent={<EmptyHistory filtered={filtered} onPress={filtered ? () => { setQuery(''); setInterruptedOnly(false); } : startNewChat} />}
-          ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={{ marginVertical: 12 }} /> : null}
+          ListHeaderComponent={loadError !== null ? (
+            <View style={{ gap: spacing.small, paddingVertical: spacing.medium }}>
+              <Text accessibilityRole="alert" style={{ color: colors.error, fontFamily: fonts.mono, fontSize: typography.body }}>
+                {loadError === 'first' ? 'Could not load conversations. Try again.' : 'Could not load more conversations. Try again.'}
+              </Text>
+              <SmallButton label="Retry" onPress={() => { void (loadError === 'first' ? loadFirst() : loadMore()); }} />
+            </View>
+          ) : null}
+          ListEmptyComponent={searching || loadError !== null ? null : <EmptyHistory filtered={filtered} onPress={filtered ? () => { setQuery(''); setInterruptedOnly(false); } : startNewChat} />}
+          ListFooterComponent={searching || loadingMore ? (
+            <View style={{ gap: spacing.small, alignItems: 'center', paddingVertical: spacing.medium }}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: typography.label }}>
+                {searching ? 'Searching conversations...' : 'Loading more conversations...'}
+              </Text>
+            </View>
+          ) : null}
           renderItem={renderConversation}
         />
       )}
 
       <DeleteSheet
         conversation={deleteTarget}
-        onCancel={() => setDeleteTarget(null)}
+        busy={deleting}
+        error={deleteError}
+        onCancel={cancelDeleting}
         onConfirm={() => void deleteConversation()}
       />
     </SafeAreaView>
@@ -379,6 +428,8 @@ const HistoryRow = memo(function HistoryRow({
   editing,
   title,
   onTitleChange,
+  titleError,
+  saving,
   onOpen,
   onStartEditing,
   onCancelEditing,
@@ -391,6 +442,8 @@ const HistoryRow = memo(function HistoryRow({
   editing: boolean;
   title: string;
   onTitleChange: (title: string) => void;
+  titleError: string | null;
+  saving: boolean;
   onOpen: (id: string) => void;
   onStartEditing: (conversation: ConversationSummary) => void;
   onCancelEditing: () => void;
@@ -400,21 +453,20 @@ const HistoryRow = memo(function HistoryRow({
   transferring: boolean;
 }) {
   const status = historyStatus(conversation.status);
+  const [titleFocused, setTitleFocused] = useState(false);
 
   if (editing) {
     return (
       <View style={{ gap: 8, padding: 12, borderRadius: 8, backgroundColor: colors.surface }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <StatusBadge status={{ label: 'EDITING METADATA', color: colors.secondary, detail: '' }} />
+            <StatusBadge status={{ label: 'RENAMING', color: colors.secondary, detail: '' }} />
             <Text numberOfLines={1} style={{ flexShrink: 1, color: colors.muted, fontFamily: fonts.mono, fontSize: 10 }}>
               {conversation.activeModelId}
             </Text>
           </View>
-          <Text numberOfLines={1} style={{ flexShrink: 1, color: colors.primary, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-            PRESS RETURN TO SAVE
-          </Text>
         </View>
+        <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: typography.label }}>Conversation title</Text>
         <View
           style={{
             flexDirection: 'row',
@@ -422,6 +474,8 @@ const HistoryRow = memo(function HistoryRow({
             gap: 8,
             paddingHorizontal: 10,
             borderRadius: 4,
+            borderWidth: 1,
+            borderColor: titleFocused ? colors.primary : colors.border,
             backgroundColor: colors.surfaceHigh,
           }}>
           <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={18} tintColor={colors.primary} />
@@ -429,15 +483,21 @@ const HistoryRow = memo(function HistoryRow({
             accessibilityLabel="Conversation title"
             autoFocus
             value={title}
+            editable={!saving}
             onChangeText={onTitleChange}
+            onFocus={() => setTitleFocused(true)}
+            onBlur={() => setTitleFocused(false)}
             onSubmitEditing={() => void onSave(conversation.id)}
             returnKeyType="done"
-            style={{ flex: 1, minHeight: 40, color: colors.text, fontFamily: fonts.mono, fontSize: 13 }}
+            selectionColor={colors.primary}
+            cursorColor={colors.primary}
+            style={{ flex: 1, minHeight: interaction.compactTouchTarget, color: colors.text, fontFamily: fonts.mono, fontSize: 13 }}
           />
         </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-          <SmallButton label="Cancel" onPress={onCancelEditing} />
-          <SmallButton label="Save Changes" tone="primary" onPress={() => void onSave(conversation.id)} />
+        {titleError !== null ? <Text accessibilityRole="alert" style={{ color: colors.error, fontFamily: fonts.mono, fontSize: typography.body }}>{titleError}</Text> : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
+          <SmallButton label="Cancel" disabled={saving} onPress={onCancelEditing} />
+          <SmallButton label={saving ? 'Saving...' : 'Save changes'} disabled={saving} tone="primary" onPress={() => void onSave(conversation.id)} />
         </View>
       </View>
     );
@@ -467,6 +527,7 @@ const HistoryRow = memo(function HistoryRow({
       <View
         style={{
           flexDirection: 'row',
+          flexWrap: 'wrap',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 8,
@@ -474,10 +535,10 @@ const HistoryRow = memo(function HistoryRow({
           paddingVertical: 8,
           backgroundColor: colors.surfaceLowest,
         }}>
-        <Text numberOfLines={1} style={{ flex: 1, color: status.color, fontFamily: fonts.mono, fontSize: 10 }}>
+        <Text style={{ flexGrow: 1, flexShrink: 1, color: status.color, fontFamily: fonts.mono, fontSize: 10 }}>
           {status.detail}
         </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <View style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
           <IconButton label={'Export ' + conversation.title} icon={{ ios: 'square.and.arrow.up', android: 'ios_share' }} disabled={transferring} onPress={() => void onExport(conversation)} />
           <IconButton label={'Rename ' + conversation.title} icon={{ ios: 'pencil', android: 'edit' }} onPress={() => onStartEditing(conversation)} />
           <IconButton label={'Delete ' + conversation.title} icon={{ ios: 'trash', android: 'delete' }} danger onPress={() => onDelete(conversation)} />
@@ -550,24 +611,26 @@ function IconButton({
   );
 }
 
-function SmallButton({ label, tone = 'secondary', onPress }: { label: string; tone?: 'secondary' | 'primary'; onPress: () => void }) {
+function SmallButton({ label, tone = 'secondary', disabled = false, onPress }: { label: string; tone?: 'secondary' | 'primary'; disabled?: boolean; onPress: () => void }) {
   const primary = tone === 'primary';
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       hitSlop={4}
       style={({ pressed }) => ({
         minHeight: interaction.compactTouchTarget,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 12,
-        borderRadius: 4,
+        paddingHorizontal: spacing.medium,
+        borderRadius: radius.control,
         backgroundColor: primary ? colors.primary : colors.surfaceHigh,
-        opacity: pressed ? 0.8 : 1,
+        opacity: disabled ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
       })}>
-      <Text style={{ color: primary ? colors.primaryText : colors.text, fontFamily: fonts.monoMedium, fontSize: 10 }}>{label}</Text>
+      <Text style={{ color: primary ? colors.primaryText : colors.text, fontFamily: fonts.heading, fontSize: typography.body }}>{label}</Text>
     </Pressable>
   );
 }
@@ -579,12 +642,12 @@ function EmptyHistory({ filtered, onPress }: { filtered: boolean; onPress: () =>
         <SymbolView name={{ ios: 'folder.fill', android: 'folder_off' }} size={32} tintColor={colors.primary} />
       </View>
       <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18, lineHeight: 24 }}>
-        {filtered ? 'No matching conversations' : 'Local Ledger Empty'}
+        {filtered ? 'No matching conversations' : 'No conversations yet'}
       </Text>
       <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11, lineHeight: 16, textAlign: 'center' }}>
         {filtered
           ? 'Try a different query or clear the interrupted filter.'
-          : 'No conversation transcripts found in the local SQLite repository. Start a fresh thread with an active model.'}
+          : 'Start a new chat. Your conversations will appear here.'}
       </Text>
       <Pressable
         accessibilityRole="button"
@@ -605,7 +668,7 @@ function EmptyHistory({ filtered, onPress }: { filtered: boolean; onPress: () =>
         })}>
         <SymbolView name={{ ios: filtered ? 'xmark' : 'plus', android: filtered ? 'close' : 'add_comment' }} size={16} tintColor={colors.primaryText} />
         <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: 13 }}>
-          {filtered ? 'Clear Filters' : 'Initialize Session'}
+          {filtered ? 'Clear filters' : 'New chat'}
         </Text>
       </Pressable>
     </View>
@@ -614,10 +677,14 @@ function EmptyHistory({ filtered, onPress }: { filtered: boolean; onPress: () =>
 
 function DeleteSheet({
   conversation,
+  busy,
+  error,
   onCancel,
   onConfirm,
 }: {
   conversation: ConversationSummary | null;
+  busy: boolean;
+  error: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -625,6 +692,7 @@ function DeleteSheet({
     <BottomSheet
       visible={conversation !== null}
       dismissLabel="Dismiss delete confirmation"
+      dismissDisabled={busy}
       onRequestClose={onCancel}>
         <View
           style={{
@@ -648,14 +716,17 @@ function DeleteSheet({
               {conversation?.title}
             </Text>
             <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11, lineHeight: 16 }}>
-              This permanently deletes the local chat record. Endpoint settings, credentials, and the model catalog remain unchanged.
+              This permanently deletes this conversation from this device.
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
-            <SmallButton label="Cancel" onPress={onCancel} />
+          {error !== null ? <Text accessibilityRole="alert" style={{ color: colors.error, fontFamily: fonts.mono, fontSize: typography.body }}>{error}</Text> : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
+            <SmallButton label="Cancel" disabled={busy} onPress={onCancel} />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Confirm Delete"
+              accessibilityState={{ disabled: busy, busy }}
+              disabled={busy}
               onPress={onConfirm}
               style={({ pressed }) => ({
                 minHeight: interaction.compactTouchTarget,
@@ -664,9 +735,9 @@ function DeleteSheet({
                 paddingHorizontal: 12,
                 borderRadius: 4,
                 backgroundColor: colors.error,
-                opacity: pressed ? 0.8 : 1,
+                opacity: busy ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
               })}>
-              <Text style={{ color: colors.primaryText, fontFamily: fonts.monoMedium, fontSize: 10 }}>Confirm Delete</Text>
+              <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: typography.body }}>{busy ? 'Deleting...' : 'Confirm Delete'}</Text>
             </Pressable>
           </View>
         </View>

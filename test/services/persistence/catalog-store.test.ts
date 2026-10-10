@@ -231,6 +231,77 @@ describe('createCatalogRepository', () => {
     expect(memory.files.get('model-overrides.json')).toBe(before);
   });
 
+  it('previews other endpoint deletions before replacing the whole overrides file', async () => {
+    const current = {
+      schemaVersion: 1,
+      endpoints: {
+        ep_1: { models: { shared: { request: { outputLimit: 100 } } } },
+        ep_2: { models: { shared: { request: { outputLimit: 200 } } } },
+      },
+    };
+    const { repo, memory } = repository({ 'model-overrides.json': JSON.stringify(current) });
+    await repo.load('ep_1');
+    const next = { schemaVersion: 1, endpoints: { ep_1: current.endpoints.ep_1 } };
+    const before = new Map(memory.files);
+
+    const preview = await repo.previewOverrides('ep_1', JSON.stringify(next));
+
+    expect(preview).toEqual({ ok: true, value: next, affectedModelIds: ['ep_2/shared'] });
+    expect(memory.files).toEqual(before);
+    expect(await repo.applyOverridesText('ep_1', JSON.stringify(next))).toEqual(preview);
+    expect(JSON.parse(memory.files.get('model-overrides.json')!)).toEqual(next);
+    expect(JSON.parse(memory.files.get('model-overrides.json.backup')!)).toEqual(current);
+  });
+
+  it('compares preview with persisted overrides updated after the catalog was loaded', async () => {
+    const { repo, memory } = repository();
+    await repo.load('ep_1');
+    memory.files.set('model-overrides.json', JSON.stringify({
+      schemaVersion: 1,
+      endpoints: { ep_2: { models: { model: { request: { outputLimit: 200 } } } } },
+    }));
+
+    const preview = await repo.previewOverrides('ep_1', JSON.stringify({ schemaVersion: 1, endpoints: {} }));
+
+    expect(preview).toMatchObject({ ok: true, affectedModelIds: ['ep_2/model'] });
+  });
+
+  it('rejects imported raw API keys before writing any files', async () => {
+    const { repo, memory } = repository();
+    await repo.load('ep_1');
+    await repo.setOverride('ep_1', 'model-baru', { contextWindow: 8_000 });
+    const before = new Map(memory.files);
+    const text = JSON.stringify({
+      schemaVersion: 1,
+      endpoints: { ep_2: { models: { model: { raw: { api_key: 'fake-opaque-key' } } } } },
+    });
+
+    const preview = await repo.previewOverrides('ep_1', text);
+    const result = await repo.applyOverridesText('ep_1', text);
+
+    expect(preview.ok).toBe(false);
+    expect(result).toEqual(preview);
+    expect(JSON.stringify(result)).not.toContain('fake-opaque-key');
+    expect(memory.files).toEqual(before);
+    expect(repo.exportOverrides()).not.toContain('fake-opaque-key');
+  });
+
+  it('redacts secret-shaped model IDs in request validation errors', async () => {
+    const { repo } = repository();
+    await repo.load('ep_1');
+    const result = await repo.previewOverrides('ep_1', JSON.stringify({
+      schemaVersion: 1,
+      endpoints: {
+        ep_1: {
+          models: { 'sk-fake-model-id': { reasoningEfforts: ['low'], request: { reasoningEffort: 'high' } } },
+        },
+      },
+    }), profile);
+
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain('sk-fake-model-id');
+  });
+
   it('menolak custom model dengan exact ID duplikat', async () => {
     const { repo } = repository();
     await repo.load('ep_1');

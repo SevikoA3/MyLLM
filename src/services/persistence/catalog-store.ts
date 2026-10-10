@@ -16,6 +16,7 @@ import {
 } from '../../domain/catalog';
 import { mergeCatalog, type MergedModel } from '../../domain/catalog-merge';
 import { joinEndpointPath, type EndpointProfile } from '../../domain/endpoint';
+import { redactText } from '../../domain/error';
 import { modelRequestSnapshot, type ModelRequestSnapshot } from '../../domain/model-config';
 import type { ModelRecord as ModelRecordType } from '../../domain/model';
 
@@ -411,8 +412,8 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
         } catch (error) {
           return {
             ok: false,
-            path: `$.endpoints.${endpointId}.models.${model.id}.request`,
-            message: error instanceof Error ? error.message : 'The request configuration is invalid.',
+            path: redactText(`$.endpoints.${endpointId}.models.${model.id}.request`),
+            message: redactText(error instanceof Error ? error.message : 'The request configuration is invalid.'),
           };
         }
       }
@@ -420,7 +421,7 @@ export function createCatalogRepository(deps: CatalogRepositoryDeps) {
     return {
       ok: true,
       value: parsed.value,
-      affectedModelIds: changedOverrideModelIds(current.overrides, parsed.value, endpointId),
+      affectedModelIds: changedOverrideModelIds(await readOverrides(deps.storage), parsed.value, endpointId),
     };
   }
 

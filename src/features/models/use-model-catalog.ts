@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { EndpointProfile } from '../../domain/endpoint';
 import type { ModelOverride } from '../../domain/catalog';
+import { redactText } from '../../domain/error';
 import {
   createCatalogRepository,
   REFRESH_INTERVAL_MS,
@@ -27,11 +28,6 @@ export type ModelCatalogState = {
   applyOverridesText: (text: string) => Promise<OverridesPreview>;
   exportOverrides: () => string;
 };
-
-/** Profile tanpa credentialRef tidak boleh menulis credential yatim ke Keystore. */
-export function usesStoredCredential(profile: EndpointProfile | null): boolean {
-  return profile !== null && profile.credentialRef !== null;
-}
 
 /**
  * Cache dibaca lebih dulu supaya picker langsung terisi, lalu GET /models berjalan
@@ -96,19 +92,33 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
 
     let timer: ReturnType<typeof setInterval> | null = null;
     const run = async (): Promise<void> => {
+      if (!active) {
+        return;
+      }
       await coalesceRefresh(async () => {
         setRefreshing(true);
-        const result = await repository.refresh({
-          endpointId: profile.id,
-          baseUrl: profile.baseUrl,
-          modelListPath: profile.compat.modelListPath,
-        });
-        if (!active) {
-          return;
+        try {
+          const result = await repository.refresh({
+            endpointId: profile.id,
+            baseUrl: profile.baseUrl,
+            modelListPath: profile.compat.modelListPath,
+          });
+          if (active) {
+            setRuntime(result.catalog);
+            setFailure(result.ok ? null : result.error);
+          }
+        } catch (error) {
+          if (active) {
+            setFailure({
+              kind: 'network',
+              message: redactText(error instanceof Error ? error.message : 'The model catalog could not be refreshed.'),
+            });
+          }
+        } finally {
+          if (active) {
+            setRefreshing(false);
+          }
         }
-        setRefreshing(false);
-        setRuntime(result.catalog);
-        setFailure(result.ok ? null : result.error);
       });
     };
 
@@ -117,19 +127,34 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
       setFailure(null);
       setRefreshing(false);
       setLoading(true);
-      const cached = await repository.load(profile.id);
-      if (!active) {
-        return;
+      try {
+        const cached = await repository.load(profile.id);
+        if (!active) {
+          return;
+        }
+        setRuntime(cached);
+        setLoading(false);
+        // Cache dianggap segar selama TTL supaya cold start tidak selalu memanggil endpoint.
+        const age =
+          cached.lastFetchedAt === null ? Infinity : Date.now() - Date.parse(cached.lastFetchedAt);
+        if (age >= REFRESH_INTERVAL_MS) {
+          await run();
+        }
+        if (active) {
+          timer = setInterval(() => void run(), REFRESH_INTERVAL_MS);
+        }
+      } catch (error) {
+        if (active) {
+          setFailure({
+            kind: 'cache-write',
+            message: redactText(error instanceof Error ? error.message : 'The model catalog could not be loaded.'),
+          });
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
       }
-      setRuntime(cached);
-      setLoading(false);
-      // Cache dianggap segar selama TTL supaya cold start tidak selalu memanggil endpoint.
-      const age =
-        cached.lastFetchedAt === null ? Infinity : Date.now() - Date.parse(cached.lastFetchedAt);
-      if (age >= REFRESH_INTERVAL_MS) {
-        await run();
-      }
-      timer = setInterval(() => void run(), REFRESH_INTERVAL_MS);
     })();
 
     return () => {
@@ -156,12 +181,19 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
           baseUrl: profile.baseUrl,
           modelListPath: profile.compat.modelListPath,
         });
-        if (alive.current) {
+        if (alive.current && repositoryRef.current === repository) {
           setRuntime(result.catalog);
           setFailure(result.ok ? null : result.error);
         }
+      } catch (error) {
+        if (alive.current && repositoryRef.current === repository) {
+          setFailure({
+            kind: 'network',
+            message: redactText(error instanceof Error ? error.message : 'The model catalog could not be refreshed.'),
+          });
+        }
       } finally {
-        if (alive.current) {
+        if (alive.current && repositoryRef.current === repository) {
           setRefreshing(false);
         }
       }
@@ -173,9 +205,24 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
     if (repository === null || profile === null) {
       return;
     }
-    const next = await repository.load(profile.id);
-    if (alive.current) {
-      setRuntime(next);
+    setLoading(true);
+    try {
+      const next = await repository.load(profile.id);
+      if (alive.current && repositoryRef.current === repository) {
+        setRuntime(next);
+        setFailure(null);
+      }
+    } catch (error) {
+      if (alive.current && repositoryRef.current === repository) {
+        setFailure({
+          kind: 'cache-write',
+          message: redactText(error instanceof Error ? error.message : 'The model catalog could not be loaded.'),
+        });
+      }
+    } finally {
+      if (alive.current && repositoryRef.current === repository) {
+        setLoading(false);
+      }
     }
   }, [profile]);
 
@@ -187,7 +234,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
       }
       await repository.setOverride(profile.id, modelId, patch);
       const next = repository.current();
-      if (next !== null) {
+      if (alive.current && repositoryRef.current === repository && next !== null) {
         setRuntime({ ...next });
       }
     },
@@ -202,7 +249,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
       }
       await repository.addCustomModel(profile.id, modelId);
       const next = repository.current();
-      if (next !== null) {
+      if (alive.current && repositoryRef.current === repository && next !== null) {
         setRuntime({ ...next });
       }
     },
@@ -228,7 +275,7 @@ export function useModelCatalog(profile: EndpointProfile | null): ModelCatalogSt
       }
       const result = await repository.applyOverridesText(profile.id, text, profile);
       const next = repository.current();
-      if (result.ok && next !== null) {
+      if (alive.current && repositoryRef.current === repository && result.ok && next !== null) {
         setRuntime({ ...next });
       }
       return result;

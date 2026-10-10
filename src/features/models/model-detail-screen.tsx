@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StatusBar } from 'expo-status-bar';
@@ -16,9 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ModelOverrideSchema, type ModelOverride } from '../../domain/catalog';
 import type { CatalogSource, MergedModel } from '../../domain/catalog-merge';
+import { redactText } from '../../domain/error';
 import { effectiveMaxOutput, protocolOutputCap, reasoningChoices } from '../../domain/model-config';
 import type { CapabilityState, InputModality } from '../../domain/model';
-import { colors, fonts, interaction } from '../../ui/tokens';
+import { colors, fonts, interaction, radius, spacing, typography } from '../../ui/tokens';
 import { BottomSheet } from '../../ui/bottom-sheet';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { useModelCatalog } from './use-model-catalog';
@@ -52,53 +53,129 @@ export default function ModelDetailScreen() {
   const [draft, setDraft] = useState<Form | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [pending, setPending] = useState<'save' | 'reset' | 'refresh' | null>(null);
+  const pendingRef = useRef(false);
+  const identity = JSON.stringify([profile?.id, modelId]);
+  const [draftIdentity, setDraftIdentity] = useState(identity);
+  const activeVisit = useRef<object | null>({});
 
-  const choices = useMemo(
-    () => (model === null ? [] : reasoningChoices(model.reasoningEfforts)),
-    [model],
-  );
+  useEffect(() => {
+    activeVisit.current = {};
+    return () => { activeVisit.current = null; };
+  }, [identity]);
+
+  if (draftIdentity !== identity) {
+    setDraftIdentity(identity);
+    setDraft(null);
+    setMessage(null);
+    setResetOpen(false);
+  }
+
+  const refreshCatalog = async () => {
+    if (pendingRef.current) return;
+    const visit = activeVisit.current;
+    pendingRef.current = true;
+    setPending('refresh');
+    setMessage(null);
+    try {
+      await catalog.refresh();
+    } catch (error) {
+      if (activeVisit.current === visit) {
+        setMessage(redactText(error instanceof Error ? error.message : 'Could not refresh the model catalog. Try again.'));
+      }
+    } finally {
+      pendingRef.current = false;
+      if (activeVisit.current !== null) setPending(null);
+    }
+  };
 
   if (status === 'loading' || catalog.loading || model === null || profile === null) {
-    const missing = modelId === undefined || (status !== 'loading' && !catalog.loading && model === null);
-    return <DetailState loading={!missing} message={missing ? 'Model not found.' : 'Loading model specification.'} />;
+    const loading = status === 'loading' || catalog.loading || (model === null && catalog.refreshing);
+    return (
+      <DetailState
+        loading={loading}
+        message={loading ? 'Loading model specification.' : redactText(message ?? catalog.failure?.message ?? (profile === null ? 'Connect an endpoint to inspect models.' : 'Model not found.'))}
+        refreshing={loading || pending !== null}
+        onRefresh={profile === null ? undefined : () => void refreshCatalog()}
+      />
+    );
   }
 
   const form = draft ?? formFrom(override);
+  const choices = reasoningChoices(stringArray(form.reasoningEfforts) ?? model.reasoningEfforts);
   const ceiling = effectiveMaxOutput(model.maxOutputTokens, protocolOutputCap(profile));
   const hasOverride = override !== undefined;
   const providerRows = providerMetadataRows(model.raw);
 
   const save = async () => {
+    if (pendingRef.current) return;
+    const visit = activeVisit.current;
     setMessage(null);
-    const built = buildOverride(form, choices.length > 0, ceiling);
+    const built = buildOverride(form, choices.length > 0);
     if (!built.ok) {
-      setMessage(built.message);
+      setMessage(redactText(built.message));
       return;
     }
+    pendingRef.current = true;
+    setPending('save');
     try {
+      const next = {
+        ...catalog.runtime!.overrides,
+        endpoints: {
+          ...catalog.runtime!.overrides.endpoints,
+          [profile.id]: { models: {
+            ...catalog.runtime!.overrides.endpoints[profile.id]?.models,
+            [model.id]: { ...override, ...built.value },
+          } },
+        },
+      };
+      const preview = await catalog.previewOverrides(JSON.stringify(next));
+      if (activeVisit.current !== visit) return;
+      if (!preview.ok) {
+        setMessage(redactText(preview.path + ': ' + preview.message));
+        return;
+      }
       await catalog.setOverride(model.id, built.value);
-      setMessage('Overrides saved locally. Catalog refresh will preserve them.');
+      if (activeVisit.current === visit) {
+        setMessage('Overrides saved locally. Catalog refresh will preserve them.');
+      }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Override could not be saved.');
+      if (activeVisit.current === visit) {
+        setMessage(redactText(error instanceof Error ? error.message : 'Override could not be saved. Try again.'));
+      }
+    } finally {
+      pendingRef.current = false;
+      if (activeVisit.current !== null) setPending(null);
     }
   };
 
   const resetModel = async () => {
+    if (pendingRef.current) return;
+    const visit = activeVisit.current;
+    pendingRef.current = true;
+    setPending('reset');
+    setMessage(null);
     try {
       await catalog.setOverride(model.id, null);
-      setDraft(formFrom(undefined));
-      setMessage('Model overrides reset to inherited values.');
+      if (activeVisit.current === visit) {
+        setDraft(null);
+        setMessage('Model overrides reset to inherited values.');
+        if (model.orphaned) router.back();
+      }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Model override could not be reset.');
+      if (activeVisit.current === visit) {
+        setMessage(redactText(error instanceof Error ? error.message : 'Model override could not be reset. Try again.'));
+      }
     } finally {
-      setResetOpen(false);
+      pendingRef.current = false;
+      if (activeVisit.current === visit) setResetOpen(false);
+      if (activeVisit.current !== null) setPending(null);
     }
   };
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
-      <AppBar />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 24 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -120,11 +197,8 @@ export default function ModelDetailScreen() {
                 <SymbolView name={{ ios: 'chevron.left', android: 'arrow_back' }} size={20} tintColor={colors.text} />
               </Pressable>
               <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                <Text style={{ color: colors.primary, fontFamily: fonts.monoMedium, fontSize: 10, letterSpacing: 0.8 }}>
-                  CATALOG / INSPECTION
-                </Text>
                 <Text numberOfLines={1} style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18, lineHeight: 24 }}>
-                  Model Spec & Overrides
+                  Model settings
                 </Text>
               </View>
             </View>
@@ -178,6 +252,7 @@ export default function ModelDetailScreen() {
           <Panel title="Modify local overrides" icon={{ ios: 'wrench.and.screwdriver', android: 'build_circle' }} accent={colors.warning} tag="CLIENT SIDE">
             <Field
               label="Display name"
+              disabled={pending !== null}
               value={form.displayName}
               placeholder={model.displayName}
               onChange={(value) => setDraft({ ...form, displayName: value })}
@@ -185,6 +260,7 @@ export default function ModelDetailScreen() {
             />
             <Choice
               label="Show in Chat Model Picker"
+              disabled={pending !== null}
               help="Inherit follows the current catalog state."
               value={form.enabled}
               values={['inherit', 'true', 'false']}
@@ -193,6 +269,7 @@ export default function ModelDetailScreen() {
             />
             <Field
               label="Override max context tokens"
+              disabled={pending !== null}
               value={form.contextWindow}
               placeholder={numberText(model.contextWindow)}
               keyboardType="number-pad"
@@ -201,6 +278,7 @@ export default function ModelDetailScreen() {
             />
             <Field
               label="Override max output tokens"
+              disabled={pending !== null}
               value={form.maxOutputTokens}
               placeholder={numberText(model.maxOutputTokens)}
               keyboardType="number-pad"
@@ -209,6 +287,7 @@ export default function ModelDetailScreen() {
             />
             <Field
               label="Reasoning efforts"
+              disabled={pending !== null}
               value={form.reasoningEfforts}
               placeholder="auto, low, high"
               help="Order is preserved. Empty inherits; [] clears the list."
@@ -217,6 +296,7 @@ export default function ModelDetailScreen() {
             />
             <Field
               label="Input modalities"
+              disabled={pending !== null}
               value={form.inputModalities}
               placeholder="text, image"
               help="Options: text, image, file, video. Empty inherits; [] clears the list."
@@ -230,6 +310,7 @@ export default function ModelDetailScreen() {
             {(['streaming', 'tools', 'structuredOutput', 'nativeCompaction'] as const).map((key) => (
               <Choice
                 key={key}
+                disabled={pending !== null}
                 label={capabilityLabel(key)}
                 value={form[key]}
                 values={['inherit', 'supported', 'unsupported', 'unknown']}
@@ -243,6 +324,7 @@ export default function ModelDetailScreen() {
             {choices.length > 0 && (
               <Choice
                 label="Thinking"
+                disabled={pending !== null}
                 value={form.reasoningEffort}
                 values={choices}
                 onChange={(value) => setDraft({ ...form, reasoningEffort: value })}
@@ -250,6 +332,7 @@ export default function ModelDetailScreen() {
             )}
             <Field
               label="Output limit"
+              disabled={pending !== null}
               value={form.outputLimit}
               placeholder="Auto"
               help={ceiling === null ? 'Empty uses Auto and omits max_output_tokens.' : 'Empty uses Auto. Maximum available: ' + tokenText(ceiling) + '.'}
@@ -275,6 +358,8 @@ export default function ModelDetailScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Save Overrides"
+            accessibilityState={{ busy: pending === 'save', disabled: pending !== null }}
+            disabled={pending !== null}
             onPress={() => void save()}
             style={({ pressed }) => ({
               minHeight: 48,
@@ -284,15 +369,17 @@ export default function ModelDetailScreen() {
               gap: 8,
               borderRadius: 8,
               backgroundColor: colors.primary,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pending !== null ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
             })}>
             <SymbolView name={{ ios: 'square.and.arrow.down', android: 'save' }} size={20} tintColor={colors.primaryText} />
-            <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: 18 }}>Save Overrides</Text>
+            <Text style={{ color: colors.primaryText, fontFamily: fonts.heading, fontSize: 18 }}>{pending === 'save' ? 'Saving overrides...' : 'Save Overrides'}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Reset to Server Defaults"
-            onPress={() => setResetOpen(true)}
+            accessibilityLabel="Reset to inherited values"
+            accessibilityState={{ disabled: pending !== null }}
+            disabled={pending !== null}
+            onPress={() => { if (!pendingRef.current) setResetOpen(true); }}
             hitSlop={2}
             style={({ pressed }) => ({
               minHeight: 44,
@@ -302,49 +389,31 @@ export default function ModelDetailScreen() {
               gap: 8,
               borderRadius: 8,
               backgroundColor: colors.surface,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pending !== null ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
             })}>
             <SymbolView name={{ ios: 'arrow.counterclockwise', android: 'restart_alt' }} size={18} tintColor={colors.error} />
-            <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>Reset to Server Defaults</Text>
+            <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 13 }}>Reset to inherited values</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <ResetSheet modelId={model.id} visible={resetOpen} onCancel={() => setResetOpen(false)} onConfirm={() => void resetModel()} />
+      <ResetSheet key={identity} modelId={model.id} custom={model.orphaned} busy={pending !== null} visible={resetOpen} onCancel={() => { if (!pendingRef.current) setResetOpen(false); }} onConfirm={() => void resetModel()} />
     </SafeAreaView>
   );
 }
 
-function DetailState({ loading, message }: { loading: boolean; message: string }) {
+function DetailState({ loading, message, refreshing, onRefresh }: { loading: boolean; message: string; refreshing: boolean; onRefresh?: () => void }) {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
-      <AppBar />
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 16 }}>
+        <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.title }}>Model settings</Text>
         {loading && <ActivityIndicator color={colors.primary} />}
         <Text style={{ color: loading ? colors.muted : colors.error, fontFamily: fonts.mono, fontSize: 11 }}>{message}</Text>
+        <SheetButton label="Back to model catalog" onPress={() => router.back()} />
+        {onRefresh !== undefined && <SheetButton label="Refresh model catalog" disabled={refreshing} busy={refreshing} onPress={onRefresh} />}
       </View>
     </SafeAreaView>
-  );
-}
-
-function AppBar() {
-  return (
-    <View
-      style={{
-        height: 56,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        backgroundColor: colors.background,
-      }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={20} tintColor={colors.primary} />
-        <Text style={{ color: colors.primary, fontFamily: fonts.heading, fontSize: 18, letterSpacing: -0.4 }}>MyLLM</Text>
-      </View>
-    </View>
   );
 }
 
@@ -477,6 +546,7 @@ function Field({
   keyboardType,
   onChange,
   onReset,
+  disabled = false,
 }: {
   label: string;
   value: string;
@@ -485,7 +555,9 @@ function Field({
   keyboardType?: 'default' | 'number-pad';
   onChange: (value: string) => void;
   onReset: () => void;
+  disabled?: boolean;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -493,6 +565,8 @@ function Field({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={'Reset ' + label}
+          accessibilityState={{ disabled }}
+          disabled={disabled}
           onPress={onReset}
           hitSlop={8}
           style={{ minHeight: interaction.compactTouchTarget, justifyContent: 'center' }}>
@@ -501,6 +575,8 @@ function Field({
       </View>
       <TextInput
         accessibilityLabel={label}
+        accessibilityState={{ disabled }}
+        editable={!disabled}
         value={value}
         placeholder={placeholder}
         placeholderTextColor={colors.outline}
@@ -508,7 +584,11 @@ function Field({
         autoCapitalize="none"
         autoCorrect={false}
         onChangeText={onChange}
-        style={{ minHeight: 40, paddingHorizontal: 10, borderRadius: 4, color: colors.text, backgroundColor: colors.surfaceHigh, fontFamily: fonts.mono, fontSize: 13 }}
+        cursorColor={colors.primary}
+        selectionColor={colors.primary}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={{ minHeight: interaction.touchTarget, paddingHorizontal: spacing.small, borderRadius: radius.control, borderWidth: 1, borderColor: focused ? colors.primary : colors.border, color: colors.text, backgroundColor: colors.surfaceHigh, fontFamily: fonts.mono, fontSize: typography.body, opacity: disabled ? interaction.disabledOpacity : 1 }}
       />
       {help !== undefined && <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>{help}</Text>}
     </View>
@@ -522,6 +602,7 @@ function Choice({
   help,
   labels,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: string;
@@ -529,6 +610,7 @@ function Choice({
   help?: string;
   labels?: Partial<Record<string, string>>;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <View style={{ gap: 6 }}>
@@ -542,7 +624,8 @@ function Choice({
               key={entry}
               accessibilityRole="radio"
               accessibilityLabel={label + ': ' + optionLabel}
-              accessibilityState={{ checked: selected }}
+              accessibilityState={{ checked: selected, disabled }}
+              disabled={disabled}
               onPress={() => onChange(entry)}
               hitSlop={8}
               style={({ pressed }) => ({
@@ -552,7 +635,7 @@ function Choice({
                 paddingHorizontal: 8,
                 borderRadius: 4,
                 backgroundColor: selected ? colors.primary : colors.surfaceHigh,
-                opacity: pressed ? 0.8 : 1,
+                opacity: disabled ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
               })}>
               <Text style={{ color: selected ? colors.primaryText : colors.text, fontFamily: fonts.monoMedium, fontSize: 10 }}>{optionLabel}</Text>
             </Pressable>
@@ -579,19 +662,27 @@ function ResetSheet({
   visible,
   onCancel,
   onConfirm,
+  custom,
+  busy,
 }: {
   modelId: string;
   visible: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  custom: boolean;
+  busy: boolean;
 }) {
   return (
     <BottomSheet
       visible={visible}
       dismissLabel="Dismiss reset confirmation"
+      dismissDisabled={busy}
       onRequestClose={onCancel}>
-        <View
-          style={{
+        <SafeAreaView edges={['bottom']} style={{ flexShrink: 1, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.surfaceLow }}>
+        <ScrollView
+          accessibilityLabel="Reset model confirmation"
+          style={{ flexShrink: 1 }}
+          contentContainerStyle={{
             gap: 16,
             paddingHorizontal: 16,
             paddingTop: 12,
@@ -610,7 +701,7 @@ function ResetSheet({
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18, lineHeight: 24 }}>Discard Client Overrides?</Text>
               <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>
-                All local metadata and request customizations will return to inherited catalog values.
+                {custom ? 'This removes the custom model and its local overrides. Models absent from the inherited catalog cannot be restored by this reset.' : 'All local metadata and request customizations will return to inherited catalog values.'}
               </Text>
             </View>
           </View>
@@ -621,22 +712,25 @@ function ResetSheet({
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 1 }}>
-              <SheetButton label="Cancel" onPress={onCancel} />
+              <SheetButton label="Cancel" disabled={busy} onPress={onCancel} />
             </View>
             <View style={{ flex: 1 }}>
-              <SheetButton label="Reset All" danger onPress={onConfirm} />
+              <SheetButton label="Reset model" danger busy={busy} disabled={busy} onPress={onConfirm} />
             </View>
           </View>
-        </View>
+        </ScrollView>
+        </SafeAreaView>
     </BottomSheet>
   );
 }
 
-function SheetButton({ label, danger = false, onPress }: { label: string; danger?: boolean; onPress: () => void }) {
+function SheetButton({ label, danger = false, busy = false, disabled = false, onPress }: { label: string; danger?: boolean; busy?: boolean; disabled?: boolean; onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ busy, disabled }}
+      disabled={disabled}
       onPress={onPress}
       hitSlop={4}
       style={({ pressed }) => ({
@@ -645,7 +739,7 @@ function SheetButton({ label, danger = false, onPress }: { label: string; danger
         justifyContent: 'center',
         borderRadius: 4,
         backgroundColor: danger ? colors.error : colors.surfaceHigh,
-        opacity: pressed ? 0.8 : 1,
+        opacity: disabled ? interaction.disabledOpacity : pressed ? interaction.pressedOpacity : 1,
       })}>
       <Text style={{ color: danger ? colors.primaryText : colors.text, fontFamily: fonts.heading, fontSize: 13 }}>{label}</Text>
     </Pressable>
@@ -724,7 +818,6 @@ function formFrom(override: ModelOverride | undefined): Form {
 function buildOverride(
   form: Form,
   hasReasoningPicker: boolean,
-  ceiling: number | null,
 ): { ok: true; value: ModelOverride } | { ok: false; message: string } {
   const contextWindow = positiveInteger(form.contextWindow, 'Context window');
   if (!contextWindow.ok) return contextWindow;
@@ -732,9 +825,6 @@ function buildOverride(
   if (!maxOutputTokens.ok) return maxOutputTokens;
   const outputLimit = positiveInteger(form.outputLimit, 'Output limit');
   if (!outputLimit.ok) return outputLimit;
-  if (outputLimit.value !== null && ceiling !== null && outputLimit.value > ceiling) {
-    return { ok: false, message: `Output limit cannot exceed ${String(ceiling)}.` };
-  }
   const reasoningEfforts = stringArray(form.reasoningEfforts);
   const inputModalities = stringArray(form.inputModalities);
   const candidate = {

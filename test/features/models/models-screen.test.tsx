@@ -43,6 +43,17 @@ function model(overrides: Partial<MergedModel> = {}): MergedModel {
 }
 
 describe('ModelsScreen', () => {
+  beforeEach(() => {
+    const profile = createEndpointProfile({ id: 'endpoint_1', name: 'Example endpoint', baseUrl: 'https://example.com/v1' });
+    jest.mocked(useActiveEndpoint).mockReturnValue({ status: 'ready', profile });
+    jest.mocked(useModelCatalog).mockReturnValue({
+      runtime: { models: [model({ displayName: 'Writing assistant' })], lastFetchedAt: '2026-09-19T00:00:00.000Z' },
+      loading: false, refreshing: false, failure: null,
+      reload: jest.fn().mockResolvedValue(undefined), refresh: jest.fn().mockResolvedValue(undefined),
+      setOverride: jest.fn().mockResolvedValue(undefined), addCustomModel: jest.fn(),
+      previewOverrides: jest.fn(), applyOverridesText: jest.fn(), exportOverrides: jest.fn(),
+    } as never);
+  });
   it('toggles model visibility without offering active selection', async () => {
     const activeEndpoint = jest.mocked(useActiveEndpoint);
     const modelCatalog = jest.mocked(useModelCatalog);
@@ -69,6 +80,23 @@ describe('ModelsScreen', () => {
     fireEvent.press(view.getByLabelText('Show amanai/glm-5.3 in picker'));
 
     await waitFor(() => expect(setOverride).toHaveBeenCalledWith('amanai/glm-5.3', { enabled: false }));
+  });
+
+  it('finds a model by its custom display name', async () => {
+    const view = await render(<ModelsScreen />);
+    await fireEvent.changeText(view.getByLabelText('Search models'), 'writing');
+    expect(view.getByText('Writing assistant')).toBeTruthy();
+    expect(view.queryByText('No matching models')).toBeNull();
+  });
+
+  it('shows a recoverable error when model visibility cannot be saved', async () => {
+    const catalog = useModelCatalog(null);
+    jest.mocked(useModelCatalog).mockReturnValue({
+      ...catalog, setOverride: jest.fn().mockRejectedValue(new Error('Storage unavailable')),
+    });
+    const view = await render(<ModelsScreen />);
+    await fireEvent.press(view.getByLabelText('Show amanai/glm-5.3 in picker'));
+    await waitFor(() => expect(view.getByText('Could not update model visibility. Try again.')).toBeTruthy());
   });
 });
 

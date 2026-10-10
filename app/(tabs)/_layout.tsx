@@ -1,13 +1,16 @@
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fonts } from '../../src/ui/tokens';
+import { colors, fonts, interaction, spacing, typography } from '../../src/ui/tokens';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
@@ -16,15 +19,15 @@ export default function TabLayout() {
           borderTopWidth: 1,
           elevation: 0,
           shadowOpacity: 0,
+          height: interaction.touchTarget + spacing.small + insets.bottom,
         },
         tabBarLabelStyle: {
-          fontFamily: fonts.monoMedium,
-          fontSize: 10,
-          letterSpacing: 0.4,
-          marginBottom: 4,
+          fontFamily: fonts.headingMedium,
+          fontSize: typography.label,
+          marginBottom: 0,
         },
-        tabBarItemStyle: { minHeight: 44, paddingVertical: 2 },
-        tabBarIconStyle: { marginTop: 4 },
+        tabBarItemStyle: { minHeight: interaction.touchTarget, paddingVertical: spacing.hairline },
+        tabBarIconStyle: { marginTop: 0 },
         sceneStyle: { backgroundColor: colors.background },
       }}>
       <Tabs.Screen

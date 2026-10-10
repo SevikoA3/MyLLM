@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { MergedModel } from '../../domain/catalog-merge';
-import { colors, fonts, typography } from '../../ui/tokens';
+import { colors, fonts, interaction, typography } from '../../ui/tokens';
 import { useActiveEndpoint } from '../setup/use-active-endpoint';
 import { describeRefresh, formatTokens, modelBadges, modelPickerName } from './model-badges';
 import { useModelCatalog } from './use-model-catalog';
@@ -42,6 +42,8 @@ export default function ModelsScreen() {
   const [customId, setCustomId] = useState('');
   const [filter, setFilter] = useState('');
   const [showDisabled, setShowDisabled] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [filterFocused, setFilterFocused] = useState(false);
 
   const models = catalog.runtime?.models ?? EMPTY_MODELS;
   const excludedCount = models.filter((model) => !model.enabled).length;
@@ -51,7 +53,7 @@ export default function ModelsScreen() {
       if (!showDisabled && !model.enabled) {
         return false;
       }
-      return query.length === 0 || model.id.toLowerCase().includes(query);
+      return query.length === 0 || [model.id, model.displayName].some((value) => value.toLowerCase().includes(query));
     });
   }, [filter, models, showDisabled]);
 
@@ -66,7 +68,9 @@ export default function ModelsScreen() {
   }, []);
 
   const toggleModel = useCallback((model: MergedModel) => {
-    void setOverride(model.id, { enabled: !model.enabled });
+    void setOverride(model.id, { enabled: !model.enabled }).catch(() => {
+      setBlocked('Could not update model visibility. Try again.');
+    });
   }, [setOverride]);
 
   const renderModel = useCallback(
@@ -82,14 +86,17 @@ export default function ModelsScreen() {
 
   const addCustomModel = useCallback(async () => {
     const id = customId.trim();
+    setSaving(true);
     try {
       await catalog.addCustomModel(id);
       setAdding(false);
       setCustomId('');
       setBlocked(null);
       router.push({ pathname: '/settings/model', params: { modelId: id } });
-    } catch (error) {
-      setBlocked(error instanceof Error ? error.message : 'Custom model could not be added.');
+    } catch {
+      setBlocked('Custom model could not be added. Check its ID and try again.');
+    } finally {
+      setSaving(false);
     }
   }, [catalog, customId]);
 
@@ -110,11 +117,13 @@ export default function ModelsScreen() {
   const catalogStatus =
     profile === null
       ? 'SETUP REQUIRED'
+      : catalog.refreshing
+        ? 'REFRESHING'
       : catalog.failure?.kind === 'network' && models.length > 0
         ? 'CACHED'
         : catalog.failure !== null
           ? 'FAILED'
-          : 'CONNECTED';
+          : 'SAVED';
   const catalogStatusColor =
     profile === null
       ? colors.warning
@@ -128,7 +137,7 @@ export default function ModelsScreen() {
       <StatusBar style="light" />
       <View
         style={{
-          height: 56,
+          minHeight: 56,
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 16,
@@ -137,14 +146,25 @@ export default function ModelsScreen() {
           backgroundColor: colors.background,
         }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <SymbolView name={{ ios: 'terminal', android: 'terminal' }} size={20} tintColor={colors.primary} />
-          <Text style={{ color: colors.primary, fontFamily: fonts.heading, fontSize: 18, letterSpacing: -0.4 }}>
-            MyLLM
+          <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: typography.title }}>
+            Models
           </Text>
         </View>
       </View>
 
-      <View style={{ gap: 12, padding: 16, paddingBottom: 12 }}>
+      <FlatList
+        style={{ flex: 1 }}
+        data={visibleModels}
+        keyExtractor={(model) => model.id}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ gap: 12, paddingHorizontal: 16, paddingBottom: 16 }}
+        refreshControl={
+          <RefreshControl refreshing={catalog.refreshing} onRefresh={() => void catalog.refresh()} tintColor={colors.primary} colors={[colors.primary]} />
+        }
+        ListHeaderComponent={<View style={{ gap: 12, paddingTop: 12 }}>
         <View style={{ gap: 8, padding: 12, borderRadius: 8, backgroundColor: colors.surfaceHigh }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
@@ -154,7 +174,6 @@ export default function ModelsScreen() {
                   style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 18, flexShrink: 1 }}>
                   {profile?.name ?? 'No endpoint connected'}
                 </Text>
-                <Badge label={profile === null ? 'NOT CONFIGURED' : 'CONNECTED'} tone={profile === null ? 'warning' : 'accent'} />
               </View>
               <Text numberOfLines={1} style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 11 }}>
                 {profile === null
@@ -201,33 +220,35 @@ export default function ModelsScreen() {
                 paddingHorizontal: 10,
                 borderRadius: 4,
                 backgroundColor: colors.surfaceLow,
+                borderWidth: 1,
+                borderColor: filterFocused ? colors.primary : colors.border,
               }}>
               <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={18} tintColor={colors.muted} />
               <TextInput
-                accessibilityLabel="Filter exact model identifier"
+                accessibilityLabel="Search models"
                 value={filter}
                 onChangeText={setFilter}
+                onFocus={() => setFilterFocused(true)}
+                onBlur={() => setFilterFocused(false)}
+                selectionColor={colors.primary}
+                cursorColor={colors.primary}
                 autoCapitalize="none"
                 autoCorrect={false}
-                placeholder="Filter exact model identifier..."
+                placeholder="Search by name or ID"
                 placeholderTextColor={colors.muted}
                 style={{ flex: 1, minHeight: 46, paddingHorizontal: 8, color: colors.text, fontFamily: fonts.mono, fontSize: 11 }}
               />
-              <SymbolView name={{ ios: 'touchid', android: 'fingerprint' }} size={16} tintColor={colors.outline} />
             </View>
-            <SmallButton label="Add" tone="primary" onPress={() => setAdding((value) => !value)} />
+            <SmallButton label="Add model" disabled={profile === null || saving} onPress={() => setAdding((value) => !value)} />
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <SmallButton
-                label={(showDisabled ? 'Hide' : 'Show') + ' Excluded (' + String(excludedCount) + ')'}
+                label={(showDisabled ? 'Hide' : 'Show') + ' hidden (' + String(excludedCount) + ')'}
                 onPress={() => setShowDisabled((value) => !value)}
               />
-              <SmallButton label="Manifest JSON" onPress={() => router.push('/settings/models-json')} />
+              <SmallButton label="Edit JSON" disabled={profile === null} onPress={() => router.push('/settings/models-json')} />
             </View>
-            <Text style={{ color: colors.outline, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-              OPENAI SPEC
-            </Text>
           </View>
         </View>
 
@@ -235,7 +256,7 @@ export default function ModelsScreen() {
           <View style={cardStyle}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <Text style={{ color: colors.text, fontFamily: fonts.heading, fontSize: 15 }}>
-                Register model specification
+                Add custom model
               </Text>
               <Text style={{ color: colors.secondary, fontFamily: fonts.monoMedium, fontSize: 10 }}>
                 EXACT ID
@@ -247,17 +268,20 @@ export default function ModelsScreen() {
             <TextInput
               accessibilityLabel="Model ID custom"
               value={customId}
+              editable={!saving}
               onChangeText={setCustomId}
               autoCapitalize="none"
               autoCorrect={false}
               placeholder="provider/model-exact"
               placeholderTextColor={colors.muted}
+              selectionColor={colors.primary}
+              cursorColor={colors.primary}
               style={{ minHeight: 48, color: colors.text, backgroundColor: colors.controlActive, borderColor: colors.border, borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, fontFamily: fonts.mono, fontSize: 13 }}
             />
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <SmallButton
-                  label="Cancel"
+                  label="Cancel" disabled={saving}
                   onPress={() => {
                     setAdding(false);
                     setCustomId('');
@@ -265,16 +289,16 @@ export default function ModelsScreen() {
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <SmallButton label="Register" tone="primary" disabled={customId.trim().length === 0} onPress={() => void addCustomModel()} />
+                <SmallButton label={saving ? 'Adding...' : 'Add model'} tone="primary" disabled={saving || customId.trim().length === 0} onPress={() => void addCustomModel()} />
               </View>
             </View>
           </View>
         )}
 
-        {catalog.failure?.kind === 'network' && models.length > 0 && (
+        {catalog.failure !== null && (
           <View style={cardStyle}>
             <Text style={{ color: colors.warning, fontFamily: fonts.monoMedium, fontSize: 10 }}>
-              OFFLINE CACHED MODE
+              {models.length > 0 ? 'Using saved models' : 'Could not load models'}
             </Text>
             <Text style={{ color: colors.warningText, fontFamily: fonts.mono, fontSize: 10, lineHeight: 14 }}>
               {catalog.failure.message}
@@ -289,24 +313,7 @@ export default function ModelsScreen() {
             </Text>
           </View>
         )}
-      </View>
-
-      <FlatList
-        style={{ flex: 1 }}
-        data={visibleModels}
-        keyExtractor={(model) => model.id}
-        initialNumToRender={4}
-        maxToRenderPerBatch={4}
-        windowSize={5}
-        contentContainerStyle={{ gap: 12, paddingHorizontal: 16 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={catalog.refreshing}
-            onRefresh={() => void catalog.refresh()}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
+      </View>}
         ListEmptyComponent={
           <EmptyCatalog
             filtered={filter.trim().length > 0}
@@ -350,8 +357,8 @@ function RefreshButton({
       onPress={onPress}
       hitSlop={compact ? 4 : undefined}
       style={({ pressed }) => ({
-        height: compact ? 36 : 44,
-        minWidth: compact ? 36 : 110,
+        minHeight: interaction.compactTouchTarget,
+        minWidth: compact ? interaction.compactTouchTarget : 110,
         flexDirection: 'row',
         gap: compact ? 0 : 8,
         alignItems: 'center',
@@ -421,7 +428,6 @@ export const ModelRow = memo(function ModelRow({
                 style={{ flexShrink: 1, color: colors.text, fontFamily: fonts.heading, fontSize: 18 }}>
                 {pickerName}
               </Text>
-              <Badge label={customDisplayName ? 'DISPLAY NAME' : 'MODEL ID'} tone="neutral" />
               {!model.enabled && <Badge label="disabled" tone="warning" />}
             </View>
             {customDisplayName && (
@@ -497,7 +503,7 @@ function MetricCell({
         {label.toUpperCase()}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-        <Text numberOfLines={1} style={{ flex: 1, color: value === 'Unknown' ? colors.muted : colors.text, fontFamily: fonts.monoMedium, fontSize: 11 }}>
+        <Text style={{ flex: 1, color: value === 'Unknown' ? colors.muted : colors.text, fontFamily: fonts.monoMedium, fontSize: typography.body }}>
           {value}
         </Text>
         {source !== null && <Badge label={source.label} tone={source.tone} />}
@@ -544,7 +550,7 @@ function SmallButton({
 function Badge({ label, tone }: { label: string; tone: BadgeTone }) {
   const palette = {
     neutral: { backgroundColor: colors.surfaceHigh, color: colors.muted },
-    accent: { backgroundColor: colors.primary, color: colors.primaryText },
+    accent: { backgroundColor: colors.surfaceHigh, color: colors.secondary },
     warning: { backgroundColor: colors.warningBackground, color: colors.warningText },
   }[tone];
   return (
@@ -585,7 +591,7 @@ function EmptyCatalog({
         ? 'All models excluded'
         : 'Zero models discovered';
   const body = filtered
-    ? 'No model identifier matches this filter.'
+    ? 'No model name or ID matches this search.'
     : noEndpoint
       ? 'Connect an endpoint first, then discover its model catalog.'
       : allExcluded
