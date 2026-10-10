@@ -1,4 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ChatScreen from '../../../src/features/chat/chat-screen';
 import { useChat, type ChatState } from '../../../src/features/chat/use-chat';
@@ -20,6 +22,7 @@ jest.mock('../../../src/services/persistence/endpoint-store', () => ({
   endpointStore: { loadAll: async () => [] }, subscribeEndpointChanges: () => () => {},
 }));
 jest.mock('../../../src/services/persistence/settings-store', () => ({ settingsStore: { saveActiveModelId: jest.fn() } }));
+jest.mock('react-native-safe-area-context', () => jest.requireActual('react-native-safe-area-context/jest/mock').default);
 
 function setupState(send: ChatState['send']) {
   jest.mocked(useActiveEndpoint).mockReturnValue({ status: 'ready', profile: createEndpointProfile({ id: 'ep_1', name: 'Example', baseUrl: 'https://example.test/v1' }) });
@@ -33,6 +36,32 @@ function setupState(send: ChatState['send']) {
 }
 
 describe('Chat composer', () => {
+  it.each([0, 24, 48])('keeps the composer above the Android keyboard with a %s dp top inset', async (top) => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    jest.mocked(useSafeAreaInsets).mockReturnValue({ top, bottom: 24, left: 0, right: 0 });
+    setupState(jest.fn());
+    const view = await render(<ChatScreen />);
+    try {
+      await fireEvent(view.getByTestId('chat-keyboard-layout'), 'layout', {
+        nativeEvent: { layout: { x: 0, y: 0, width: 360, height: 800 - top - 24 } },
+        persist: jest.fn(),
+      });
+      await act(async () => {
+        DeviceEventEmitter.emit('keyboardDidShow', {
+          endCoordinates: { screenX: 0, screenY: 500, width: 360, height: 300 },
+          duration: 0, easing: 'keyboard',
+        });
+      });
+      await waitFor(() => expect(view.getByTestId('chat-keyboard-layout')).toHaveStyle({ height: 500 - top }));
+      await act(async () => { DeviceEventEmitter.emit('keyboardDidHide', {}); });
+      expect(view.getByTestId('chat-keyboard-layout')).toHaveStyle({ flex: 1 });
+    } finally {
+      await view.unmount();
+      jest.restoreAllMocks();
+      jest.mocked(useSafeAreaInsets).mockReturnValue({ top: 0, bottom: 0, left: 0, right: 0 });
+    }
+  });
+
   it('shows file failure details and recovery separately from endpoint errors', async () => {
     setupState(jest.fn());
     const state = useChat(null);

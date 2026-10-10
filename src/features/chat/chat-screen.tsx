@@ -20,7 +20,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ChatMessage } from '../../domain/conversation';
 import { MAX_ATTACHMENTS, type Attachment } from '../../domain/attachment';
@@ -93,6 +93,7 @@ const MARKDOWN_RULES: RenderRules = {
 };
 
 export default function ChatScreen() {
+  const insets = useSafeAreaInsets();
   const { status, profile } = useActiveEndpoint();
   const params = useLocalSearchParams<{ conversationId?: string; fresh?: string }>();
   const startFresh = params.conversationId === 'new';
@@ -254,7 +255,9 @@ export default function ChatScreen() {
         onHistory={() => router.push('/history')} onSettings={() => router.push('/settings')}>
       {(trigger) => (
       <KeyboardAvoidingView
+        testID="chat-keyboard-layout"
         style={{ flex: 1 }}
+        keyboardVerticalOffset={insets.top}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View
           style={{
