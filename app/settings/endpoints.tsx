@@ -5,7 +5,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createEndpointProfile, type EndpointProfile } from '../../src/domain/endpoint';
-import { deleteStagedImages } from '../../src/services/attachments/images';
+import { deleteStagedAttachments } from '../../src/services/attachments/files';
 import { credentialStore } from '../../src/services/credentials/store';
 import { deleteCatalogForEndpoint } from '../../src/services/persistence/catalog-files';
 import { pickEndpointProfiles, shareEndpointProfiles } from '../../src/services/persistence/catalog-transfer';
@@ -93,7 +93,7 @@ export default function EndpointProfilesScreen() {
       // dari profile list, walau sebagian cleanup sebelumnya sudah berhasil.
       await deleteCatalogForEndpoint(profile.id);
       if (deleteConversations) {
-        await conversationRepository.removeByEndpoint(profile.id, deleteStagedImages);
+        await conversationRepository.removeByEndpoint(profile.id, deleteStagedAttachments);
       }
       if (profile.credentialRef !== null) await credentialStore.remove(profile.credentialRef);
       await endpointStore.remove(profile.id);

@@ -119,7 +119,7 @@ function estimateInputTokens(
   const serialized = JSON.stringify({ instructions, input });
   const bytes = new TextEncoder().encode(serialized).byteLength;
   const itemCount = input.length + (instructions.length > 0 ? 1 : 0);
-  const imageDataUrlBytes = input.reduce(
+  const attachmentDataUrlBytes = input.reduce(
     (total, message) =>
       total + (message.attachments ?? []).reduce(
         (attachmentTotal, attachment) => attachmentTotal + Math.ceil((attachment.byteSize * 4) / 3),
@@ -127,7 +127,7 @@ function estimateInputTokens(
       ),
     0,
   );
-  return Math.ceil((bytes + imageDataUrlBytes) / CONTEXT_TOKEN_BYTES_DIVISOR)
+  return Math.ceil((bytes + attachmentDataUrlBytes) / CONTEXT_TOKEN_BYTES_DIVISOR)
     + itemCount * CONTEXT_ITEM_OVERHEAD_TOKENS;
 }
 

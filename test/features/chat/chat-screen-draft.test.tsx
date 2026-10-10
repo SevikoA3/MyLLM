@@ -26,13 +26,35 @@ function setupState(send: ChatState['send']) {
   jest.mocked(useChat).mockReturnValue({
     messages: [], metrics: [], toolActivities: {}, attachments: [], activeModelId: 'example/model', conversationModelId: null,
     readOnly: false, pending: false, compacting: false, loadingModel: false, loadingConversation: false,
-    reasoningOptions: [], contextBudget: null, error: null, canRetry: false, canAttachImages: false,
+    reasoningOptions: [], contextBudget: null, error: null, canRetry: false, attachmentMimeTypes: [], pickingAttachment: false,
     reloadModel: jest.fn(), updateContext: jest.fn(), send,
   } as unknown as ChatState);
   jest.mocked(useModelCatalog).mockReturnValue({ runtime: null, loading: false, reload: jest.fn() } as unknown as ReturnType<typeof useModelCatalog>);
 }
 
 describe('Chat composer', () => {
+  it('opens Files and removes a selected document through the composer controls', async () => {
+    setupState(jest.fn());
+    const state = useChat(null);
+    const addAttachment = jest.fn();
+    const removeAttachment = jest.fn();
+    jest.mocked(useChat).mockReturnValue({ ...state, attachmentMimeTypes: ['application/pdf'], addAttachment, removeAttachment, attachments: [{ id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///notes.pdf' }] });
+    const view = await render(<ChatScreen />);
+    expect(view.getByText('notes.pdf')).toBeTruthy();
+    await fireEvent.press(view.getByLabelText('Attach file'));
+    expect(addAttachment).toHaveBeenCalledTimes(1);
+    await fireEvent.press(view.getByLabelText('Remove notes.pdf'));
+    expect(removeAttachment).toHaveBeenCalledWith('file_1');
+  });
+
+  it.each(['pending', 'compacting', 'pickingAttachment'] as const)('disables file selection while %s', async (busyState) => {
+    setupState(jest.fn());
+    const state = useChat(null);
+    jest.mocked(useChat).mockReturnValue({ ...state, attachmentMimeTypes: ['application/pdf'], [busyState]: true });
+    const view = await render(<ChatScreen />);
+    expect(view.getByLabelText('Attach file')).toBeDisabled();
+  });
+
   it('offers loading recovery and a new chat after history fails to load', async () => {
     setupState(jest.fn());
     const state = useChat(null);

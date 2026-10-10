@@ -14,12 +14,12 @@ import {
 import type { EndpointProfile } from '../../domain/endpoint';
 import { createAppError, type AppError } from '../../domain/error';
 import type { ModelRequestSnapshot } from '../../domain/model-config';
-import { IMAGE_ATTACHMENT_ERROR_COPY, type ImageAttachment } from '../../domain/attachment';
+import { ATTACHMENT_ERROR_COPY, attachmentMimeTypes, validateAttachmentSet, type Attachment } from '../../domain/attachment';
 import {
-  deleteStagedImages,
-  deleteUnreferencedStagedImages,
-  stageImageAttachment,
-} from '../../services/attachments/images';
+  deleteStagedAttachments,
+  deleteUnreferencedStagedAttachments,
+  stageAttachment,
+} from '../../services/attachments/files';
 import { buildSystemPrompt } from '../../domain/system-prompt';
 import { DEFAULT_TOOL_POLICY, type ToolActivity } from '../../domain/tool';
 import type { TurnMetrics } from '../../domain/usage';
@@ -68,17 +68,18 @@ export type ChatState = {
   activeModelId: string | null;
   reasoningEffort: string | null;
   reasoningOptions: string[];
-  attachments: ImageAttachment[];
-  canAttachImages: boolean;
+  attachments: Attachment[];
+  attachmentMimeTypes: Attachment['mimeType'][];
+  pickingAttachment: boolean;
   loadingModel: boolean;
   loadingConversation: boolean;
   pending: boolean;
   toolActivities: Record<string, ToolActivity[]>;
   error: AppError | null;
   canRetry: boolean;
-  send: (prompt: string, attachments?: ImageAttachment[], onAccepted?: () => void) => Promise<boolean>;
-  addImage: () => Promise<void>;
-  removeImage: (id: string) => void;
+  send: (prompt: string, attachments?: Attachment[], onAccepted?: () => void) => Promise<boolean>;
+  addAttachment: () => Promise<void>;
+  removeAttachment: (id: string) => void;
   stop: () => void;
   resolveToolApproval: (approved: boolean) => void;
   retry: () => Promise<boolean>;
@@ -112,7 +113,11 @@ export function useChat(
   const [modelConfig, setModelConfig] = useState<ModelRequestSnapshot | null>(null);
   const [reasoningEffort, setReasoningEffortState] = useState<string | null>(null);
   const [reasoningOptions, setReasoningOptions] = useState<string[]>([]);
-  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [pickingAttachment, setPickingAttachment] = useState(false);
+  const attachmentPickingRef = useRef(false);
+  const attachmentSelectionVersion = useRef(0);
+  useEffect(() => { attachmentSelectionVersion.current += 1; }, [profile?.id, activeModelId, conversationId]);
   const [loadingModel, setLoadingModel] = useState(profile !== null);
   const [loadingConversation, setLoadingConversation] = useState(
     !startFresh && (profile !== null || requestedConversationId !== null),
@@ -355,8 +360,8 @@ export function useChat(
   useEffect(() => {
     if (profile === null) return;
     let active = true;
-    void conversationRepository.loadImageAttachments().then((referenced) => {
-      if (active) deleteUnreferencedStagedImages(referenced);
+    void conversationRepository.loadAttachments().then((referenced) => {
+      if (active) deleteUnreferencedStagedAttachments(referenced);
     }).catch(() => undefined);
     return () => {
       active = false;
@@ -364,7 +369,7 @@ export function useChat(
   }, [profile]);
 
   const request = useCallback(
-    async (prompt: string, retry: RetryState | null, inputAttachments: ImageAttachment[] = [], onAccepted?: () => void): Promise<boolean> => {
+    async (prompt: string, retry: RetryState | null, inputAttachments: Attachment[] = [], onAccepted?: () => void): Promise<boolean> => {
       if (
         pendingRef.current ||
         compactingRef.current ||
@@ -402,11 +407,13 @@ export function useChat(
         }
         return false;
       }
-      if (inputAttachments.length > 0 && !supportsImageAttachments(profile, requestConfig)) {
+      const allowedTypes = attachmentMimeTypes(profile.protocol, requestConfig.inputModalities);
+      const validAttachments = validateAttachmentSet(inputAttachments);
+      if (inputAttachments.some((attachment) => !allowedTypes.includes(attachment.mimeType)) || !validAttachments.ok) {
         pendingRef.current = false;
         if (alive.current) {
           setPending(false);
-          setError(modelConfigError('Image attachments are not supported by this model and protocol.'));
+          setError(modelConfigError(validAttachments.ok ? 'An attachment is not supported by this model and protocol.' : ATTACHMENT_ERROR_COPY[validAttachments.reason]));
         }
         return false;
       }
@@ -447,6 +454,14 @@ export function useChat(
       try {
         if (conversationId !== null) {
           preflightHistory = await conversationRepository.loadRequestHistory(conversationId);
+        }
+        if (preflightHistory.some((message) => message.attachments?.some((attachment) => !allowedTypes.includes(attachment.mimeType)))) {
+          pendingRef.current = false;
+          if (alive.current) {
+            setPending(false);
+            setError(modelConfigError('This conversation contains attachments the selected model and protocol cannot read. Choose a compatible model or start a new chat.'));
+          }
+          return false;
         }
         let budget = contextBudgetFor(
           requestConfig,
@@ -947,7 +962,7 @@ export function useChat(
   );
 
   const send = useCallback(
-    async (prompt: string, inputAttachments: ImageAttachment[] = [], onAccepted?: () => void) => {
+    async (prompt: string, inputAttachments: Attachment[] = [], onAccepted?: () => void) => {
       const trimmed = prompt.trim();
       if (trimmed.length === 0 && inputAttachments.length === 0) return false;
       const sent = await request(trimmed, null, inputAttachments, onAccepted);
@@ -1001,6 +1016,7 @@ export function useChat(
       return;
     }
     conversationLoadFailed.current = false;
+    attachmentSelectionVersion.current += 1;
     setConversationId(null);
     setConversationEndpointId(null);
     setConversationModelId(null);
@@ -1016,12 +1032,12 @@ export function useChat(
     setCompactionActive(false);
     setToolActivities({});
     setAttachments((current) => {
-      deleteStagedImages(current);
+      deleteStagedAttachments(current);
       return [];
     });
   }, []);
 
-  const canAttachImages = supportsImageAttachments(profile, modelConfig);
+  const allowedAttachmentMimeTypes = attachmentMimeTypes(profile?.protocol, modelConfig?.inputModalities ?? []);
 
   return {
     conversationId,
@@ -1040,7 +1056,8 @@ export function useChat(
     reasoningEffort,
     reasoningOptions,
     attachments,
-    canAttachImages,
+    attachmentMimeTypes: allowedAttachmentMimeTypes,
+    pickingAttachment,
     loadingModel: loadingModel || loadingConversation,
     loadingConversation,
     pending,
@@ -1048,22 +1065,36 @@ export function useChat(
     error,
     canRetry: !readOnly && retryState !== null && !pending,
     send,
-    addImage: async () => {
-      if (readOnly || !canAttachImages) {
-        setError(modelConfigError('Image attachments are not supported by this model and protocol.'));
+    addAttachment: async () => {
+      if (pendingRef.current || compactingRef.current || attachmentPickingRef.current || loadingModel || loadingConversation) return;
+      if (readOnly || allowedAttachmentMimeTypes.length === 0) {
+        setError(modelConfigError('Attachments are not supported by this model and protocol.'));
         return;
       }
-      const result = await stageImageAttachment(attachments);
-      if (result.kind === 'ready') {
-        setAttachments((current) => [...current, result.attachment]);
-      } else if (result.kind === 'rejected') {
-        setError(modelConfigError(IMAGE_ATTACHMENT_ERROR_COPY[result.reason]));
+      attachmentPickingRef.current = true;
+      setPickingAttachment(true);
+      const selectionVersion = attachmentSelectionVersion.current;
+      try {
+        const result = await stageAttachment(attachments, allowedAttachmentMimeTypes);
+        if (!alive.current || selectionVersion !== attachmentSelectionVersion.current || pendingRef.current || compactingRef.current) {
+          if (result.kind === 'ready') deleteStagedAttachments([result.attachment]);
+          return;
+        }
+        if (result.kind === 'ready') {
+          setAttachments((current) => [...current, result.attachment]);
+        } else if (result.kind === 'rejected') {
+          setError(modelConfigError(ATTACHMENT_ERROR_COPY[result.reason]));
+        }
+      } finally {
+        attachmentPickingRef.current = false;
+        if (alive.current) setPickingAttachment(false);
       }
     },
-    removeImage: (id) => {
+    removeAttachment: (id) => {
+      if (pendingRef.current || compactingRef.current) return;
       setAttachments((current) => {
         const removed = current.find((attachment) => attachment.id === id);
-        if (removed !== undefined) deleteStagedImages([removed]);
+        if (removed !== undefined) deleteStagedAttachments([removed]);
         return current.filter((attachment) => attachment.id !== id);
       });
     },
@@ -1087,7 +1118,7 @@ function contextBudgetFor(
   history: ConversationInputMessage[],
   prompt: string,
   providerInputTokens: number | null,
-  attachments: ImageAttachment[] = [],
+  attachments: Attachment[] = [],
 ): ContextBudgetResult {
   const input = prompt.length === 0 && attachments.length === 0
     ? history
@@ -1100,16 +1131,6 @@ function contextBudgetFor(
     effectiveMaxOutput: config.effectiveMaxOutput,
     providerInputTokens,
   });
-}
-
-function supportsImageAttachments(
-  profile: EndpointProfile | null,
-  config: ModelRequestSnapshot | null,
-): boolean {
-  return (
-    (profile?.protocol === 'responses' || profile?.protocol === 'auto') &&
-    config?.inputModalities?.includes('image') === true
-  );
 }
 
 function resultStatus(result: SendResponseResult): Exclude<TurnStatus, 'sending' | 'streaming'> {
@@ -1125,7 +1146,7 @@ function message(
   text: string,
   reasoningSummary: string | null,
   status: TurnStatus,
-  attachments: ImageAttachment[] = [],
+  attachments: Attachment[] = [],
 ): ChatMessage {
   return { id, role, text, reasoningSummary, status, attachments };
 }

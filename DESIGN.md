@@ -140,6 +140,7 @@ This motion separates two jobs: the fade establishes modal focus while the panel
 - Thinking, context, and tool approval controls stay in one horizontally scrollable row to preserve transcript space. History and New chat controls stretch to match the model picker height.
 - User and assistant messages use distinct surface roles and `radius.bubble`; live state is shown with text and emerald status.
 - The composer stays visually connected to the transcript and keeps attach and send controls at least 44 dp.
+- Attachments use the system Files picker. Images show thumbnails; documents show a file icon and filename. Removal sits over the top-right corner of the preview with a 44 dp touch target and a solid icon background so the action stays readable over photos.
 - Markdown prioritizes readable body text. Tables scroll when necessary. Code uses a recessed canvas, monospace text, and no simulated terminal decoration.
 - Thinking summaries are collapsed by default and use amber as a semantic reasoning marker.
 - Context, token use, TTFT, throughput, and cache data use compact monospace labels. Unknown values remain unknown rather than becoming zero.

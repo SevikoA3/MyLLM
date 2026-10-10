@@ -59,6 +59,28 @@ function profile(path, overrides = {}) {
   };
 }
 
+test('Chat Completions sends image and PDF content blocks without local metadata', () => {
+  const body = buildChatCompletionsBody(profile('/scenario/chat-echo'), {
+    ...input,
+    history: [{ role: 'user', content: 'Compare these.', attachments: [
+      { id: 'image_1', name: 'photo.png', mimeType: 'image/png', byteSize: 100, uri: 'file:///photo.png' },
+      { id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///notes.pdf' },
+    ] }],
+  }, new Map([['image_1', 'data:image/png;base64,AA=='], ['file_1', 'data:application/pdf;base64,AA==']]));
+  assert.deepEqual(body.messages.at(-1), { role: 'user', content: [
+    { type: 'text', text: 'Compare these.' },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } },
+    { type: 'file', file: { filename: 'notes.pdf', file_data: 'data:application/pdf;base64,AA==' } },
+  ] });
+});
+
+test('Chat Completions rejects non-PDF documents instead of silently dropping them', () => {
+  assert.throws(() => buildChatCompletionsBody(profile('/scenario/chat-echo'), {
+    ...input,
+    history: [{ role: 'user', content: '', attachments: [{ id: 'file_1', name: 'notes.txt', mimeType: 'text/plain', byteSize: 100, uri: 'file:///notes.txt' }] }],
+  }, new Map([['file_1', 'data:text/plain;base64,AA==']])), /PDF documents only/);
+});
+
 test('request Chat Completions memetakan system, history, cap, reasoning, dan cache', () => {
   const actual = buildChatCompletionsBody(
     profile('/scenario/chat-echo', {

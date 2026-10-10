@@ -19,7 +19,7 @@ import { createSseParser, type SseFrame } from '../../domain/sse';
 import { buildSystemPrompt } from '../../domain/system-prompt';
 import { readResponseText } from './body';
 import { recordDiagnostic } from '../diagnostics/diagnostic-ring';
-import { imageDataUrl } from '../attachments/image-input';
+import { attachmentDataUrls } from '../attachments/attachment-input';
 import type {
   PartialStreamResponse,
   ResponseStreamEvent,
@@ -83,7 +83,7 @@ export function responsesUrl(profile: EndpointProfile): string {
 export function buildResponsesBody(
   profile: EndpointProfile,
   input: SendResponseInput,
-  imageUrls: ReadonlyMap<string, string> = new Map(),
+  attachmentUrls: ReadonlyMap<string, string> = new Map(),
 ): Record<string, unknown> {
   const history = input.history ?? [{ role: 'user' as const, content: input.prompt }];
   const toolExchanges = input.toolExchanges ?? [];
@@ -91,7 +91,7 @@ export function buildResponsesBody(
     model: input.modelId,
     input: [
       { role: 'system', content: buildSystemPrompt(input.modelId) },
-      ...history.map((message) => responseMessage(message, imageUrls)),
+      ...history.map((message) => responseMessage(message, attachmentUrls)),
       ...toolExchanges.flatMap((exchange) => [
         ...exchange.calls.map((call) => ({
           type: 'function_call',
@@ -136,7 +136,7 @@ export function buildResponsesBody(
 
 function responseMessage(
   message: NonNullable<SendResponseInput['history']>[number],
-  imageUrls: ReadonlyMap<string, string>,
+  attachmentUrls: ReadonlyMap<string, string>,
 ): Record<string, unknown> {
   if (message.attachments === undefined || message.attachments.length === 0) {
     return { role: message.role, content: message.content };
@@ -144,9 +144,11 @@ function responseMessage(
   const content: Record<string, string>[] = [];
   if (message.content.length > 0) content.push({ type: 'input_text', text: message.content });
   for (const attachment of message.attachments) {
-    const imageUrl = imageUrls.get(attachment.id);
-    if (imageUrl === undefined) throw new Error('A staged image could not be prepared.');
-    content.push({ type: 'input_image', image_url: imageUrl });
+    const dataUrl = attachmentUrls.get(attachment.id);
+    if (dataUrl === undefined) throw new Error('A staged attachment could not be prepared.');
+    content.push(attachment.mimeType.startsWith('image/')
+      ? { type: 'input_image', image_url: dataUrl }
+      : { type: 'input_file', filename: attachment.name, file_data: dataUrl });
   }
   return { role: message.role, content };
 }
@@ -228,7 +230,7 @@ async function sendAttempt(
   }
 
   try {
-    const imageUrls = await responseImageUrls(input.history ?? [{ role: 'user', content: input.prompt }]);
+    const attachmentUrls = await attachmentDataUrls(input.history ?? []);
     const response = await expoFetch(url, {
       method: 'POST',
       redirect: 'manual',
@@ -238,7 +240,7 @@ async function sendAttempt(
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildResponsesBody(profile, input, imageUrls)),
+      body: JSON.stringify(buildResponsesBody(profile, input, attachmentUrls)),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -342,18 +344,6 @@ async function sendAttempt(
     clearTimeout(timeout);
     options.signal?.removeEventListener('abort', abort);
   }
-}
-
-async function responseImageUrls(
-  history: NonNullable<SendResponseInput['history']>,
-): Promise<Map<string, string>> {
-  const urls = new Map<string, string>();
-  for (const message of history) {
-    for (const attachment of message.attachments ?? []) {
-      if (!urls.has(attachment.id)) urls.set(attachment.id, await imageDataUrl(attachment));
-    }
-  }
-  return urls;
 }
 
 function processParsed(

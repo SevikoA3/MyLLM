@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ConversationCursor, ConversationSummary, TurnStatus } from '../../domain/conversation';
 import { conversationRepository } from '../../services/persistence/conversation-store';
 import { pickConversation, shareConversation } from '../../services/persistence/catalog-transfer';
-import { deleteStagedImages } from '../../services/attachments/images';
+import { deleteStagedAttachments } from '../../services/attachments/files';
 import { colors, fonts, interaction, radius, spacing, typography } from '../../ui/tokens';
 import { BottomSheet } from '../../ui/bottom-sheet';
 
@@ -193,7 +193,7 @@ export default function HistoryScreen() {
     setDeleting(true);
     setDeleteError(null);
     try {
-      await conversationRepository.remove(deleteTarget.id, deleteStagedImages);
+      await conversationRepository.remove(deleteTarget.id, deleteStagedAttachments);
       setDeleteTarget(null);
       await loadFirst();
     } catch {

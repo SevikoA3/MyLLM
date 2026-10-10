@@ -12,7 +12,7 @@ import { shareDiagnostics } from '../../src/services/diagnostics/diagnostic-tran
 import { clearAllData } from '../../src/services/persistence/clear-all';
 import { clearCatalogCache } from '../../src/services/persistence/catalog-files';
 import { clearTransferCache } from '../../src/services/persistence/catalog-transfer';
-import { clearStagedImages } from '../../src/services/attachments/images';
+import { clearStagedAttachments } from '../../src/services/attachments/files';
 import { conversationRepository } from '../../src/services/persistence/conversation-store';
 import { endpointStore } from '../../src/services/persistence/endpoint-store';
 import { webToolsCredentialId, webToolsStore } from '../../src/services/persistence/web-tools-store';
@@ -247,7 +247,7 @@ export default function SettingsScreen() {
         clearConversation: conversationRepository.clear,
         clearCatalog: clearCatalogCache,
         clearTransfers: clearTransferCache,
-        clearAttachments: clearStagedImages,
+        clearAttachments: clearStagedAttachments,
         clearDiagnostics: clearDiagnosticRing,
         clearWebTools: webToolsStore.clear,
       });

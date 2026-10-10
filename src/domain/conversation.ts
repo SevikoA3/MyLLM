@@ -1,4 +1,4 @@
-import type { ImageAttachment } from './attachment';
+import type { Attachment } from './attachment';
 
 export type ChatMessage = {
   id: string;
@@ -6,13 +6,13 @@ export type ChatMessage = {
   text: string;
   reasoningSummary: string | null;
   status: TurnStatus;
-  attachments: ImageAttachment[];
+  attachments: Attachment[];
 };
 
 export type ConversationInputMessage = {
   role: 'user' | 'assistant';
   content: string;
-  attachments?: ImageAttachment[];
+  attachments?: Attachment[];
 };
 
 export type TurnStatus =

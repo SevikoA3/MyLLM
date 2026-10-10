@@ -73,7 +73,18 @@ test('staged image survives a process restart and remains in request history', a
   assert.deepEqual(await restarted.loadRequestHistory(conversationId), [
     { role: 'user', content: '', attachments: [attachment] },
   ]);
-  assert.deepEqual(await restarted.loadImageAttachments(), [attachment]);
+  assert.deepEqual(await restarted.loadAttachments(), [attachment]);
+});
+
+test('a staged document survives restart and is removed with its conversation', async () => {
+  const state = setup();
+  const attachment = { id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///documents/attachments/file_1.pdf' };
+  const { conversationId } = await start(state.repository, 'turn_file', null, '', [attachment]);
+  const restarted = createConversationRepository(async () => state.database, () => 200);
+  assert.deepEqual(await restarted.loadRequestHistory(conversationId), [{ role: 'user', content: '', attachments: [attachment] }]);
+  const removed = [];
+  await restarted.remove(conversationId, (attachments) => removed.push(...attachments));
+  assert.deepEqual(removed, [attachment]);
 });
 
 test('delete conversation membersihkan turn, item, usage, dan timing lewat cascade', async () => {

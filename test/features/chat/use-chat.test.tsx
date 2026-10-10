@@ -7,11 +7,12 @@ import type {
   SendResponseResult,
 } from '../../../src/services/transport/contract';
 import { useChat } from '../../../src/features/chat/use-chat';
+import type { stageAttachment } from '../../../src/services/attachments/files';
 
 const mockCredentialRead = jest.fn(async () => 'sk-test');
 const mockLoadModel = jest.fn(async () => 'model-exact');
 let mockReasoningEffort = 'auto';
-let mockInputModalities: ('text' | 'image')[] = ['text'];
+let mockInputModalities: ('text' | 'image' | 'file')[] = ['text'];
 const mockLoadModelConfig = jest.fn(async () => ({
   modelId: 'model-exact',
   contextWindow: 128_000,
@@ -46,7 +47,7 @@ const mockLoadRequestHistory = jest.fn<Promise<ConversationInputMessage[]>, [unk
 const mockLoadConversation = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
 const mockLoadLatest = jest.fn<Promise<unknown>, [unknown]>(async (_id) => null);
 const mockLoadImageAttachments = jest.fn(async () => []);
-const mockStageImage = jest.fn(async (_attachments: unknown) => ({ kind: 'cancelled' as const }));
+const mockStageImage = jest.fn<ReturnType<typeof stageAttachment>, Parameters<typeof stageAttachment>>(async () => ({ kind: 'cancelled' }));
 const mockDeleteStagedImages = jest.fn();
 const mockDeleteUnreferencedStagedImages = jest.fn();
 const mockLoadWebTools = jest.fn(async () => ({ enabled: false, provider: 'gateway', baseUrl: null, engines: 'bing' }));
@@ -85,14 +86,14 @@ jest.mock('../../../src/services/persistence/conversation-store', () => ({
     loadTurnMetrics: (id: unknown) => mockLoadTurnMetrics(id),
     loadConversation: (id: unknown) => mockLoadConversation(id),
     loadLatest: (id: unknown) => mockLoadLatest(id),
-    loadImageAttachments: () => mockLoadImageAttachments(),
+    loadAttachments: () => mockLoadImageAttachments(),
   },
 }));
 
-jest.mock('../../../src/services/attachments/images', () => ({
-  stageImageAttachment: (attachments: unknown) => mockStageImage(attachments),
-  deleteStagedImages: (attachments: unknown) => mockDeleteStagedImages(attachments),
-  deleteUnreferencedStagedImages: (attachments: unknown) => mockDeleteUnreferencedStagedImages(attachments),
+jest.mock('../../../src/services/attachments/files', () => ({
+  stageAttachment: (...args: Parameters<typeof stageAttachment>) => mockStageImage(...args),
+  deleteStagedAttachments: (attachments: unknown) => mockDeleteStagedImages(attachments),
+  deleteUnreferencedStagedAttachments: (attachments: unknown) => mockDeleteUnreferencedStagedImages(attachments),
 }));
 
 jest.mock('../../../src/services/persistence/web-tools-store', () => ({
@@ -183,7 +184,7 @@ describe('useChat', () => {
     mockLoadConversation.mockClear();
     mockLoadLatest.mockClear();
     mockLoadImageAttachments.mockClear();
-    mockStageImage.mockClear();
+    mockStageImage.mockReset().mockResolvedValue({ kind: 'cancelled' });
     mockDeleteStagedImages.mockClear();
     mockDeleteUnreferencedStagedImages.mockClear();
     mockLoadWebTools.mockClear();
@@ -433,13 +434,65 @@ describe('useChat', () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it('only enables image attachments for an explicit image modality on a Responses-capable protocol', async () => {
+  it('sends a document-only message when the model declares file input', async () => {
+    mockInputModalities = ['text', 'file'];
+    mockSend.mockResolvedValueOnce(success('response_file', 'Summary'));
     const { result } = await setup();
-    expect(result.current.canAttachImages).toBe(false);
+    const attachment = { id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///notes.pdf' } as const;
+    let sent = false;
+    await act(async () => { sent = await result.current.send('', [attachment]); });
+    expect(sent).toBe(true);
+    expect(result.current.messages[0].attachments).toEqual([attachment]);
+  });
+
+  it('only offers PDF documents through Chat Completions', async () => {
+    mockInputModalities = ['text', 'file'];
+    const chatProfile = { ...profile, protocol: 'chat-completions' as const };
+    const hook = await renderHook(() => useChat(chatProfile));
+    await act(async () => hook.result.current.reloadModel());
+    expect(hook.result.current.attachmentMimeTypes).toEqual(['application/pdf']);
+    let sent = true;
+    await act(async () => { sent = await hook.result.current.send('Read this', [{ id: 'file_1', name: 'notes.txt', mimeType: 'text/plain', byteSize: 100, uri: 'file:///notes.txt' }]); });
+    expect(sent).toBe(false);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('discards a file selected after starting a new chat', async () => {
+    mockInputModalities = ['text', 'file'];
+    let finishSelection: ((value: Awaited<ReturnType<typeof stageAttachment>>) => void) | undefined;
+    mockStageImage.mockImplementationOnce(() => new Promise((resolve) => { finishSelection = resolve; }));
+    const { result } = await setup();
+    let selection: Promise<void> | undefined;
+    await act(() => { selection = result.current.addAttachment(); });
+    expect(result.current.pickingAttachment).toBe(true);
+    await act(() => { result.current.newChat(); });
+    const attachment = { id: 'file_late', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///notes.pdf' } as const;
+    await act(async () => { finishSelection?.({ kind: 'ready', attachment }); await selection; });
+    expect(result.current.attachments).toEqual([]);
+    expect(result.current.pickingAttachment).toBe(false);
+    expect(mockDeleteStagedImages).toHaveBeenCalledWith([attachment]);
+  });
+
+  it('rejects replaying document history with a text-only model', async () => {
+    const { result } = await setup();
+    mockSend.mockResolvedValueOnce(success('response_text', 'Answer'));
+    await act(async () => { await result.current.send('Initial'); });
+    mockSend.mockClear();
+    mockLoadRequestHistory.mockResolvedValueOnce([{ role: 'user', content: '', attachments: [{ id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///notes.pdf' }] }]);
+    let sent = true;
+    await act(async () => { sent = await result.current.send('Continue'); });
+    expect(sent).toBe(false);
+    expect(result.current.error?.message).toMatch(/compatible model/);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('only enables image attachments when the model declares image input', async () => {
+    const { result } = await setup();
+    expect(result.current.attachmentMimeTypes).not.toContain('image/png');
 
     mockInputModalities = ['text', 'image'];
     await act(async () => result.current.reloadModel());
-    expect(result.current.canAttachImages).toBe(true);
+    expect(result.current.attachmentMimeTypes).toContain('image/png');
 
     const autoProfile = createEndpointProfile({
       id: 'ep_auto',
@@ -449,7 +502,7 @@ describe('useChat', () => {
     });
     const autoHook = await renderHook(() => useChat(autoProfile));
     await act(async () => autoHook.result.current.reloadModel());
-    expect(autoHook.result.current.canAttachImages).toBe(true);
+    expect(autoHook.result.current.attachmentMimeTypes).toContain('image/png');
 
     const chatProfile = createEndpointProfile({
       id: 'ep_chat',
@@ -459,7 +512,7 @@ describe('useChat', () => {
     });
     const chatHook = await renderHook(() => useChat(chatProfile));
     await act(async () => chatHook.result.current.reloadModel());
-    expect(chatHook.result.current.canAttachImages).toBe(false);
+    expect(chatHook.result.current.attachmentMimeTypes).toContain('image/png');
   });
 
   it('ignores a stale model load after the endpoint changes', async () => {

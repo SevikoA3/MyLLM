@@ -20,7 +20,7 @@ jest.mock('../../../src/services/persistence/conversation-store', () => ({
 jest.mock('../../../src/services/persistence/catalog-transfer', () => ({
   pickConversation: jest.fn(), shareConversation: jest.fn(),
 }));
-jest.mock('../../../src/services/attachments/images', () => ({ deleteStagedImages: jest.fn() }));
+jest.mock('../../../src/services/attachments/files', () => ({ deleteStagedAttachments: jest.fn() }));
 
 function conversation(index: number, overrides: Partial<ConversationSummary> = {}): ConversationSummary {
   return {

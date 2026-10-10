@@ -68,8 +68,8 @@ Gunakan default berikut sampai pemilik proyek memutuskan lain:
 | Active endpoint | Satu pada MVP |
 | Protocol MVP | Responses API |
 | Chat Completions | Ditambahkan setelah MVP core stabil |
-| Content | Text, plus gated image input for declared Responses-capable models |
-| Image attachment | PNG, JPEG, WebP; max 8 MB per image, 12 MB per message, four images; only declared Responses image modality |
+| Content | Text, plus images and documents gated by the selected model's declared input modalities |
+| Attachments | System Files picker; 10 attachments, 10 MB per file, 80 MB combined; Responses images/documents, Chat Completions images/PDF; Auto uses Responses |
 | State remote | Stateless replay dari history lokal; `previous_response_id` hanya jika endpoint mendokumentasikan dukungan |
 | Local history | Selalu authoritative untuk UI |
 | Database encryption | Tidak memakai SQLCipher pada MVP |
@@ -1043,14 +1043,14 @@ Mengirim attachment hanya ke model dan protocol yang menyatakan dukungan.
 
 ### Steps
 
-- [x] Allowlist PNG, JPEG, WebP; max 8 MB per image, 12 MB per message, empat image.
+- [x] Allow PNG, JPEG, WebP and supported document MIME types; 10 attachments, 10 MB per file, 80 MB combined, as requested on 11 October 2026.
 - [x] Gunakan content URI dan copy file terpilih ke app-private staging.
 - [x] File di atas batas ditolak sebelum dibaca ke JS; data URL bounded dibuat sekali pada batas send Responses.
 - [x] Attachment composer hanya aktif jika modality model supported.
 - [x] Unknown modality membutuhkan explicit user override lewat metadata model.
-- [x] Buat provider mapping image `input_image` pada Responses.
+- [x] Map Responses images to `input_image` and documents to `input_file`; map Chat Completions images to `image_url` and PDFs to `file`.
 - [x] Jangan mengasumsikan upload endpoint universal.
-- [x] Generic file upload incompatible ditandai unsupported dengan tidak menyediakan composer atau adapter file.
+- [x] Gate the Files picker by declared modalities and protocol. Standalone upload endpoints, video, and unsupported MIME types remain unavailable.
 - [x] Tidak ada endpoint upload, jadi tidak ada progress upload semu.
 - [x] Hapus staging file saat new chat, cleanup startup, clear-all, dan delete conversation.
 - [x] Delete conversation menghapus attachment yang tidak direferensikan.
@@ -1070,6 +1070,8 @@ Mengirim attachment hanya ke model dan protocol yang menyatakan dukungan.
 Satu image flow yang didukung endpoint berhasil tanpa memory spike dan model text-only tidak menampilkan attachment control.
 
 Status: Implementasi dan test otomatis selesai 20 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, `npm run test:conversations`, dan `npm run test:responses` lulus. Verifikasi Android endpoint nyata dan memory masih menunggu pemilik proyek.
+
+Maintenance on 11 October 2026: the system Files picker, document previews, overlay removal, declared file capabilities, and Chat Completions image/PDF mapping pass TypeScript, direct ESLint, 402 Jest tests, and 89 sequential Node contracts. The owner selected limits of 10 attachments, 10 MB per file, and 80 MB combined. Native picker, screen reader, and memory verification remain owner-run. See [the attachment audit](anti-slop/audit-002-2026-10-11.md). This maintenance does not advance the product phase.
 
 ## 23. Phase 16: Background generation
 

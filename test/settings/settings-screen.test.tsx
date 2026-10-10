@@ -31,7 +31,7 @@ jest.mock('../../src/services/diagnostics/diagnostic-ring', () => ({ clearDiagno
 jest.mock('../../src/services/diagnostics/diagnostic-transfer', () => ({ shareDiagnostics: jest.fn() }));
 jest.mock('../../src/services/persistence/catalog-files', () => ({ clearCatalogCache: jest.fn() }));
 jest.mock('../../src/services/persistence/catalog-transfer', () => ({ clearTransferCache: jest.fn() }));
-jest.mock('../../src/services/attachments/images', () => ({ clearStagedImages: jest.fn() }));
+jest.mock('../../src/services/attachments/files', () => ({ clearStagedAttachments: jest.fn() }));
 jest.mock('../../src/services/persistence/conversation-store', () => ({ conversationRepository: { clear: jest.fn() } }));
 jest.mock('../../src/services/tools/gateway', () => ({ testWebGateway: jest.fn() }));
 

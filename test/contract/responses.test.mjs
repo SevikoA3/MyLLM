@@ -103,6 +103,19 @@ test('image history uses the documented Responses input_image shape', () => {
   });
 });
 
+test('document history uses Responses input_file with a filename and data URL', () => {
+  const body = buildResponsesBody(profile, {
+    ...input,
+    history: [{ role: 'user', content: '', attachments: [{
+      id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///private/notes.pdf',
+    }] }],
+  }, new Map([['file_1', 'data:application/pdf;base64,AA==']]));
+  assert.deepEqual(body.input.at(-1), {
+    role: 'user',
+    content: [{ type: 'input_file', filename: 'notes.pdf', file_data: 'data:application/pdf;base64,AA==' }],
+  });
+});
+
 test('tool definition dan result memakai bentuk Responses', () => {
   const body = buildResponsesBody(profile, {
     ...input,

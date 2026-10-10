@@ -18,9 +18,9 @@ import {
 } from '../../domain/conversation-export';
 import { redactText } from '../../domain/error';
 import {
-  orphanedImageAttachments,
-  parseImageAttachments,
-  type ImageAttachment,
+  orphanedAttachments,
+  parseAttachments,
+  type Attachment,
 } from '../../domain/attachment';
 import {
   buildCompactedContext,
@@ -48,7 +48,7 @@ type StartTurnInput = {
   userItemId: string;
   assistantItemId: string;
   prompt: string;
-  attachments: ImageAttachment[];
+  attachments: Attachment[];
   endpointId: string;
   modelId: string;
   previousResponseId: string | null;
@@ -670,7 +670,7 @@ export function createConversationRepository(
     );
   }
 
-  async function loadImageAttachments(): Promise<ImageAttachment[]> {
+  async function loadAttachments(): Promise<Attachment[]> {
     await initialize();
     const rows = await (await database()).getAllAsync<{ content_json: string }>(
       "SELECT content_json FROM items WHERE role = 'user'",
@@ -1095,11 +1095,11 @@ export function createConversationRepository(
 
   async function removeByEndpoint(
     endpointId: string,
-    removeFiles: (attachments: ImageAttachment[]) => void = () => undefined,
+    removeFiles: (attachments: Attachment[]) => void = () => undefined,
   ): Promise<void> {
     await initialize();
-    let deleted: ImageAttachment[] = [];
-    let retained: ImageAttachment[] = [];
+    let deleted: Attachment[] = [];
+    let retained: Attachment[] = [];
     await write(async (transaction) => {
       const deletedRows = await transaction.getAllAsync<{ content_json: string }>(
         `SELECT i.content_json FROM items i JOIN turns t ON t.id = i.turn_id
@@ -1114,7 +1114,7 @@ export function createConversationRepository(
       );
       retained = retainedRows.flatMap((row) => parseContent(row.content_json).attachments);
     });
-    removeFiles(orphanedImageAttachments(deleted, retained));
+    removeFiles(orphanedAttachments(deleted, retained));
   }
 
   async function list(
@@ -1160,11 +1160,11 @@ export function createConversationRepository(
 
   async function remove(
     id: string,
-    removeFiles: (attachments: ImageAttachment[]) => void = () => undefined,
+    removeFiles: (attachments: Attachment[]) => void = () => undefined,
   ): Promise<void> {
     await initialize();
-    let deleted: ImageAttachment[] = [];
-    let retained: ImageAttachment[] = [];
+    let deleted: Attachment[] = [];
+    let retained: Attachment[] = [];
     await write(async (transaction) => {
       const deletedRows = await transaction.getAllAsync<{ content_json: string }>(
         "SELECT i.content_json FROM items i JOIN turns t ON t.id = i.turn_id WHERE t.conversation_id = ? AND i.role = 'user'",
@@ -1178,7 +1178,7 @@ export function createConversationRepository(
       retained = retainedRows.flatMap((row) => parseContent(row.content_json).attachments);
     });
     removeFiles(
-      orphanedImageAttachments(deleted, retained),
+      orphanedAttachments(deleted, retained),
     );
   }
 
@@ -1194,7 +1194,7 @@ export function createConversationRepository(
     loadConversation,
     loadLatest,
     loadRequestHistory,
-    loadImageAttachments,
+    loadAttachments,
     loadCompactionSource,
     setAutoCompact,
     beginCompaction,
@@ -1241,7 +1241,7 @@ function parseActiveSummary(row: CompactionRow | null): CompactionSummary | null
 function contentJson(
   text: string,
   reasoningSummary: string | null,
-  attachments: ImageAttachment[] = [],
+  attachments: Attachment[] = [],
 ): string {
   return JSON.stringify({ text, reasoningSummary, attachments });
 }
@@ -1249,7 +1249,7 @@ function contentJson(
 function parseContent(value: string | null): {
   text: string;
   reasoningSummary: string | null;
-  attachments: ImageAttachment[];
+  attachments: Attachment[];
 } {
   if (value === null) {
     return { text: '', reasoningSummary: null, attachments: [] };
@@ -1262,7 +1262,7 @@ function parseContent(value: string | null): {
         text: typeof record.text === 'string' ? record.text : '',
         reasoningSummary:
           typeof record.reasoningSummary === 'string' ? record.reasoningSummary : null,
-        attachments: parseImageAttachments(record.attachments),
+        attachments: parseAttachments(record.attachments),
       };
     }
   } catch {

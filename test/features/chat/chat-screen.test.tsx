@@ -63,6 +63,12 @@ describe('Chat selectors', () => {
 });
 
 describe('MessageBubble', () => {
+  it('shows a named document instead of trying to display it as an image', async () => {
+    const view = await render(<MessageBubble message={{ id: 'u_file', role: 'user', text: '', status: 'completed', reasoningSummary: null, attachments: [{ id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///notes.pdf' }] }} />);
+    expect(view.getByText('notes.pdf')).toBeTruthy();
+    expect(view.queryByLabelText('Attached image, notes.pdf')).toBeNull();
+  });
+
   it('contains wide tables in a horizontal scroll region', async () => {
     const view = await render(<MessageBubble message={{ id: 'a1', role: 'assistant', text: '| Model | Context | Output |\n| --- | --- | --- |\n| example/model | 1000000 | 128000 |', status: 'completed', reasoningSummary: null, attachments: [] }} />);
     expect(view.getByLabelText('Scrollable response table').props.horizontal).toBe(true);

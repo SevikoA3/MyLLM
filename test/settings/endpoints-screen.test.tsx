@@ -20,7 +20,7 @@ jest.mock('../../src/services/persistence/conversation-store', () => ({
 }));
 jest.mock('../../src/services/persistence/catalog-files', () => ({ deleteCatalogForEndpoint: jest.fn() }));
 jest.mock('../../src/services/credentials/store', () => ({ credentialStore: { remove: jest.fn() } }));
-jest.mock('../../src/services/attachments/images', () => ({ deleteStagedImages: jest.fn() }));
+jest.mock('../../src/services/attachments/files', () => ({ deleteStagedAttachments: jest.fn() }));
 
 const primary = createEndpointProfile({ id: 'primary', name: 'Primary', baseUrl: 'https://primary.example/v1' });
 const imported = createEndpointProfile({ id: 'imported', name: 'Imported', baseUrl: 'https://imported.example/v1', credentialRef: null });

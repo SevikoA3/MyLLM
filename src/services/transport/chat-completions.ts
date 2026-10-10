@@ -18,6 +18,7 @@ import {
 import { createSseParser, type SseFrame } from '../../domain/sse';
 import { buildSystemPrompt } from '../../domain/system-prompt';
 import { recordDiagnostic } from '../diagnostics/diagnostic-ring';
+import { attachmentDataUrls } from '../attachments/attachment-input';
 import { readResponseText } from './body';
 import type {
   PartialStreamResponse,
@@ -70,6 +71,7 @@ export function chatCompletionsUrl(profile: EndpointProfile): string {
 export function buildChatCompletionsBody(
   profile: EndpointProfile,
   input: SendResponseInput,
+  attachmentUrls: ReadonlyMap<string, string> = new Map(),
 ): Record<string, unknown> {
   const history = input.history ?? [{ role: 'user' as const, content: input.prompt }];
   const toolExchanges = input.toolExchanges ?? [];
@@ -77,7 +79,7 @@ export function buildChatCompletionsBody(
     model: input.modelId,
     messages: [
       { role: 'system', content: buildSystemPrompt(input.modelId) },
-      ...history,
+      ...history.map((message) => chatMessage(message, attachmentUrls)),
       ...toolExchanges.flatMap((exchange) => [
         {
           role: 'assistant',
@@ -117,6 +119,27 @@ export function buildChatCompletionsBody(
     }));
   }
   return body;
+}
+
+function chatMessage(
+  message: NonNullable<SendResponseInput['history']>[number],
+  attachmentUrls: ReadonlyMap<string, string>,
+): Record<string, unknown> {
+  if (!message.attachments?.length) return { role: message.role, content: message.content };
+  const content: Record<string, unknown>[] = [];
+  if (message.content.length > 0) content.push({ type: 'text', text: message.content });
+  for (const attachment of message.attachments) {
+    const dataUrl = attachmentUrls.get(attachment.id);
+    if (dataUrl === undefined) throw new Error('A staged attachment could not be prepared.');
+    if (attachment.mimeType.startsWith('image/')) {
+      content.push({ type: 'image_url', image_url: { url: dataUrl } });
+    } else if (attachment.mimeType === 'application/pdf') {
+      content.push({ type: 'file', file: { filename: attachment.name, file_data: dataUrl } });
+    } else {
+      throw new Error('Chat Completions supports PDF documents only. Use Responses for this file.');
+    }
+  }
+  return { role: message.role, content };
 }
 
 async function send(
@@ -205,7 +228,7 @@ async function sendAttempt(
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(buildChatCompletionsBody(profile, input)),
+      body: JSON.stringify(buildChatCompletionsBody(profile, input, await attachmentDataUrls(input.history ?? []))),
       signal: controller.signal,
     });
     if (!response.ok) {

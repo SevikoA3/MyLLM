@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { ChatMessage } from '../../domain/conversation';
+import { MAX_ATTACHMENTS, type Attachment } from '../../domain/attachment';
 import type { EndpointProfile } from '../../domain/endpoint';
 import type { AppError } from '../../domain/error';
 import type { MergedModel } from '../../domain/catalog-merge';
@@ -95,6 +96,7 @@ export default function ChatScreen() {
   const catalog = useModelCatalog(profile);
   const [draft, setDraft] = useState('');
   const [composerFocused, setComposerFocused] = useState(false);
+  const [focusedAttachmentControl, setFocusedAttachmentControl] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<EndpointProfile[]>([]);
   const [endpointsLoading, setEndpointsLoading] = useState(true);
   const [endpointSwitching, setEndpointSwitching] = useState(false);
@@ -460,38 +462,40 @@ export default function ChatScreen() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
                 {chat.attachments.map((attachment) => (
-                  <View key={attachment.id} style={{ width: 64, gap: theme.spacing.xsmall }}>
-                    <Image
-                      accessibilityLabel={`Attached image, ${attachment.name}`}
-                      source={{ uri: attachment.uri }}
-                      style={{ width: 64, height: 64, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}
-                    />
+                  <View key={attachment.id} style={{ width: 64 }}>
+                    <AttachmentPreview attachment={attachment} compact />
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Remove ${attachment.name}`}
                       accessibilityState={{ disabled: chat.pending || chat.compacting }}
                       disabled={chat.pending || chat.compacting}
-                      onPress={() => chat.removeImage(attachment.id)}
-                      style={({ pressed }) => ({ minHeight: theme.interaction.compactTouchTarget, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1 })}>
-                      <SymbolView name={{ ios: 'xmark', android: 'close' }} size={18} tintColor={theme.colors.error} />
+                      onFocus={() => setFocusedAttachmentControl(attachment.id)}
+                      onBlur={() => setFocusedAttachmentControl(null)}
+                      onPress={() => chat.removeAttachment(attachment.id)}
+                      style={({ pressed }) => ({ position: 'absolute', top: 0, right: 0, width: theme.interaction.compactTouchTarget, height: theme.interaction.compactTouchTarget, alignItems: 'flex-end', justifyContent: 'flex-start', padding: theme.spacing.xsmall, borderRadius: theme.radius.control, borderWidth: focusedAttachmentControl === attachment.id ? 2 : 0, borderColor: theme.colors.accent, backgroundColor: focusedAttachmentControl === attachment.id ? theme.colors.canvas : 'transparent', opacity: chat.pending || chat.compacting ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1 })}>
+                      <View style={{ padding: theme.spacing.xsmall, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}>
+                        <SymbolView name={{ ios: 'xmark', android: 'close' }} size={16} tintColor={theme.colors.error} />
+                      </View>
                     </Pressable>
                   </View>
                 ))}
               </ScrollView>
             )}
             <View style={{ minHeight: 40, flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
-              {chat.canAttachImages && (
+              {chat.attachmentMimeTypes.length > 0 && (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Attach image"
-                  accessibilityHint="Choose a PNG, JPEG, or WebP image up to 8 MB"
-                  disabled={chat.pending || chat.compacting || chat.attachments.length >= 4}
-                  accessibilityState={{ disabled: chat.pending || chat.compacting || chat.attachments.length >= 4 }}
-                  onPress={() => void chat.addImage()}
+                  accessibilityLabel="Attach file"
+                  accessibilityHint="Open Files to choose a supported image or document, up to 10 MB each and 80 MB combined"
+                  disabled={chat.pending || chat.compacting || chat.pickingAttachment || chat.loadingModel || chat.readOnly || chat.attachments.length >= MAX_ATTACHMENTS}
+                  accessibilityState={{ busy: chat.pickingAttachment, disabled: chat.pending || chat.compacting || chat.pickingAttachment || chat.loadingModel || chat.readOnly || chat.attachments.length >= MAX_ATTACHMENTS }}
+                  onPress={() => void chat.addAttachment()}
+                  onFocus={() => setFocusedAttachmentControl('attach')}
+                  onBlur={() => setFocusedAttachmentControl(null)}
                   style={({ pressed }) => ({
-                    width: theme.interaction.compactTouchTarget, height: theme.interaction.compactTouchTarget, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting || chat.attachments.length >= 4 ? 0.4 : pressed ? 0.7 : 1,
+                    width: theme.interaction.compactTouchTarget, height: theme.interaction.compactTouchTarget, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, borderWidth: focusedAttachmentControl === 'attach' ? 2 : 0, borderColor: theme.colors.accent, backgroundColor: theme.colors.surface, opacity: chat.pending || chat.compacting || chat.pickingAttachment || chat.loadingModel || chat.readOnly || chat.attachments.length >= MAX_ATTACHMENTS ? theme.interaction.disabledOpacity : pressed ? theme.interaction.pressedOpacity : 1,
                   })}>
-                  <SymbolView name={{ ios: 'paperclip', android: 'attach_file' }} size={18} tintColor={theme.colors.secondary} />
+                  {chat.pickingAttachment ? <ActivityIndicator size="small" color={theme.colors.secondary} /> : <SymbolView name={{ ios: 'paperclip', android: 'attach_file' }} size={18} tintColor={theme.colors.secondary} />}
                 </Pressable>
               )}
               <TextInput
@@ -1099,6 +1103,22 @@ export function ReasoningSelector({
   );
 }
 
+function AttachmentPreview({ attachment, compact = false }: { attachment: Attachment; compact?: boolean }) {
+  const width = compact ? 64 : 160;
+  const height = compact ? 64 : 120;
+  if (attachment.mimeType.startsWith('image/')) {
+    return <Image accessibilityLabel={`Attached image, ${attachment.name}`} source={{ uri: attachment.uri }} style={{ width, height, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }} resizeMode="cover" />;
+  }
+  return (
+    <View style={{ width, gap: theme.spacing.xsmall }}>
+      <View style={{ height, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}>
+        <SymbolView name={{ ios: 'doc', android: 'description' }} size={24} tintColor={theme.colors.secondary} />
+      </View>
+      <Text accessibilityLabel={`Attached file, ${attachment.name}`} numberOfLines={2} style={{ color: theme.colors.text, fontFamily: theme.fonts.mono, fontSize: theme.typography.meta }}>{attachment.name}</Text>
+    </View>
+  );
+}
+
 export const MessageBubble = memo(function MessageBubble({ message, modelId = null }: { message: ChatMessage; modelId?: string | null }) {
   const user = message.role === 'user';
   const [reasoningOpen, setReasoningOpen] = useState(false);
@@ -1150,13 +1170,7 @@ export const MessageBubble = memo(function MessageBubble({ message, modelId = nu
       {message.attachments.length > 0 && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           {message.attachments.map((attachment) => (
-            <Image
-              key={attachment.id}
-              accessibilityLabel={`Attached image, ${attachment.name}`}
-              source={{ uri: attachment.uri }}
-              style={{ width: 160, height: 120, borderRadius: theme.radius.control, backgroundColor: theme.colors.canvas }}
-              resizeMode="cover"
-            />
+            <AttachmentPreview key={attachment.id} attachment={attachment} />
           ))}
         </View>
       )}

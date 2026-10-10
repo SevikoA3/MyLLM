@@ -140,8 +140,10 @@ Current limitations:
 
 - Android is the primary target.
 - Generation runs only while the app is in the foreground.
-- A message can include up to four images, with an 8 MB limit per image and a 12 MB combined limit.
-- Generic file upload, video input, background generation, and shell execution are not implemented.
+- Attachments open the system Files picker. A message can include up to 10 attachments, with a 10 MB limit per file and an 80 MB combined limit.
+- The selected model must declare image or file input. Responses supports PNG, JPEG, WebP, PDF, text, JSON, CSV/TSV, HTML/XML, Word, RTF/ODT, Excel, and PowerPoint documents. Chat Completions supports the same images and PDF documents. Auto uses Responses for attachment requests.
+- Provider size and context limits can be lower than the app limits. Attachment data is encoded in memory when sending; large selections still require Android memory testing.
+- Video input, standalone file uploads, background generation, and shell execution are not implemented.
 - Account usage appears only when an endpoint profile declares a compatible usage route.
 
 ## Contributing
