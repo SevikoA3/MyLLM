@@ -259,7 +259,7 @@ export default function ChatScreen() {
         <View
           style={{
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: 'stretch',
             gap: 8,
             paddingHorizontal: theme.spacing.screen,
             paddingTop: 4,
@@ -281,7 +281,7 @@ export default function ChatScreen() {
             onSelect={(modelId) => void selectModel(modelId)}
             onManage={() => router.push('/(tabs)/models')}
           />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 4 }}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Open history"
@@ -289,7 +289,7 @@ export default function ChatScreen() {
               onPress={() => router.push('/history')}
               style={({ pressed }) => ({
                 width: theme.interaction.compactTouchTarget,
-                height: theme.interaction.compactTouchTarget,
+                minHeight: theme.interaction.touchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: theme.radius.control,
@@ -316,7 +316,7 @@ export default function ChatScreen() {
               }}
               style={({ pressed }) => ({
                 width: theme.interaction.compactTouchTarget,
-                height: theme.interaction.compactTouchTarget,
+                minHeight: theme.interaction.touchTarget,
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: theme.radius.control,
@@ -338,7 +338,11 @@ export default function ChatScreen() {
           </View>
         )}
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingHorizontal: theme.spacing.screen, paddingVertical: 6, backgroundColor: theme.colors.canvas }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: theme.spacing.small, alignItems: 'center', paddingHorizontal: theme.spacing.screen, paddingVertical: 6 }}
+          style={{ flexGrow: 0, flexShrink: 0, backgroundColor: theme.colors.canvas }}>
           {chat.reasoningOptions.length > 0 && (
             <ReasoningSelector
               options={chat.reasoningOptions}
@@ -366,7 +370,7 @@ export default function ChatScreen() {
             disabled={chat.pending || chat.readOnly}
             onToggle={(enabled) => chat.setAutoApproveTools(enabled)}
           />
-        </View>
+        </ScrollView>
 
         {chat.readOnly && (
           <View style={{ paddingHorizontal: theme.spacing.screen, paddingTop: 8 }}>

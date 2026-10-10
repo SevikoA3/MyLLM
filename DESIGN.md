@@ -137,6 +137,7 @@ This motion separates two jobs: the fade establishes modal focus while the panel
 
 ## Chat
 
+- Thinking, context, and tool approval controls stay in one horizontally scrollable row to preserve transcript space. History and New chat controls stretch to match the model picker height.
 - User and assistant messages use distinct surface roles and `radius.bubble`; live state is shown with text and emerald status.
 - The composer stays visually connected to the transcript and keeps attach and send controls at least 44 dp.
 - Markdown prioritizes readable body text. Tables scroll when necessary. Code uses a recessed canvas, monospace text, and no simulated terminal decoration.
