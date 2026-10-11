@@ -248,18 +248,17 @@ describe('WebSearchSourceCards', () => {
     expect(view.getByText('example.com · truncated')).toBeTruthy();
   });
 
-  it('shows a Firecrawl fetched source', async () => {
+  it('shows a Jina Reader fetched source', async () => {
     const view = await render(
       <WebToolSourceCards
         name="web_fetch"
         output={JSON.stringify({
-          success: true,
+          code: 200,
+          status: 20000,
           data: {
-            markdown: 'Readable page text.',
-            metadata: {
-              title: 'Example article',
-              sourceURL: 'https://example.com/article',
-            },
+            title: 'Example article',
+            url: 'https://example.com/article',
+            content: 'Readable page text.',
           },
         })}
       />,

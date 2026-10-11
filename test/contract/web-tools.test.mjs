@@ -54,7 +54,7 @@ before(async () => {
 after(() => server?.close());
 
 const { createToolRegistry } = await import('../../.tests-build/services/tools/registry.js');
-const { createFirecrawlClient, testWebGateway } = await import('../../.tests-build/services/tools/gateway.js');
+const { createJinaReaderClient, testWebGateway } = await import('../../.tests-build/services/tools/gateway.js');
 
 test('gateway search and health use the production client contract', async () => {
   await testWebGateway(baseUrl);
@@ -81,23 +81,23 @@ test('gateway search and health use the production client contract', async () =>
   assert.equal(requests[1].authorization, `Bearer ${TOKEN}`);
 });
 
-test('Firecrawl Keyless fetch uses the production request contract', async () => {
+test('Jina Reader fetch uses the production request contract', async () => {
   let requestUrl;
   let requestInit;
-  const client = createFirecrawlClient(async (url, init) => {
+  const client = createJinaReaderClient(async (url, init) => {
     requestUrl = url;
     requestInit = init;
-    return new Response(JSON.stringify({ success: true, data: { markdown: 'Readable extracted text.' } }));
+    return new Response(JSON.stringify({ code: 200, status: 20000, data: { title: 'Source', url: 'https://example.com/source#/route', content: 'Readable extracted text.' } }));
   });
 
-  const fetched = await client.fetch({ url: 'https://example.com/source' }, new AbortController().signal);
+  const fetched = await client.fetch({ url: 'https://example.com/source#/route' }, new AbortController().signal);
 
-  assert.equal(JSON.parse(fetched).data.markdown, 'Readable extracted text.');
-  assert.equal(requestUrl, 'https://api.firecrawl.dev/v2/scrape');
-  assert.equal(requestInit.headers.authorization, undefined);
+  assert.equal(JSON.parse(fetched).data.content, 'Readable extracted text.');
+  assert.equal(requestUrl, 'https://r.jina.ai/');
+  assert.equal(requestInit.method, 'POST');
+  assert.equal(requestInit.redirect, 'manual');
+  assert.deepEqual(requestInit.headers, { Accept: 'application/json', 'Content-Type': 'application/json' });
   assert.deepEqual(JSON.parse(requestInit.body), {
-    url: 'https://example.com/source',
-    formats: ['markdown'],
-    onlyMainContent: true,
+    url: 'https://example.com/source#/route',
   });
 });

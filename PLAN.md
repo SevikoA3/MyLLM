@@ -994,8 +994,8 @@ Keputusan pemilik proyek:
 - Aplikasi memakai private Search Gateway yang dikonfigurasi pengguna dengan URL HTTPS dan bearer token.
 - Pengguna memilih SearXNG engine di Settings. Nilai default `bing` dikirim sebagai parameter `engines` pada setiap search dan tidak dapat diubah model.
 - Pengguna dapat memilih private Search Gateway atau Exa direct untuk `web_search`. Exa memakai `POST https://api.exa.ai/search` dan API key dari SecureStore.
-- Exa dan private Search Gateway menangani `web_search`. `web_fetch` memakai Firecrawl Keyless melalui `POST https://api.firecrawl.dev/v2/scrape`, tanpa API key. Tidak ada test request Exa karena search dapat billable.
-- Gateway menangani authentication dan limit input untuk search. Firecrawl mengambil serta mengekstrak halaman; aplikasi tidak menghubungi SearXNG atau URL hasil secara langsung.
+- Exa and the private Search Gateway handle `web_search`. `web_fetch` uses Jina AI Reader through `POST https://r.jina.ai/`, without an API key. Exa search is not probed because requests can be billable.
+- The gateway handles authentication and input limits for search. Jina AI Reader fetches and extracts pages; the app does not contact SearXNG or destination URLs directly.
 - Token disimpan di SecureStore. URL, status enabled, dan token tidak pernah dimasukkan ke model context, diagnostics, atau tool output.
 - Tool menerima maksimal 10 hasil, raw response dibatasi 64 KB, output model 12 KB, dan tidak melakukan retry sendiri.
 - Error HTTP, rate limit, timeout, dan response invalid dikirim kembali sebagai structured tool error tanpa detail provider.
@@ -1009,7 +1009,7 @@ Keputusan pemilik proyek:
 - [x] Tool input gateway: query, count maksimal 10, time_range, language, dan categories optional. Exa menerima query, count, dan time_range; filter gateway ditolak, tidak diabaikan diam-diam.
 - [x] Validate query length, count, time_range, language, categories, dan URL fetch.
 - [x] Batasi raw response 64 KB dan output 12 KB tanpa truncation diam-diam.
-- [x] Teruskan JSON respons search gateway atau Exa, serta fetch Firecrawl, secara mentah ke model tanpa parsing atau normalisasi.
+- [x] Forward raw JSON from gateway or Exa search and Jina AI Reader fetch to the model without parsing or normalization.
 - [x] Perlakukan seluruh hasil sebagai untrusted external content; UI hanya membaca field source card yang diperlukan.
 - [x] Tampilkan source cards di UI.
 - [x] Tetapkan `web_search` dan `web_fetch` read-only dengan approval `ask`; hasil tidak dapat mengubah policy.
@@ -1020,16 +1020,18 @@ Keputusan pemilik proyek:
 
 expo/fetch tidak memberi aplikasi kontrol penuh atas DNS resolution dan redirect IP validation. Karena itu aplikasi tidak melakukan fetch langsung ke URL tujuan:
 
-- [x] `web_fetch` hanya memanggil `POST https://api.firecrawl.dev/v2/scrape` dengan URL HTTP(S), format Markdown, dan tanpa credential. Firecrawl Keyless menjadi service fetch tepercaya.
+- [x] `web_fetch` calls only `POST https://r.jina.ai/` with a public HTTP(S) URL in the JSON body and `Accept: application/json`, without credentials. JSON POST preserves URL fragments. Jina AI Reader is the trusted fetch service; its page content remains untrusted.
 - [x] Aplikasi tidak mengklaim JS-only fetch sebagai SSRF-safe dan tidak membuat generic HTTP proxy.
 - [x] `web_fetch` hanya menerima URL HTTP(S), tidak meneruskan token, dan mengembalikan text sebagai untrusted data.
-- [x] Aplikasi tidak menghubungi SearXNG, Jina Reader, atau tujuan fetch secara langsung.
+- [x] The app does not contact SearXNG or fetch destination URLs directly.
 
 ### Exit gate
 
-Search bekerja melalui gateway atau Exa, fetch melalui Firecrawl Keyless, hasil memiliki source, output dibatasi, dan prompt injection tidak dapat melewati tool policy.
+Search works through the gateway or Exa, fetch through Jina AI Reader, results have sources, output is bounded, and prompt injection cannot bypass tool policy.
 
 Status: Phase 14 extended on 20 September 2026. Gateway and Exa search plus Firecrawl Keyless fetch passed `npm run typecheck`, `npx eslint .`, `npm run test:ci`, and `npm run test:web-tools`. Android verification remains manual.
+
+Maintenance on 11 October 2026: replaced Firecrawl Keyless requests with Jina AI Reader without a key. Saved Firecrawl source cards remain readable. TypeScript, direct ESLint, 482 Jest tests, and two web-tools Node contract tests pass. The documented free limit is 20 requests per minute per IP; rate limits remain explicit errors without automatic retries. Android verification remains manual. This maintenance does not advance the product phase.
 
 ## 22. Phase 15: Image dan file attachment
 

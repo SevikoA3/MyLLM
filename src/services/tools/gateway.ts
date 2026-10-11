@@ -7,7 +7,7 @@ const MAX_GATEWAY_RESPONSE_BYTES = 64 * 1024;
 const WEB_GATEWAY_TIMEOUT_MS = 40_000;
 const WEB_GATEWAY_HEALTH_TIMEOUT_MS = 10_000;
 const EXA_SEARCH_URL = 'https://api.exa.ai/search';
-const FIRECRAWL_SCRAPE_URL = 'https://api.firecrawl.dev/v2/scrape';
+const JINA_READER_URL = 'https://r.jina.ai/';
 
 export type WebGatewayConfig = {
   provider: 'gateway';
@@ -31,7 +31,7 @@ export type WebSearchInput = {
   timeRange: 'day' | 'week' | 'month' | 'year' | null;
 };
 
-export type FirecrawlFetchInput = {
+export type JinaReaderFetchInput = {
   url: string;
 };
 
@@ -97,21 +97,21 @@ export function createExaSearchClient(
   };
 }
 
-export function createFirecrawlClient(request: typeof fetch = expoFetch) {
+export function createJinaReaderClient(request: typeof fetch = expoFetch) {
   return {
-    async fetch(input: FirecrawlFetchInput, signal: AbortSignal): Promise<string> {
+    async fetch(input: JinaReaderFetchInput, signal: AbortSignal): Promise<string> {
       const response = await requestGateway(
         request,
-        FIRECRAWL_SCRAPE_URL,
+        JINA_READER_URL,
         {
           method: 'POST',
           headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: input.url, formats: ['markdown'], onlyMainContent: true }),
+          body: JSON.stringify({ url: input.url }),
         },
         signal,
         'web_fetch',
         WEB_GATEWAY_TIMEOUT_MS,
-        'Firecrawl',
+        'Jina AI Reader',
       );
       return readGatewayText(response, 'web_fetch');
     },

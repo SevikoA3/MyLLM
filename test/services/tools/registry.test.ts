@@ -91,33 +91,32 @@ describe('toolRegistry', () => {
     expect(registry.definitions().find((tool) => tool.name === 'web_search')?.parameters.properties).not.toHaveProperty('language');
   });
 
-  it('fetches a page through Firecrawl Keyless without a credential', async () => {
+  it.each([gateway, exa])('fetches a page through Jina Reader without a $provider credential', async (config) => {
     const response = {
-      success: true,
+      code: 200,
+      status: 20000,
       data: {
-        markdown: 'Readable page text.',
-        metadata: {
-          title: 'Example article',
-          sourceURL: 'https://example.com/article',
-        },
+        title: 'Example article',
+        url: 'https://example.com/article?q=reader%20test&lang=en#/route',
+        content: 'Readable page text.',
       },
     };
     const request = jest.fn().mockResolvedValue(new Response(JSON.stringify(response)));
-    const output = await createToolRegistry(gateway, Date.now, request)
-      .find('web_fetch')
-      ?.execute({ url: 'https://example.com/article' }, new AbortController().signal);
+    const tool = createToolRegistry(config, Date.now, request).find('web_fetch');
+    const output = await tool?.execute({ url: response.data.url }, new AbortController().signal);
 
     expect(output).toBe(JSON.stringify(response));
-    expect(request.mock.calls[0][0]).toBe('https://api.firecrawl.dev/v2/scrape');
-    expect(request.mock.calls[0][1].headers).toMatchObject({
+    expect(tool?.target).toBe('Jina AI Reader');
+    expect(tool?.sideEffect).toContain('Jina AI Reader');
+    expect(tool?.approval).toBe('ask');
+    expect(request.mock.calls[0][0]).toBe('https://r.jina.ai/');
+    expect(request.mock.calls[0][1]).toMatchObject({ method: 'POST', redirect: 'manual' });
+    expect(request.mock.calls[0][1].headers).toEqual({
       Accept: 'application/json',
       'Content-Type': 'application/json',
     });
-    expect(request.mock.calls[0][1].headers.Authorization).toBeUndefined();
     expect(JSON.parse(request.mock.calls[0][1].body)).toEqual({
-      url: 'https://example.com/article',
-      formats: ['markdown'],
-      onlyMainContent: true,
+      url: response.data.url,
     });
   });
 
@@ -137,6 +136,7 @@ describe('toolRegistry', () => {
     [401, 'authentication failed'],
     [413, 'too large'],
     [415, 'unsupported'],
+    [429, 'rate limited'],
     [502, 'unavailable'],
     [504, 'timed out'],
   ])('returns concise web_fetch HTTP %s errors', async (status, message) => {
@@ -154,6 +154,13 @@ describe('toolRegistry', () => {
     const oversized = jest.fn().mockResolvedValue(new Response(JSON.stringify({ results: 'x'.repeat(12 * 1024) })));
     const fetchTool = createToolRegistry(gateway, Date.now, oversized).find('web_search');
     await expect(fetchTool?.execute({ query: 'example' }, new AbortController().signal)).rejects.toThrow('12 KB');
+  });
+
+  it.each([12, 64])('rejects web_fetch responses above the %s KB safety limit without truncation', async (limit) => {
+    const request = jest.fn().mockResolvedValue(new Response(JSON.stringify({ data: { content: 'x'.repeat(limit * 1024) } })));
+    const tool = createToolRegistry(gateway, Date.now, request).find('web_fetch');
+
+    await expect(tool?.execute({ url: 'https://example.com' }, new AbortController().signal)).rejects.toThrow(`${String(limit)} KB`);
   });
 
   it('rejects invalid tool input before making a request', async () => {

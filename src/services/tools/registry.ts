@@ -8,7 +8,7 @@ import {
 import { ToolExecutionError, type ToolExecutor, type ToolRegistry } from '../../domain/tool';
 import {
   createExaSearchClient,
-  createFirecrawlClient,
+  createJinaReaderClient,
   createWebGatewayClient,
   type WebSearchConfig,
   type WebSearchInput,
@@ -27,7 +27,7 @@ export function createToolRegistry(
   } else if (webSearchConfig?.provider === 'exa') {
     webSearch = createExaSearchClient(webSearchConfig, request, now);
   }
-  const webFetch = webSearchConfig === null ? null : createFirecrawlClient(request);
+  const webFetch = webSearchConfig === null ? null : createJinaReaderClient(request);
   const tools: ToolExecutor[] = [
     {
       name: 'get_current_time',
@@ -123,8 +123,8 @@ export function createToolRegistry(
         },
         risk: 'read-only',
         approval: 'ask',
-        target: 'Firecrawl',
-        sideEffect: 'Sends one public URL to Firecrawl and reads untrusted webpage content.',
+        target: 'Jina AI Reader',
+        sideEffect: 'Sends one public URL to Jina AI Reader and reads untrusted webpage content.',
         timeoutMs: WEB_GATEWAY_TOOL_TIMEOUT_MS,
         async execute(argumentsValue, signal) {
           try {

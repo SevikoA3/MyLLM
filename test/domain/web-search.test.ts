@@ -82,7 +82,41 @@ describe('web search output', () => {
     });
   });
 
-  it('reads raw Firecrawl markdown for the fetched source card', () => {
+  it('reads raw Jina Reader content for the fetched source card', () => {
+    expect(parseWebFetchOutput(JSON.stringify({
+      code: 200,
+      status: 20000,
+      data: {
+        title: 'Example article',
+        url: 'https://example.com/article',
+        content: 'Readable text.',
+      },
+    }))).toEqual({
+      url: 'https://example.com/article',
+      title: 'Example article',
+      contentType: null,
+      content: 'Readable text.',
+      truncated: null,
+      untrusted: true,
+    });
+  });
+
+  it('keeps missing Jina Reader metadata unknown', () => {
+    expect(parseWebFetchOutput(JSON.stringify({
+      data: { url: 'https://example.com/article', content: 'Readable text.' },
+    }))).toMatchObject({ title: null, contentType: null, truncated: null, untrusted: true });
+  });
+
+  it.each([
+    { url: 'javascript:alert(1)', content: 'Text' },
+    { url: 'file:///secret', content: 'Text' },
+    { content: 'Text' },
+    { url: 'https://example.com', content: ['Text'] },
+  ])('rejects invalid Jina Reader source data: %j', (data) => {
+    expect(parseWebFetchOutput(JSON.stringify({ data }))).toBeNull();
+  });
+
+  it('keeps saved Firecrawl source cards readable', () => {
     expect(parseWebFetchOutput(JSON.stringify({
       success: true,
       data: {

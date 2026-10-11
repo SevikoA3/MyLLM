@@ -51,7 +51,10 @@ export function parseWebSearchOutput(value: string): WebSearchOutput | null {
 
 export function parseWebFetchOutput(value: string): WebFetchOutput | null {
   try {
-    const parsed: unknown = JSON.parse(value);
+    const envelope: unknown = JSON.parse(value);
+    const parsed = isRecord(envelope) && isRecord(envelope.data) && typeof envelope.data.content === 'string'
+      ? envelope.data
+      : envelope;
     const url = isRecord(parsed) && typeof parsed.url === 'string' ? parsed.url : null;
     if (isRecord(parsed) && url !== null && isWebUrl(url) && typeof parsed.content === 'string') {
       if (parsed.truncated !== undefined && parsed.truncated !== null && typeof parsed.truncated !== 'boolean') {

@@ -397,7 +397,7 @@ export default function SettingsScreen() {
                 <Text style={{ color: colors.muted, fontFamily: fonts.mono, fontSize: 10, lineHeight: 15 }}>
                   {webSearchProvider === 'gateway'
                     ? 'Search requests go only to your configured HTTPS gateway.'
-                    : 'Search requests go directly to api.exa.ai.'} Web fetch sends page URLs to Firecrawl Keyless.
+                    : 'Search requests go directly to api.exa.ai.'} Web fetch sends page URLs to Jina AI Reader without an API key.
                 </Text>
               </View>
               <Switch

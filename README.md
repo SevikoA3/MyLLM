@@ -15,7 +15,7 @@ The project is under active development. Android device behavior, native builds,
 - Stream text and supported reasoning through Responses or Chat Completions.
 - Search, rename, delete, retry, recover, import, and export local conversations.
 - Track provider token usage, estimate context size, and compact long conversations.
-- Use tools with approval controls, including device time, web search through Exa or a private SearXNG gateway, and web fetch through Firecrawl Keyless.
+- Use tools with approval controls, including device time, web search through Exa or a private SearXNG gateway, and web fetch through Jina AI Reader without an API key.
 - Attach supported images and documents through the system Files picker when the selected model declares the required input capabilities.
 - Export redacted diagnostics and endpoint profiles without credentials.
 
@@ -99,6 +99,23 @@ Tunnel mode may require the optional tunnel helper requested by Expo CLI. Follow
 The base URL usually includes the provider API prefix, such as `https://api.example.com/v1`. A fresh launch opens a new chat; it does not automatically resume the last saved conversation. The sidebar also opens with a swipe from the left edge and closes with a left swipe inside it.
 
 Enter Android credentials only in the app. They are stored through Expo SecureStore. The app does not read API keys from a developer's `.env` file.
+
+### Web fetch with Jina AI Reader
+
+Enable web search and fetch in General after configuring Exa or your private Search Gateway. `web_fetch` sends the selected public URL to `https://r.jina.ai/` without an API key or search credentials. Search still uses the selected search provider.
+
+The app uses JSON POST so URL fragments, including SPA routes, reach Reader:
+
+```sh
+curl 'https://r.jina.ai/' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  --data '{"url":"https://example.com/#/route"}'
+```
+
+Reader returns page metadata and Markdown in `data.content`. The app forwards the raw JSON to the model and reads only source-card fields for display. Existing limits remain: 40 seconds for the request, 64 KB for the response, and 12 KB for tool output. Oversized content is rejected without truncation or automatic retries. Saved Firecrawl source cards remain readable.
+
+As checked on 11 October 2026, [Jina's documentation](https://jina.ai/reader/) lists free access without a key at 20 requests per minute per IP. API keys raise the limit and charge tokens; the app uses no Jina key. Jina Search (`s.jina.ai`) requires a key and is not used. See the [Reader usage guide](https://github.com/jina-ai/reader#spas-with-hash-based-routing) for POST and JSON options.
 
 ## Native Android development
 
