@@ -149,6 +149,21 @@ describe('runAgentLoop', () => {
     ]);
   });
 
+  it.each([512 * 1024, 512 * 1024 + 2])('bounds tool output at 512 KB by UTF-8 bytes (%s bytes)', async (bytes) => {
+    const output = 'é'.repeat(bytes / 2);
+    const client = transport([
+      success([{ callId: 'call_1', name: 'get_current_time', arguments: '{}' }], null),
+      success(),
+    ]);
+    await start(client, registry(async () => output));
+    const result = (client.send as jest.Mock).mock.calls[1][2].toolExchanges[0].results[0];
+
+    expect(result.isError).toBe(bytes > 512 * 1024);
+    expect(result.output).toBe(bytes > 512 * 1024
+      ? JSON.stringify({ error: 'Tool output exceeded the 512 KB safety limit.' })
+      : output);
+  });
+
   it('records tool failure metadata without the tool output', async () => {
     const client = transport([
       success([{ callId: 'call_1', name: 'get_current_time', arguments: '{}' }], null),

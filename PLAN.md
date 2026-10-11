@@ -971,6 +971,8 @@ Model dapat memanggil demo tool, pengguna melihat progress, dan loop berhenti am
 
 Status: Phase 13 completed on 18 September 2026. `npm run typecheck`, `npx eslint .`, `npm run test:ci`, and relevant Responses, Chat Completions, protocol, and SQLite contract tests passed.
 
+Maintenance on 11 October 2026: assistant text and tool requests now retain generation order inline, including approval waits, partial failures, interrupted conversations, and import/export. Existing conversations remain readable; intermediate text discarded by earlier versions cannot be recovered. TypeScript, direct ESLint, 496 Jest tests, 17 conversation Node contract tests, and two web-tools Node contract tests pass. Android visual verification remains manual. This maintenance does not advance the product phase.
+
 ## 21. Phase 14: Web search dan safe fetch
 
 ### Goal
@@ -997,7 +999,7 @@ Keputusan pemilik proyek:
 - Exa and the private Search Gateway handle `web_search`. `web_fetch` uses Jina AI Reader through `POST https://r.jina.ai/`, without an API key. Exa search is not probed because requests can be billable.
 - The gateway handles authentication and input limits for search. Jina AI Reader fetches and extracts pages; the app does not contact SearXNG or destination URLs directly.
 - Token disimpan di SecureStore. URL, status enabled, dan token tidak pernah dimasukkan ke model context, diagnostics, atau tool output.
-- Tool menerima maksimal 10 hasil, raw response dibatasi 64 KB, output model 12 KB, dan tidak melakukan retry sendiri.
+- Tools accept at most 10 results, cap raw responses and model output at 512 KB each, and do not retry automatically.
 - Error HTTP, rate limit, timeout, dan response invalid dikirim kembali sebagai structured tool error tanpa detail provider.
 
 ### Web search steps
@@ -1008,7 +1010,7 @@ Keputusan pemilik proyek:
 - [x] Tambahkan pilihan Exa direct untuk `web_search`, dengan API key terpisah di SecureStore.
 - [x] Tool input gateway: query, count maksimal 10, time_range, language, dan categories optional. Exa menerima query, count, dan time_range; filter gateway ditolak, tidak diabaikan diam-diam.
 - [x] Validate query length, count, time_range, language, categories, dan URL fetch.
-- [x] Batasi raw response 64 KB dan output 12 KB tanpa truncation diam-diam.
+- [x] Cap raw responses and tool output at 512 KB each without silent truncation.
 - [x] Forward raw JSON from gateway or Exa search and Jina AI Reader fetch to the model without parsing or normalization.
 - [x] Perlakukan seluruh hasil sebagai untrusted external content; UI hanya membaca field source card yang diperlukan.
 - [x] Tampilkan source cards di UI.

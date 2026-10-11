@@ -136,11 +136,10 @@ export default function ChatScreen() {
     const calls = chat.toolActivities[item.id] ?? [];
     return (
       <View style={{ gap: 8 }}>
-        {calls.length > 0 && <ToolProgress calls={calls} onResolve={chat.resolveToolApproval} />}
-        {activeAssistant && chat.pending && <PendingMessage calls={calls} />}
-        {item.role === 'assistant' && item.status === 'sending' && item.text.length === 0
+        {item.role === 'assistant' && item.status === 'sending' && item.text.length === 0 && calls.length === 0
           ? null
-          : <MessageBubble message={item} modelId={displayModelId} />}
+          : <MessageBubble message={item} modelId={displayModelId} calls={calls} onResolve={chat.resolveToolApproval} />}
+        {activeAssistant && chat.pending && <PendingMessage calls={calls} />}
       </View>
     );
   }, [activeAssistantId, chat.pending, chat.resolveToolApproval, chat.toolActivities, displayModelId]);
@@ -1120,15 +1119,24 @@ function AttachmentPreview({ attachment, compact = false }: { attachment: Attach
   );
 }
 
-export const MessageBubble = memo(function MessageBubble({ message, modelId = null }: { message: ChatMessage; modelId?: string | null }) {
+export const MessageBubble = memo(function MessageBubble({ message, modelId = null, calls = [], onResolve }: {
+  message: ChatMessage;
+  modelId?: string | null;
+  calls?: ToolActivity[];
+  onResolve?: (approved: boolean) => void;
+}) {
   const user = message.role === 'user';
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const live = message.status === 'sending' || message.status === 'streaming';
+  const parts = !user && message.contentParts !== undefined
+    ? message.contentParts
+    : [{ type: 'text' as const, text: message.text }, ...(!user ? calls.map((call) => ({ type: 'tool' as const, callId: call.callId })) : [])];
   return (
     <View
       accessibilityLabel={user ? 'Your message' : 'Assistant response'}
       style={{
         maxWidth: user ? '92%' : '100%',
+        width: !user && calls.length > 0 ? '100%' : undefined,
         alignSelf: user ? 'flex-end' : 'flex-start',
         gap: 8,
         padding: 12,
@@ -1175,8 +1183,11 @@ export const MessageBubble = memo(function MessageBubble({ message, modelId = nu
           ))}
         </View>
       )}
-      {!user && message.status === 'completed' ? (
+      {parts.map((part, index) => part.type === 'tool' ? (
+        <ToolProgress key={part.callId} calls={calls.filter((call) => call.callId === part.callId)} onResolve={onResolve} />
+      ) : !user && message.status === 'completed' ? (
         <Markdown
+          key={`text_${index}`}
           style={MARKDOWN_STYLE}
           rules={MARKDOWN_RULES}
           onLinkPress={(url) => {
@@ -1185,19 +1196,20 @@ export const MessageBubble = memo(function MessageBubble({ message, modelId = nu
             }
             return false;
           }}>
-          {message.text}
+          {part.text}
         </Markdown>
       ) : (
         <Text
+          key={`text_${index}`}
           style={{
             color: theme.colors.text,
             fontFamily: theme.fonts.mono,
             fontSize: theme.typography.body,
             lineHeight: 20,
           }}>
-          {message.text}
+          {part.text}
         </Text>
-      )}
+      ))}
       {!user && message.status === 'interrupted' && (
         <Text style={{ color: theme.colors.warningText, fontSize: theme.typography.meta }}>
           Interrupted when the app closed

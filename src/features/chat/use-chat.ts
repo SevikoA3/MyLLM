@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type {
+  AssistantContentPart,
   ChatMessage,
   ConversationInputMessage,
   TurnStatus,
@@ -546,6 +547,10 @@ export function useChat(
       let currentConversationId = conversationId;
       let streamedText = '';
       let streamedReasoning = '';
+      let roundText = '';
+      let roundReasoning = '';
+      let contentParts: AssistantContentPart[] = [];
+      let flushedParts = contentParts;
       let flushedText = '';
       let flushedReasoning = '';
       let flushChain = Promise.resolve();
@@ -601,11 +606,13 @@ export function useChat(
         }
         const text = streamedText;
         const reasoningSummary = streamedReasoning.length === 0 ? null : streamedReasoning;
-        if (text === flushedText && streamedReasoning === flushedReasoning) {
+        if (text === flushedText && streamedReasoning === flushedReasoning && contentParts === flushedParts) {
           return flushChain;
         }
         flushedText = text;
         flushedReasoning = streamedReasoning;
+        const parts = contentParts;
+        flushedParts = parts;
         setMessages((current) =>
           current.map((entry) =>
             entry.id === assistantItemId
@@ -615,6 +622,8 @@ export function useChat(
                   text,
                   reasoningSummary,
                   'streaming',
+                  [],
+                  parts,
                 )
               : entry,
           ),
@@ -625,6 +634,7 @@ export function useChat(
             assistantItemId,
             text,
             reasoningSummary,
+            parts,
           ),
         );
         return flushChain;
@@ -640,12 +650,32 @@ export function useChat(
         }, UI_BATCH_MS);
       };
 
+      const appendText = (delta: string) => {
+        if (delta.length === 0) return;
+        streamedText += delta;
+        const last = contentParts.at(-1);
+        contentParts = last?.type === 'text'
+          ? [...contentParts.slice(0, -1), { type: 'text', text: last.text + delta }]
+          : [...contentParts, { type: 'text', text: delta }];
+      };
+
+      const appendTool = (callId: string) => {
+        if (!contentParts.some((part) => part.type === 'tool' && part.callId === callId)) {
+          contentParts = [...contentParts, { type: 'tool', callId }];
+        }
+      };
+
       const onEvent = (event: ResponseStreamEvent) => {
         if (event.type === 'text.delta') {
-          streamedText += event.delta;
+          roundText += event.delta;
+          appendText(event.delta);
           scheduleFlush();
         } else if (event.type === 'reasoning.delta') {
+          roundReasoning += event.delta;
           streamedReasoning += event.delta;
+          scheduleFlush();
+        } else if ((event.type === 'tool_call.started' || event.type === 'tool_call.completed') && event.toolCall.callId !== null) {
+          appendTool(event.toolCall.callId);
           scheduleFlush();
         }
       };
@@ -696,13 +726,21 @@ export function useChat(
           persistence,
           signal: controller.signal,
           onEvent,
-          onProgress: (activity) => updateToolProgress(assistantItemId, activity),
+          onRoundComplete: async (roundResult) => {
+            const response = roundResult.ok ? roundResult.response : roundResult.partial;
+            appendText((response.text ?? roundText).slice(roundText.length));
+            streamedReasoning += (response.reasoningSummary ?? roundReasoning).slice(roundReasoning.length);
+            roundText = '';
+            roundReasoning = '';
+            await flush();
+          },
+          onProgress: (activity) => {
+            appendTool(activity.callId);
+            updateToolProgress(assistantItemId, activity);
+            void flush();
+          },
           requestApproval: requestToolApproval,
         });
-        streamedText = result.ok ? result.response.text ?? streamedText : result.partial.text ?? streamedText;
-        streamedReasoning = result.ok
-          ? result.response.reasoningSummary ?? streamedReasoning
-          : result.partial.reasoningSummary ?? streamedReasoning;
         if (streamTimer.current !== null) {
           clearTimeout(streamTimer.current);
           streamTimer.current = null;
@@ -787,6 +825,8 @@ export function useChat(
                   text,
                   reasoning.length === 0 ? null : reasoning,
                   status,
+                  [],
+                  contentParts,
                 )
               : entry,
           ),
@@ -796,6 +836,7 @@ export function useChat(
           assistantItemId: currentAssistantItemId,
           status,
           text,
+          contentParts,
           reasoningSummary: reasoning.length === 0 ? null : reasoning,
           responseId: result?.ok ? result.response.id : result?.partial.id ?? null,
           usage: result?.ok ? result.response.usage : null,
@@ -1150,8 +1191,9 @@ function message(
   reasoningSummary: string | null,
   status: TurnStatus,
   attachments: Attachment[] = [],
+  contentParts?: AssistantContentPart[],
 ): ChatMessage {
-  return { id, role, text, reasoningSummary, status, attachments };
+  return { id, role, text, reasoningSummary, status, attachments, ...(contentParts === undefined ? {} : { contentParts }) };
 }
 
 function newId(prefix: string): string {

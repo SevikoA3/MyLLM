@@ -113,7 +113,7 @@ curl 'https://r.jina.ai/' \
   --data '{"url":"https://example.com/#/route"}'
 ```
 
-Reader returns page metadata and Markdown in `data.content`. The app forwards the raw JSON to the model and reads only source-card fields for display. Existing limits remain: 40 seconds for the request, 64 KB for the response, and 12 KB for tool output. Oversized content is rejected without truncation or automatic retries. Saved Firecrawl source cards remain readable.
+Reader returns page metadata and Markdown in `data.content`. The app forwards the raw JSON to the model and reads only source-card fields for display. Limits are 40 seconds for the request and 512 KB each for the response and tool output. Oversized content is rejected without truncation or automatic retries. Saved Firecrawl source cards remain readable.
 
 As checked on 11 October 2026, [Jina's documentation](https://jina.ai/reader/) lists free access without a key at 20 requests per minute per IP. API keys raise the limit and charge tokens; the app uses no Jina key. Jina Search (`s.jina.ai`) requires a key and is not used. See the [Reader usage guide](https://github.com/jina-ai/reader#spas-with-hash-based-routing) for POST and JSON options.
 

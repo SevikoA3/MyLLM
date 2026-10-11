@@ -1,4 +1,12 @@
+import { z } from 'zod';
+
 import type { Attachment } from './attachment';
+
+export const AssistantContentPartsSchema = z.array(z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }).strict(),
+  z.object({ type: z.literal('tool'), callId: z.string().min(1) }).strict(),
+]));
+export type AssistantContentPart = z.infer<typeof AssistantContentPartsSchema>[number];
 
 export type ChatMessage = {
   id: string;
@@ -7,6 +15,7 @@ export type ChatMessage = {
   reasoningSummary: string | null;
   status: TurnStatus;
   attachments: Attachment[];
+  contentParts?: AssistantContentPart[];
 };
 
 export type ConversationInputMessage = {

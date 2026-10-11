@@ -1,7 +1,7 @@
 export const MAX_WEB_SEARCH_QUERY_LENGTH = 512;
 export const MAX_WEB_SEARCH_COUNT = 10;
-export const MAX_WEB_SEARCH_OUTPUT_BYTES = 12 * 1024;
-export const MAX_WEB_FETCH_OUTPUT_BYTES = 12 * 1024;
+export const MAX_WEB_SEARCH_OUTPUT_BYTES = 512 * 1024;
+export const MAX_WEB_FETCH_OUTPUT_BYTES = 512 * 1024;
 
 export type WebSearchResult = {
   title: string | null;

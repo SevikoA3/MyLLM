@@ -42,6 +42,36 @@ test('partial stream tersimpan dan restart menandai assistant interrupted', asyn
   assert.equal(loaded.retry.prompt, 'partial prompt');
 });
 
+test('inline text and tool order survives interruption, completion, and export/import', async () => {
+  const state = setup();
+  const { conversationId } = await start(state.repository, 'turn_inline', null, 'time?');
+  await state.repository.recordToolCall({
+    turnId: 'turn_inline', id: 'tool_1', callId: 'call_1', name: 'get_current_time',
+    argumentsJson: '{"timezone":"UTC"}', target: 'Device clock', sideEffect: 'Reads device time.',
+    status: 'completed', approval: 'not_required', result: { callId: 'call_1', output: '{"time":"now"}', isError: false },
+  });
+  const contentParts = [
+    { type: 'text', text: 'Before' },
+    { type: 'tool', callId: 'call_1' },
+    { type: 'text', text: 'After' },
+  ];
+  await state.repository.flushAssistant('turn_inline', 'assistant_turn_inline', 'BeforeAfter', null, contentParts);
+  const restarted = createConversationRepository(async () => state.database, () => 200);
+  const partial = await restarted.loadConversation(conversationId);
+  assert.deepEqual(partial.messages[1].contentParts, contentParts);
+  assert.equal(partial.toolActivities.assistant_turn_inline[0].callId, 'call_1');
+  assert.equal(partial.messages[1].status, 'interrupted');
+
+  await restarted.finishTurn({
+    turnId: 'turn_inline', assistantItemId: 'assistant_turn_inline', status: 'completed',
+    text: 'BeforeAfter', reasoningSummary: null, responseId: 'response_1', usage: null, timing: null, contentParts,
+  });
+  assert.deepEqual((await restarted.loadConversation(conversationId)).messages[1].contentParts, contentParts);
+  const exported = await restarted.exportConversation(conversationId, '2026-10-11T00:00:00.000Z');
+  const importedId = await restarted.importConversation(exported);
+  assert.deepEqual((await restarted.loadConversation(importedId)).messages[1].contentParts, contentParts);
+});
+
 test('request history memuat user dan assistant completed secara berurutan', async () => {
   const state = setup();
   const first = await start(state.repository, 'turn_1', null, 'Jelaskan X.');
@@ -181,6 +211,7 @@ test('conversation export redacts secrets and import creates a new ID', async ()
     assistantItemId: 'assistant_turn_export',
     status: 'completed',
     text: 'Authorization: Bearer token-secret',
+    contentParts: [{ type: 'text', text: 'Authorization: Bearer token-secret' }],
     reasoningSummary: null,
     responseId: 'resp_export',
     usage: {

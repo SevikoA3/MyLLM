@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { CompactionSummarySchema } from './compaction';
+import { AssistantContentPartsSchema } from './conversation';
 import { TOOL_APPROVAL_STATUSES, TOOL_CALL_STATUSES } from './tool';
 
 export const CONVERSATION_EXPORT_SCHEMA_VERSION = 1 as const;
@@ -29,6 +30,7 @@ const ExportTurnSchema = z
     ordinal: z.number().int().positive(),
     userText: z.string(),
     assistantText: z.string(),
+    contentParts: AssistantContentPartsSchema.optional(),
     reasoningSummary: z.string().nullable(),
     status: z.enum(['sending', 'streaming', 'completed', 'failed', 'cancelled', 'interrupted']),
     modelId: z.string().trim().min(1),

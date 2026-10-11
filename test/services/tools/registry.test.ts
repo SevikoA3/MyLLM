@@ -151,16 +151,28 @@ describe('toolRegistry', () => {
     const tool = createToolRegistry(gateway, Date.now, malformed).find('web_search');
     await expect(tool?.execute({ query: 'example' }, new AbortController().signal)).resolves.toBe('{bad json');
 
-    const oversized = jest.fn().mockResolvedValue(new Response(JSON.stringify({ results: 'x'.repeat(12 * 1024) })));
+    const oversized = jest.fn().mockResolvedValue(new Response(JSON.stringify({ results: 'x'.repeat(512 * 1024) })));
     const fetchTool = createToolRegistry(gateway, Date.now, oversized).find('web_search');
-    await expect(fetchTool?.execute({ query: 'example' }, new AbortController().signal)).rejects.toThrow('12 KB');
+    await expect(fetchTool?.execute({ query: 'example' }, new AbortController().signal)).rejects.toThrow('512 KB');
   });
 
-  it.each([12, 64])('rejects web_fetch responses above the %s KB safety limit without truncation', async (limit) => {
-    const request = jest.fn().mockResolvedValue(new Response(JSON.stringify({ data: { content: 'x'.repeat(limit * 1024) } })));
+  it('rejects web_fetch responses above 512 KB without truncation', async () => {
+    const request = jest.fn().mockResolvedValue(new Response(JSON.stringify({ data: { content: 'x'.repeat(512 * 1024) } })));
     const tool = createToolRegistry(gateway, Date.now, request).find('web_fetch');
 
-    await expect(tool?.execute({ url: 'https://example.com' }, new AbortController().signal)).rejects.toThrow(`${String(limit)} KB`);
+    await expect(tool?.execute({ url: 'https://example.com' }, new AbortController().signal)).rejects.toThrow('512 KB');
+  });
+
+  it.each([
+    [gateway, 'web_search', { query: 'example' }],
+    [exa, 'web_search', { query: 'example' }],
+    [gateway, 'web_fetch', { url: 'https://example.com' }],
+  ] as const)('forwards a full 512 KB response (provider/tool case %#)', async (config, name, input) => {
+    const output = JSON.stringify('é'.repeat(256 * 1024 - 1));
+    const request = jest.fn().mockResolvedValue(new Response(output));
+    const tool = createToolRegistry(config, Date.now, request).find(name);
+
+    await expect(tool?.execute(input, new AbortController().signal)).resolves.toBe(output);
   });
 
   it('rejects invalid tool input before making a request', async () => {

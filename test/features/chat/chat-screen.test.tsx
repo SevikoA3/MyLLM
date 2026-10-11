@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import type { MergedModel } from '../../../src/domain/catalog-merge';
 import { createEndpointProfile } from '../../../src/domain/endpoint';
+import type { ToolActivity } from '../../../src/domain/tool';
 import { EndpointSelector, MessageBubble, ModelSelector, ReasoningSelector, ToolApprovalControl, ToolProgress, WebSearchSourceCards, WebToolSourceCards } from '../../../src/features/chat/chat-screen';
 
 const model: MergedModel = {
@@ -63,6 +64,38 @@ describe('Chat selectors', () => {
 });
 
 describe('MessageBubble', () => {
+  it.each(['streaming', 'completed', 'failed', 'cancelled', 'interrupted'] as const)('interleaves text and tools in %s transcripts', async (status) => {
+    const calls: ToolActivity[] = [1, 2, 3].map((number) => ({
+      id: `tool_${number}`, callId: `call_${number}`, name: `tool_${number}`,
+      argumentsJson: '{}', target: 'Example', sideEffect: 'Reads information.',
+      status: 'completed', approval: 'not_required', result: null,
+    }));
+    const view = await render(<MessageBubble calls={calls} message={{
+      id: 'assistant_1', role: 'assistant', text: 'BeforeMiddleAfter', status,
+      reasoningSummary: null, attachments: [], contentParts: [
+        { type: 'text', text: 'Before' },
+        { type: 'tool', callId: 'call_1' },
+        { type: 'tool', callId: 'call_2' },
+        { type: 'text', text: 'Middle' },
+        { type: 'tool', callId: 'call_3' },
+        { type: 'text', text: 'After' },
+      ],
+    }} />);
+
+    expect(view.getAllByText(/^(Before|Middle|After|Tool request · tool_[123])$/).map((item) => [item.props.children].flat().join(''))).toEqual([
+      'Before', 'Tool request · tool_1', 'Tool request · tool_2', 'Middle', 'Tool request · tool_3', 'After',
+    ]);
+  });
+
+  it('shows legacy text and tools when no ordered content was saved', async () => {
+    const view = await render(<MessageBubble calls={[{
+      id: 'tool_1', callId: 'call_1', name: 'tool_1', argumentsJson: '{}', target: 'Example',
+      sideEffect: 'Reads information.', status: 'completed', approval: 'not_required', result: null,
+    }]} message={{ id: 'old', role: 'assistant', text: 'Saved answer', status: 'completed', reasoningSummary: null, attachments: [] }} />);
+    expect(view.getByText('Saved answer')).toBeTruthy();
+    expect(view.getByLabelText('Tool request, tool_1, Tool completed')).toBeTruthy();
+  });
+
   it('shows a named document instead of trying to display it as an image', async () => {
     const view = await render(<MessageBubble message={{ id: 'u_file', role: 'user', text: '', status: 'completed', reasoningSummary: null, attachments: [{ id: 'file_1', name: 'notes.pdf', mimeType: 'application/pdf', byteSize: 100, uri: 'file:///notes.pdf' }] }} />);
     expect(view.getByText('notes.pdf')).toBeTruthy();

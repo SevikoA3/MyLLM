@@ -2,6 +2,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   titleFromPrompt,
+  AssistantContentPartsSchema,
+  type AssistantContentPart,
   type ChatMessage,
   type ConversationInputMessage,
   type ConversationCursor,
@@ -62,6 +64,7 @@ type FinishTurnInput = {
   assistantItemId: string;
   status: Exclude<TurnStatus, 'sending' | 'streaming'>;
   text: string;
+  contentParts?: AssistantContentPart[];
   reasoningSummary: string | null;
   responseId: string | null;
   usage: Record<string, unknown> | null;
@@ -404,13 +407,14 @@ export function createConversationRepository(
     assistantItemId: string,
     text: string,
     reasoningSummary: string | null,
+    contentParts?: AssistantContentPart[],
   ): Promise<void> {
     await initialize();
     const timestamp = now();
     await write(async (transaction) => {
       await transaction.runAsync(
         `UPDATE items SET status = 'streaming', content_json = ?, updated_at = ? WHERE id = ?`,
-        [contentJson(text, reasoningSummary), timestamp, assistantItemId],
+        [contentJson(text, reasoningSummary, [], contentParts), timestamp, assistantItemId],
       );
       await transaction.runAsync(`UPDATE turns SET status = 'streaming' WHERE id = ?`, [turnId]);
       await transaction.runAsync(
@@ -429,7 +433,7 @@ export function createConversationRepository(
         `UPDATE items SET status = ?, content_json = ?, updated_at = ? WHERE id = ?`,
         [
           input.status,
-          contentJson(input.text, input.reasoningSummary),
+          contentJson(input.text, input.reasoningSummary, [], input.contentParts),
           timestamp,
           input.assistantItemId,
         ],
@@ -899,6 +903,11 @@ export function createConversationRepository(
         ordinal: row.ordinal,
         userText: redactText(user.text),
         assistantText: redactText(assistant.text),
+        ...(assistant.contentParts === undefined ? {} : {
+          contentParts: assistant.contentParts.map((part) => part.type === 'text'
+            ? { ...part, text: redactText(part.text) }
+            : part),
+        }),
         reasoningSummary:
           assistant.reasoningSummary === null ? null : redactText(assistant.reasoningSummary),
         status: row.status,
@@ -996,7 +1005,7 @@ export function createConversationRepository(
             assistantItemId,
             turnId,
             status,
-            contentJson(turn.assistantText, turn.reasoningSummary),
+            contentJson(turn.assistantText, turn.reasoningSummary, [], turn.contentParts),
             timestamp,
             timestamp,
           ],
@@ -1242,14 +1251,16 @@ function contentJson(
   text: string,
   reasoningSummary: string | null,
   attachments: Attachment[] = [],
+  contentParts?: AssistantContentPart[],
 ): string {
-  return JSON.stringify({ text, reasoningSummary, attachments });
+  return JSON.stringify({ text, reasoningSummary, attachments, contentParts });
 }
 
 function parseContent(value: string | null): {
   text: string;
   reasoningSummary: string | null;
   attachments: Attachment[];
+  contentParts?: AssistantContentPart[];
 } {
   if (value === null) {
     return { text: '', reasoningSummary: null, attachments: [] };
@@ -1258,11 +1269,13 @@ function parseContent(value: string | null): {
     const parsed: unknown = JSON.parse(value);
     if (typeof parsed === 'object' && parsed !== null) {
       const record = parsed as Record<string, unknown>;
+      const parts = AssistantContentPartsSchema.safeParse(record.contentParts);
       return {
         text: typeof record.text === 'string' ? record.text : '',
         reasoningSummary:
           typeof record.reasoningSummary === 'string' ? record.reasoningSummary : null,
         attachments: parseAttachments(record.attachments),
+        ...(parts.success ? { contentParts: parts.data } : {}),
       };
     }
   } catch {

@@ -28,7 +28,7 @@ import type {
 export const MAX_TOOL_ROUNDS = 8;
 export const MAX_PARALLEL_READ_ONLY_TOOLS = 3;
 export const TOOL_TIMEOUT_MS = 10_000;
-export const TOOL_OUTPUT_BYTE_CAP = 16 * 1024;
+export const TOOL_OUTPUT_BYTE_CAP = 512 * 1024;
 export const TOOL_LOOP_TIMEOUT_MS = 60_000;
 
 export type ToolCallPersistence = {
@@ -48,6 +48,7 @@ export type AgentLoopInput = {
   persistence?: ToolCallPersistence;
   signal?: AbortSignal;
   onEvent?: (event: ResponseStreamEvent) => void;
+  onRoundComplete?: (result: SendResponseResult) => Promise<void>;
   onProgress?: (activity: ToolActivity) => void;
   requestApproval: (activity: ToolActivity, signal: AbortSignal) => Promise<boolean>;
   now?: () => number;
@@ -76,6 +77,7 @@ export async function runAgentLoop(input: AgentLoopInput): Promise<SendResponseR
         { ...input.request, tools: input.definitions, toolExchanges: exchanges },
         { signal: controller.signal, onEvent: input.onEvent },
       );
+      await input.onRoundComplete?.(result);
       if (!result.ok) {
         return timedOut ? loopFailure(result, input.profile, input.request.modelId, 'Tool loop timed out.', 'timeout') : result;
       }
@@ -265,7 +267,7 @@ async function executeTool(
   if (new TextEncoder().encode(outcome.output).byteLength > TOOL_OUTPUT_BYTE_CAP) {
     return complete(
       activity,
-      toolError(activity.callId, 'Tool output exceeded the 16 KB safety limit.'),
+      toolError(activity.callId, `Tool output exceeded the ${String(TOOL_OUTPUT_BYTE_CAP / 1024)} KB safety limit.`),
       'failed',
       activity.approval,
       input,

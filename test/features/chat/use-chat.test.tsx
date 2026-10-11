@@ -37,7 +37,7 @@ const mockRunLocalCompaction = jest.fn();
 const mockStartTurn = jest.fn(async (_input: unknown) => ({ conversationId: 'conv_1' }));
 const mockRestartTurn = jest.fn(async (_turnId: unknown, _itemId: unknown) => {});
 const mockFlushAssistant = jest.fn(
-  async (_turnId: unknown, _itemId: unknown, _text: unknown, _reasoning: unknown) => {},
+  async (_turnId: unknown, _itemId: unknown, _text: unknown, _reasoning: unknown, _parts?: unknown) => {},
 );
 const mockFinishTurn = jest.fn(async (_input: unknown) => {});
 const mockLoadTurnMetrics = jest.fn(async (_id: unknown) => []);
@@ -79,8 +79,8 @@ jest.mock('../../../src/services/persistence/conversation-store', () => ({
   conversationRepository: {
     startTurn: (input: unknown) => mockStartTurn(input),
     restartTurn: (turnId: unknown, itemId: unknown) => mockRestartTurn(turnId, itemId),
-    flushAssistant: (turnId: unknown, itemId: unknown, text: unknown, reasoning: unknown) =>
-      mockFlushAssistant(turnId, itemId, text, reasoning),
+    flushAssistant: (turnId: unknown, itemId: unknown, text: unknown, reasoning: unknown, parts?: unknown) =>
+      mockFlushAssistant(turnId, itemId, text, reasoning, parts),
     finishTurn: (input: unknown) => mockFinishTurn(input),
     loadRequestHistory: (id: unknown) => mockLoadRequestHistory(id),
     loadTurnMetrics: (id: unknown) => mockLoadTurnMetrics(id),
@@ -188,6 +188,70 @@ describe('useChat', () => {
     mockDeleteStagedImages.mockClear();
     mockDeleteUnreferencedStagedImages.mockClear();
     mockLoadWebTools.mockClear();
+  });
+
+  it.each([false, true])('preserves every tool round with streamed events=%s', async (streamed) => {
+    const { result } = await setup();
+    await act(async () => result.current.setAutoApproveTools(true));
+    const texts = ['Before', 'Middle', 'After'];
+    const rounds = [['call_1', 'call_2'], ['call_3'], []];
+    for (const [index, ids] of rounds.entries()) {
+      mockSend.mockImplementationOnce(async (_profile, _key, _input, options) => {
+        const next = success(`response_${index}`, texts[index]!);
+        if (next.ok) next.response.toolCalls = ids.map((callId) => ({
+          itemId: null, callId, name: 'get_current_time', arguments: '{"timezone":"UTC"}',
+        }));
+        if (streamed) {
+          (options as SendResponseOptions).onEvent?.({ type: 'text.delta', at: index, delta: texts[index]! });
+        }
+        return next;
+      });
+    }
+    await act(async () => { await result.current.send('time?'); });
+
+    const contentParts = [
+      { type: 'text', text: 'Before' },
+      { type: 'tool', callId: 'call_1' },
+      { type: 'tool', callId: 'call_2' },
+      { type: 'text', text: 'Middle' },
+      { type: 'tool', callId: 'call_3' },
+      { type: 'text', text: 'After' },
+    ];
+    expect(result.current.messages[1]).toMatchObject({ text: 'BeforeMiddleAfter', contentParts });
+    expect(mockFinishTurn).toHaveBeenCalledWith(expect.objectContaining({ text: 'BeforeMiddleAfter', contentParts }));
+  });
+
+  it.each([false, true])('retains inline tool order while awaiting approval and after cancelled=%s', async (cancelled) => {
+    const { result } = await setup();
+    const toolCall = { itemId: 'item_1', callId: 'call_1', name: 'get_current_time', arguments: '{"timezone":"UTC"}' };
+    mockSend.mockImplementationOnce(async (_profile, _key, _input, options) => {
+      const onEvent = (options as SendResponseOptions).onEvent;
+      onEvent?.({ type: 'text.delta', at: 1, delta: 'Before' });
+      onEvent?.({ type: 'tool_call.started', at: 2, toolCall });
+      onEvent?.({ type: 'text.delta', at: 3, delta: 'After' });
+      onEvent?.({ type: 'tool_call.completed', at: 4, toolCall });
+      const next = success('response_1', 'BeforeAfter');
+      if (next.ok) next.response.toolCalls = [toolCall];
+      return next;
+    });
+    mockSend.mockResolvedValueOnce(failure({
+      cancelled, hadModelEvent: true,
+      partial: { id: 'response_2', text: 'Stopped', reasoningSummary: null, toolCalls: [] },
+    }));
+    let pending: Promise<boolean>;
+    await act(async () => { pending = result.current.send('time?'); });
+    await waitFor(() => expect(Object.values(result.current.toolActivities).flat()[0]?.status).toBe('awaiting_approval'));
+    expect(result.current.messages[1]).toMatchObject({ text: 'BeforeAfter', contentParts: [
+      { type: 'text', text: 'Before' }, { type: 'tool', callId: 'call_1' }, { type: 'text', text: 'After' },
+    ] });
+    await act(async () => { result.current.resolveToolApproval(true); await pending; });
+
+    expect(result.current.messages[1]).toMatchObject({
+      status: cancelled ? 'cancelled' : 'failed', text: 'BeforeAfterStopped', contentParts: [
+        { type: 'text', text: 'Before' }, { type: 'tool', callId: 'call_1' }, { type: 'text', text: 'AfterStopped' },
+      ],
+    });
+    expect(Object.values(result.current.toolActivities).flat()).toHaveLength(1);
   });
 
   it.each(['credentials', 'model snapshot'] as const)(

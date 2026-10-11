@@ -3,7 +3,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { buildAuthHeaders, joinEndpointPath } from '../../domain/endpoint';
 import { readResponseText } from '../transport/body';
 
-const MAX_GATEWAY_RESPONSE_BYTES = 64 * 1024;
+const MAX_GATEWAY_RESPONSE_BYTES = 512 * 1024;
 const WEB_GATEWAY_TIMEOUT_MS = 40_000;
 const WEB_GATEWAY_HEALTH_TIMEOUT_MS = 10_000;
 const EXA_SEARCH_URL = 'https://api.exa.ai/search';
@@ -194,7 +194,7 @@ async function readGatewayJson(response: Response, operation: string): Promise<u
 async function readGatewayText(response: Response, operation: string): Promise<string> {
   const body = await readResponseText(response, MAX_GATEWAY_RESPONSE_BYTES);
   if (!body.ok) {
-    throw new Error(`${operation} response exceeded the 64 KB safety limit.`);
+    throw new Error(`${operation} response exceeded the ${String(MAX_GATEWAY_RESPONSE_BYTES / 1024)} KB safety limit.`);
   }
   return body.text;
 }

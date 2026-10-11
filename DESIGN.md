@@ -142,6 +142,7 @@ This motion separates two jobs: the fade establishes modal focus while the panel
 
 - Thinking, context, and tool approval controls stay in one horizontally scrollable row to preserve transcript space. The New chat shortcut stretches to match the model picker height; conversation history lives in the sidebar.
 - User and assistant messages use distinct surface roles and `radius.bubble`; live state is shown with text and emerald status.
+- Assistant text and tool requests appear inline in generation order. Keep tool details collapsed until opened.
 - The composer stays visually connected to the transcript and keeps attach and send controls at least 44 dp.
 - Attachments use the system Files picker. Images show thumbnails; documents show a file icon and filename. Removal sits over the top-right corner of the preview with a 44 dp touch target and a solid icon background so the action stays readable over photos.
 - Markdown prioritizes readable body text. Tables scroll horizontally when necessary and fit their rows vertically without filling unused space. Code uses a recessed canvas, monospace text, and no simulated terminal decoration.
